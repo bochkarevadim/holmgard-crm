@@ -1,0 +1,19 @@
+{
+  "name": "Holmgard CRM",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code http-server",
+  "forwardPorts": [8090],
+  "portsAttributes": {
+    "8090": {
+      "label": "CRM Preview",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
