@@ -555,12 +555,21 @@
                                 <select id="emp-role">
                                     <option value="director">Директор</option>
                                     <option value="admin">Администратор</option>
+                                    <option value="senior_instructor">Старший инструктор</option>
                                     <option value="instructor">Инструктор</option>
                                 </select>
                             </div>
                             <div class="form-group">
                                 <label>ПИН-код</label>
                                 <input type="text" id="emp-pin" placeholder="4 цифры" maxlength="4" pattern="[0-9]{4}" required>
+                            </div>
+                        </div>
+                        <div class="form-group" id="emp-allowed-roles-group">
+                            <label>Доступные роли на смене</label>
+                            <div class="allowed-roles-checkboxes">
+                                <label class="option-checkbox"><input type="checkbox" id="emp-role-admin" value="admin"> Администратор</label>
+                                <label class="option-checkbox"><input type="checkbox" id="emp-role-senior_instructor" value="senior_instructor"> Старший инструктор</label>
+                                <label class="option-checkbox"><input type="checkbox" id="emp-role-instructor" value="instructor"> Инструктор</label>
                             </div>
                         </div>
                         <div class="form-row">
@@ -1055,6 +1064,29 @@
                         </div>
                         <div class="salary-rule-block">
                             <div class="salary-rule-header">
+                                <span class="material-icons-round">military_tech</span>
+                                <h4>Старший инструктор</h4>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Ставка за смену (₽)</label>
+                                    <input type="number" id="rule-senior-instructor-rate" placeholder="0">
+                                </div>
+                                <div class="form-group">
+                                    <label>Бонус (%)</label>
+                                    <input type="number" id="rule-senior-instructor-bonus" placeholder="0" min="0" max="100">
+                                </div>
+                            </div>
+                            <div class="bonus-sources">
+                                <label class="form-hint" style="margin-bottom:6px;display:block;">Бонус начисляется от:</label>
+                                <label class="option-checkbox"><input type="checkbox" id="rule-senior-instructor-src-services" checked> Услуги (тарифы)</label>
+                                <label class="option-checkbox"><input type="checkbox" id="rule-senior-instructor-src-optionsForGame" checked> Опции к игре</label>
+                                <label class="option-checkbox"><input type="checkbox" id="rule-senior-instructor-src-options" checked> Доп. опции</label>
+                            </div>
+                            <p class="form-hint">Бонус начисляется от стоимости выбранных позиций мероприятий ст. инструктора</p>
+                        </div>
+                        <div class="salary-rule-block">
+                            <div class="salary-rule-header">
                                 <span class="material-icons-round">support_agent</span>
                                 <h4>Администратор</h4>
                             </div>
@@ -1330,6 +1362,11 @@
                     <h3>АДМИНИСТРАТОР</h3>
                     <p>Бонус от всей выручки за смену</p>
                 </button>
+                <button class="role-card" data-shift-role="senior_instructor">
+                    <span class="material-icons-round">military_tech</span>
+                    <h3>СТ. ИНСТРУКТОР</h3>
+                    <p>Повышенная ставка + бонус от мероприятий</p>
+                </button>
                 <button class="role-card" data-shift-role="instructor">
                     <span class="material-icons-round">sports</span>
                     <h3>ИНСТРУКТОР</h3>
@@ -1470,7 +1507,7 @@
 </div>
 
 <script src="js/gcal.js?v=5"></script>
-<script src="js/gsheets.js?v=4"></script>
-<script src="js/app.js?v=4"></script>
+<script src="js/gsheets.js?v=5"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>

@@ -82,6 +82,7 @@ function initData() {
         DB.set('shifts', []);
         DB.set('salaryRules', {
             instructor: { shiftRate: 1500, bonusPercent: 5 },
+            senior_instructor: { shiftRate: 2000, bonusPercent: 7 },
             admin: { shiftRate: 0, bonusPercent: 5 }
         });
         DB.set('stock', { balls: 4500, ballsMax: 10000, grenades: 120, grenadesMax: 500 });
@@ -157,6 +158,38 @@ function initData() {
         }
 
         DB.set('initialized', true);
+    }
+
+    // Data migration: add senior_instructor to salary rules
+    if (!DB.get('roles_version_v2')) {
+        const rules = DB.get('salaryRules', {});
+        if (!rules.senior_instructor) {
+            rules.senior_instructor = { shiftRate: 2000, bonusPercent: 7, bonusSources: ['services', 'optionsForGame', 'options'] };
+            DB.set('salaryRules', rules);
+        }
+        DB.set('roles_version_v2', true);
+    }
+
+    // Data migration: add allowedShiftRoles to employees
+    if (!DB.get('multirole_v1')) {
+        const emps = DB.get('employees', []);
+        let changed = false;
+        emps.forEach(emp => {
+            if (!emp.allowedShiftRoles) {
+                changed = true;
+                if (emp.role === 'director') {
+                    emp.allowedShiftRoles = ['admin', 'senior_instructor', 'instructor'];
+                } else if (emp.role === 'admin') {
+                    emp.allowedShiftRoles = ['admin'];
+                } else if (emp.role === 'senior_instructor') {
+                    emp.allowedShiftRoles = ['senior_instructor'];
+                } else {
+                    emp.allowedShiftRoles = ['instructor'];
+                }
+            }
+        });
+        if (changed) DB.set('employees', emps);
+        DB.set('multirole_v1', true);
     }
 
     // Data migration v2: replace old generic tariffs with real spreadsheet data
@@ -327,7 +360,7 @@ function loadEmployeeDashboard() {
     document.getElementById('emp-earnings-detail').style.display = 'none';
 
     if (todayShift) {
-        const shiftRoleName = todayShift.shiftRole === 'admin' ? 'Администратор' : 'Инструктор';
+        const shiftRoleName = getRoleName(todayShift.shiftRole) || todayShift.shiftRole;
         roleText.textContent = shiftRoleName;
         shiftInfo.style.display = 'block';
         document.getElementById('emp-shift-start-time').textContent = todayShift.startTime;
@@ -434,17 +467,44 @@ function startShiftTimer(startTimeStr) {
 function initEmployeeScreen() {
     // START WORK button
     document.getElementById('emp-btn-start-work').addEventListener('click', () => {
+        if (!currentUser) return;
+        const allowed = currentUser.allowedShiftRoles || getDefaultAllowedRoles(currentUser.role);
+        if (allowed.length === 1) {
+            // Only one role — skip modal, go directly to event selection
+            pendingShiftRole = allowed[0];
+            showEventSelectionModal();
+            return;
+        }
+        // Build role cards dynamically
+        const roleCardsContainer = document.querySelector('#modal-role-select .role-cards');
+        const roleIcons = {
+            admin: 'support_agent',
+            senior_instructor: 'military_tech',
+            instructor: 'sports'
+        };
+        const roleDescriptions = {
+            admin: 'Бонус от всей выручки за смену',
+            senior_instructor: 'Повышенная ставка + бонус от мероприятий',
+            instructor: 'Ставка + бонус от ваших мероприятий'
+        };
+        roleCardsContainer.innerHTML = allowed.map(role => `
+            <button class="role-card" data-shift-role="${role}">
+                <span class="material-icons-round">${roleIcons[role] || 'person'}</span>
+                <h3>${getRoleName(role).toUpperCase()}</h3>
+                <p>${roleDescriptions[role] || ''}</p>
+            </button>
+        `).join('');
+        // Bind click handlers to newly created cards
+        roleCardsContainer.querySelectorAll('.role-card').forEach(card => {
+            card.addEventListener('click', () => {
+                pendingShiftRole = card.dataset.shiftRole;
+                closeModal('modal-role-select');
+                showEventSelectionModal();
+            });
+        });
         openModal('modal-role-select');
     });
 
-    // Role selection
-    document.querySelectorAll('.role-card').forEach(card => {
-        card.addEventListener('click', () => {
-            pendingShiftRole = card.dataset.shiftRole;
-            closeModal('modal-role-select');
-            showEventSelectionModal();
-        });
-    });
     document.getElementById('modal-role-close').addEventListener('click', () => closeModal('modal-role-select'));
 
     // Event selection modal
@@ -660,8 +720,8 @@ function calculateShiftEarnings(shift) {
     let bonus = 0;
     let bonusDetail = '';
 
-    if (role === 'instructor') {
-        const rule = rules.instructor || { shiftRate: 1500, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
+    if (role === 'instructor' || role === 'senior_instructor') {
+        const rule = rules[role] || rules.instructor || { shiftRate: 1500, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
         base = rule.shiftRate || 0;
         const sources = rule.bonusSources || ['services', 'optionsForGame', 'options'];
 
@@ -868,7 +928,7 @@ function loadEmployeeSalary() {
         tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Нет завершённых смен в этом месяце</td></tr>';
     } else {
         tbody.innerHTML = monthData.shifts.map(s => {
-            const roleName = s.shiftRole === 'admin' ? 'Админ' : 'Инструктор';
+            const roleName = getRoleName(s.shiftRole) || s.shiftRole;
             return `
                 <tr>
                     <td>${s.date}</td>
@@ -1102,32 +1162,113 @@ function loadDashboard() {
     loadStock();
 }
 
-function loadRevenue() {
-    const fin = DB.get('finances', {});
-    document.getElementById('revenue-current').textContent = formatMoney(fin.income || 0);
+function calculateRevenue(period) {
+    const events = DB.get('events', []);
+    const now = new Date();
+    const todayStr = todayLocal();
+    let startDate, endDate, prevStartDate, prevEndDate;
 
-    const change = Math.round(((fin.income || 0) / 720000 - 1) * 100);
+    if (period === 'today') {
+        startDate = todayStr;
+        endDate = todayStr;
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+        prevStartDate = yesterdayStr;
+        prevEndDate = yesterdayStr;
+    } else if (period === 'week') {
+        const dayOfWeek = now.getDay() || 7; // 1=Mon, 7=Sun
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - dayOfWeek + 1);
+        startDate = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+        endDate = todayStr;
+        const prevWeekEnd = new Date(weekStart);
+        prevWeekEnd.setDate(prevWeekEnd.getDate() - 1);
+        const prevWeekStart = new Date(prevWeekEnd);
+        prevWeekStart.setDate(prevWeekStart.getDate() - 6);
+        prevStartDate = `${prevWeekStart.getFullYear()}-${String(prevWeekStart.getMonth() + 1).padStart(2, '0')}-${String(prevWeekStart.getDate()).padStart(2, '0')}`;
+        prevEndDate = `${prevWeekEnd.getFullYear()}-${String(prevWeekEnd.getMonth() + 1).padStart(2, '0')}-${String(prevWeekEnd.getDate()).padStart(2, '0')}`;
+    } else if (period === 'month') {
+        startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        endDate = todayStr;
+        const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+        prevStartDate = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}-01`;
+        prevEndDate = `${prevMonthEnd.getFullYear()}-${String(prevMonthEnd.getMonth() + 1).padStart(2, '0')}-${String(prevMonthEnd.getDate()).padStart(2, '0')}`;
+    } else { // year
+        startDate = `${now.getFullYear()}-01-01`;
+        endDate = todayStr;
+        prevStartDate = `${now.getFullYear() - 1}-01-01`;
+        prevEndDate = `${now.getFullYear() - 1}-12-31`;
+    }
+
+    const currentRevenue = events
+        .filter(e => e.date >= startDate && e.date <= endDate && (e.price || 0) > 0)
+        .reduce((sum, e) => sum + (e.price || 0), 0);
+
+    const prevRevenue = events
+        .filter(e => e.date >= prevStartDate && e.date <= prevEndDate && (e.price || 0) > 0)
+        .reduce((sum, e) => sum + (e.price || 0), 0);
+
+    const change = prevRevenue > 0 ? Math.round((currentRevenue / prevRevenue - 1) * 100) : (currentRevenue > 0 ? 100 : 0);
+
+    return { currentRevenue, prevRevenue, change };
+}
+
+function getMonthlyRevenueData(year) {
+    const events = DB.get('events', []);
+    const monthly = new Array(12).fill(0);
+    events.forEach(e => {
+        if (!e.date || !e.price) return;
+        const parts = e.date.split('-');
+        if (parseInt(parts[0]) === year) {
+            const monthIdx = parseInt(parts[1]) - 1;
+            if (monthIdx >= 0 && monthIdx < 12) {
+                monthly[monthIdx] += e.price || 0;
+            }
+        }
+    });
+    return monthly;
+}
+
+function loadRevenue() {
+    // Determine active period
+    const activeBtn = document.querySelector('.period-btn.active');
+    const period = activeBtn ? activeBtn.dataset.period : 'month';
+
+    const { currentRevenue, change } = calculateRevenue(period);
+    document.getElementById('revenue-current').textContent = formatMoney(currentRevenue);
+
     const changeEl = document.getElementById('revenue-change');
     changeEl.textContent = (change >= 0 ? '+' : '') + change + '%';
     changeEl.className = 'revenue-change' + (change < 0 ? ' negative' : '');
 
+    // Update compare label
+    const compareLabels = { today: 'vs вчера', week: 'vs прошлая неделя', month: 'vs прошлый месяц', year: 'vs прошлый год' };
+    const compareLabelEl = changeEl.nextElementSibling;
+    if (compareLabelEl) compareLabelEl.textContent = compareLabels[period] || 'vs прошлый период';
+
     const ctx = document.getElementById('revenueChart');
     if (revenueChart) revenueChart.destroy();
 
-    const months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн'];
+    const months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    const thisYear = new Date().getFullYear();
+    const thisYearData = getMonthlyRevenueData(thisYear);
+    const lastYearData = getMonthlyRevenueData(thisYear - 1);
+
     revenueChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: months,
             datasets: [
                 {
-                    label: '2026', data: [420000, 580000, 847000, 0, 0, 0],
+                    label: String(thisYear), data: thisYearData,
                     borderColor: accent, backgroundColor: accent + '20',
                     fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: accent,
                 },
                 {
-                    label: '2025', data: [380000, 490000, 720000, 650000, 810000, 920000],
+                    label: String(thisYear - 1), data: lastYearData,
                     borderColor: '#5A5A6E', backgroundColor: 'transparent',
                     borderDash: [5, 5], tension: 0.4, pointRadius: 0,
                 }
@@ -1175,7 +1316,7 @@ function loadOnShift() {
     }
 
     list.innerHTML = shifts.map(s => {
-        const roleName = s.shiftRole === 'admin' ? 'Администратор' : 'Инструктор';
+        const roleName = getRoleName(s.shiftRole) || s.shiftRole;
         const badge = s.endTime
             ? `<span class="list-item-badge badge-orange">${s.startTime} – ${s.endTime}</span>`
             : `<span class="list-item-badge badge-green">${s.startTime} – …</span>`;
@@ -1196,14 +1337,32 @@ function loadServiceRating() {
     const ctx = document.getElementById('servicesChart');
     if (servicesChart) servicesChart.destroy();
 
+    const events = DB.get('events', []);
+    const typeCounts = {};
+    events.forEach(e => {
+        const typeName = getEventTypeName(e.type) || e.type || 'Другое';
+        typeCounts[typeName] = (typeCounts[typeName] || 0) + 1;
+    });
+
+    const labels = Object.keys(typeCounts);
+    const data = Object.values(typeCounts);
+    const colors = ['#FFD600', '#448AFF', '#00E676', '#FF9100', '#E040FB', '#FF5252', '#40C4FF', '#69F0AE'];
+
+    if (labels.length === 0) {
+        labels.push('Нет данных');
+        data.push(1);
+    }
+
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    colors[0] = accent;
+
     servicesChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['Пейнтбол', 'Лазертаг', 'Квесты', 'Корпоративы', 'Дни рождения'],
+            labels: labels,
             datasets: [{
-                data: [35, 25, 15, 15, 10],
-                backgroundColor: [accent, '#448AFF', '#00E676', '#FF9100', '#E040FB'],
+                data: data,
+                backgroundColor: colors.slice(0, labels.length),
                 borderWidth: 0,
             }]
         },
@@ -1217,16 +1376,22 @@ function loadServiceRating() {
 function loadEmployeeRating() {
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
     const list = document.getElementById('employee-rating-list');
-    const ratings = employees.map(e => ({
-        name: e.firstName + ' ' + e.lastName,
-        score: Math.floor(Math.random() * 20 + 80)
-    })).sort((a, b) => b.score - a.score);
+    const ratings = employees.map(e => {
+        const monthData = getEmployeeMonthEarnings(e.id);
+        return {
+            name: e.firstName + ' ' + e.lastName,
+            shifts: monthData.shiftCount,
+            earned: monthData.totalEarned
+        };
+    }).sort((a, b) => b.earned - a.earned);
 
-    list.innerHTML = ratings.map((r, i) => `
+    list.innerHTML = ratings.length === 0
+        ? '<p class="empty-state">Нет данных</p>'
+        : ratings.map((r, i) => `
         <div class="rating-item">
             <div class="rating-pos">${i + 1}</div>
             <div class="rating-name">${r.name}</div>
-            <div class="rating-score">${r.score}%</div>
+            <div class="rating-score">${r.shifts} смен · ${formatMoney(r.earned)}</div>
         </div>
     `).join('');
 }
@@ -1294,6 +1459,19 @@ function loadEmployees() {
     `).join('');
 }
 
+function setAllowedRolesCheckboxes(allowedRoles) {
+    document.getElementById('emp-role-admin').checked = allowedRoles.includes('admin');
+    document.getElementById('emp-role-senior_instructor').checked = allowedRoles.includes('senior_instructor');
+    document.getElementById('emp-role-instructor').checked = allowedRoles.includes('instructor');
+}
+
+function getDefaultAllowedRoles(role) {
+    if (role === 'director') return ['admin', 'senior_instructor', 'instructor'];
+    if (role === 'admin') return ['admin'];
+    if (role === 'senior_instructor') return ['senior_instructor'];
+    return ['instructor'];
+}
+
 function openEmployeeModal(id = null) {
     const form = document.getElementById('employee-form');
     form.reset();
@@ -1314,6 +1492,7 @@ function openEmployeeModal(id = null) {
         document.getElementById('emp-passport').value = emp.passport || '';
         document.getElementById('emp-bank').value = emp.bank || '';
         document.getElementById('emp-paid').value = emp.paid || '';
+        setAllowedRolesCheckboxes(emp.allowedShiftRoles || getDefaultAllowedRoles(emp.role));
 
         const monthData = getEmployeeMonthEarnings(emp.id);
         if (monthData.shifts.length > 0 || emp.role !== 'director') {
@@ -1336,7 +1515,17 @@ function openEmployeeModal(id = null) {
         }
     } else {
         document.getElementById('modal-employee-title').textContent = 'Новый сотрудник';
+        // Default allowed roles based on selected role
+        const role = document.getElementById('emp-role').value;
+        setAllowedRolesCheckboxes(getDefaultAllowedRoles(role));
     }
+
+    // Auto-update allowed roles when role changes (for new employees)
+    document.getElementById('emp-role').onchange = function () {
+        if (!document.getElementById('emp-id').value) {
+            setAllowedRolesCheckboxes(getDefaultAllowedRoles(this.value));
+        }
+    };
 
     openModal('modal-employee');
 }
@@ -1345,6 +1534,12 @@ function saveEmployee(e) {
     e.preventDefault();
     const employees = DB.get('employees', []);
     const id = document.getElementById('emp-id').value;
+
+    // Collect allowed shift roles
+    const allowedShiftRoles = [];
+    if (document.getElementById('emp-role-admin').checked) allowedShiftRoles.push('admin');
+    if (document.getElementById('emp-role-senior_instructor').checked) allowedShiftRoles.push('senior_instructor');
+    if (document.getElementById('emp-role-instructor').checked) allowedShiftRoles.push('instructor');
 
     const data = {
         firstName: document.getElementById('emp-first-name').value.trim(),
@@ -1356,6 +1551,7 @@ function saveEmployee(e) {
         passport: document.getElementById('emp-passport').value.trim(),
         bank: document.getElementById('emp-bank').value.trim(),
         paid: parseFloat(document.getElementById('emp-paid').value) || 0,
+        allowedShiftRoles: allowedShiftRoles.length > 0 ? allowedShiftRoles : getDefaultAllowedRoles(document.getElementById('emp-role').value),
     };
 
     const pinConflict = employees.find(e => e.pin === data.pin && String(e.id) !== id);
@@ -1950,19 +2146,26 @@ function deleteClient(id) {
 function initSettings() {
     const rules = DB.get('salaryRules', {
         instructor: { shiftRate: 1500, bonusPercent: 5 },
+        senior_instructor: { shiftRate: 2000, bonusPercent: 7 },
         admin: { shiftRate: 0, bonusPercent: 5 }
     });
     document.getElementById('rule-instructor-rate').value = rules.instructor?.shiftRate ?? 1500;
     document.getElementById('rule-instructor-bonus').value = rules.instructor?.bonusPercent ?? 5;
+    document.getElementById('rule-senior-instructor-rate').value = rules.senior_instructor?.shiftRate ?? 2000;
+    document.getElementById('rule-senior-instructor-bonus').value = rules.senior_instructor?.bonusPercent ?? 7;
     document.getElementById('rule-admin-rate').value = rules.admin?.shiftRate ?? 0;
     document.getElementById('rule-admin-bonus').value = rules.admin?.bonusPercent ?? 5;
 
     // Bonus sources checkboxes
     const instrSources = rules.instructor?.bonusSources || ['services', 'optionsForGame', 'options'];
+    const seniorSources = rules.senior_instructor?.bonusSources || ['services', 'optionsForGame', 'options'];
     const adminSources = rules.admin?.bonusSources || ['services', 'optionsForGame', 'options'];
     document.getElementById('rule-instructor-src-services').checked = instrSources.includes('services');
     document.getElementById('rule-instructor-src-optionsForGame').checked = instrSources.includes('optionsForGame');
     document.getElementById('rule-instructor-src-options').checked = instrSources.includes('options');
+    document.getElementById('rule-senior-instructor-src-services').checked = seniorSources.includes('services');
+    document.getElementById('rule-senior-instructor-src-optionsForGame').checked = seniorSources.includes('optionsForGame');
+    document.getElementById('rule-senior-instructor-src-options').checked = seniorSources.includes('options');
     document.getElementById('rule-admin-src-services').checked = adminSources.includes('services');
     document.getElementById('rule-admin-src-optionsForGame').checked = adminSources.includes('optionsForGame');
     document.getElementById('rule-admin-src-options').checked = adminSources.includes('options');
@@ -1972,6 +2175,11 @@ function initSettings() {
         if (document.getElementById('rule-instructor-src-services').checked) instructorSources.push('services');
         if (document.getElementById('rule-instructor-src-optionsForGame').checked) instructorSources.push('optionsForGame');
         if (document.getElementById('rule-instructor-src-options').checked) instructorSources.push('options');
+
+        const seniorInstrSources = [];
+        if (document.getElementById('rule-senior-instructor-src-services').checked) seniorInstrSources.push('services');
+        if (document.getElementById('rule-senior-instructor-src-optionsForGame').checked) seniorInstrSources.push('optionsForGame');
+        if (document.getElementById('rule-senior-instructor-src-options').checked) seniorInstrSources.push('options');
 
         const adminSrc = [];
         if (document.getElementById('rule-admin-src-services').checked) adminSrc.push('services');
@@ -1983,6 +2191,11 @@ function initSettings() {
                 shiftRate: parseFloat(document.getElementById('rule-instructor-rate').value) || 0,
                 bonusPercent: parseFloat(document.getElementById('rule-instructor-bonus').value) || 0,
                 bonusSources: instructorSources
+            },
+            senior_instructor: {
+                shiftRate: parseFloat(document.getElementById('rule-senior-instructor-rate').value) || 0,
+                bonusPercent: parseFloat(document.getElementById('rule-senior-instructor-bonus').value) || 0,
+                bonusSources: seniorInstrSources
             },
             admin: {
                 shiftRate: parseFloat(document.getElementById('rule-admin-rate').value) || 0,
@@ -2108,7 +2321,7 @@ function formatMoney(n) {
 }
 
 function getRoleName(role) {
-    const names = { director: 'Директор', admin: 'Администратор', instructor: 'Инструктор' };
+    const names = { director: 'Директор', admin: 'Администратор', senior_instructor: 'Старший инструктор', instructor: 'Инструктор' };
     return names[role] || role;
 }
 

@@ -316,10 +316,11 @@ const GSheetsSync = (() => {
 
     // EMPLOYEES
     function employeesToRows(employees) {
-        const header = ['id', 'firstName', 'lastName', 'role', 'pin', 'phone', 'dob', 'passport', 'bank', 'paid'];
+        const header = ['id', 'firstName', 'lastName', 'role', 'pin', 'phone', 'dob', 'passport', 'bank', 'paid', 'allowedShiftRoles'];
         const rows = employees.map(e => [
             e.id, e.firstName, e.lastName, e.role, e.pin,
-            e.phone || '', e.dob || '', e.passport || '', e.bank || '', e.paid || 0
+            e.phone || '', e.dob || '', e.passport || '', e.bank || '', e.paid || 0,
+            JSON.stringify(e.allowedShiftRoles || [])
         ]);
         return [header, ...rows];
     }
@@ -335,6 +336,9 @@ const GSheetsSync = (() => {
                 const idx = headers.indexOf(name);
                 return idx >= 0 ? (row[idx] || '') : '';
             };
+            const allowedRolesStr = get('allowedShiftRoles');
+            let allowedShiftRoles;
+            try { allowedShiftRoles = allowedRolesStr ? JSON.parse(allowedRolesStr) : null; } catch { allowedShiftRoles = null; }
             employees.push({
                 id: parseInt(get('id')) || Date.now() + i,
                 firstName: get('firstName'),
@@ -345,7 +349,8 @@ const GSheetsSync = (() => {
                 dob: get('dob'),
                 passport: get('passport'),
                 bank: get('bank'),
-                paid: parseFloat(get('paid')) || 0
+                paid: parseFloat(get('paid')) || 0,
+                allowedShiftRoles: allowedShiftRoles || undefined
             });
         }
         return employees.length > 0 ? employees : null;
@@ -502,6 +507,9 @@ const GSheetsSync = (() => {
             ['instructor_shiftRate', salaryRules.instructor?.shiftRate || 0],
             ['instructor_bonusPercent', salaryRules.instructor?.bonusPercent || 0],
             ['instructor_bonusSources', JSON.stringify(salaryRules.instructor?.bonusSources || ['services', 'optionsForGame', 'options'])],
+            ['senior_instructor_shiftRate', salaryRules.senior_instructor?.shiftRate || 0],
+            ['senior_instructor_bonusPercent', salaryRules.senior_instructor?.bonusPercent || 0],
+            ['senior_instructor_bonusSources', JSON.stringify(salaryRules.senior_instructor?.bonusSources || ['services', 'optionsForGame', 'options'])],
             ['admin_shiftRate', salaryRules.admin?.shiftRate || 0],
             ['admin_bonusPercent', salaryRules.admin?.bonusPercent || 0],
             ['admin_bonusSources', JSON.stringify(salaryRules.admin?.bonusSources || ['services', 'optionsForGame', 'options'])],
@@ -527,6 +535,11 @@ const GSheetsSync = (() => {
                     shiftRate: parseFloat(config.instructor_shiftRate) || 0,
                     bonusPercent: parseFloat(config.instructor_bonusPercent) || 0,
                     bonusSources: (() => { try { return JSON.parse(config.instructor_bonusSources || '[]'); } catch { return ['services', 'optionsForGame', 'options']; } })()
+                },
+                senior_instructor: {
+                    shiftRate: parseFloat(config.senior_instructor_shiftRate) || 2000,
+                    bonusPercent: parseFloat(config.senior_instructor_bonusPercent) || 7,
+                    bonusSources: (() => { try { return JSON.parse(config.senior_instructor_bonusSources || '[]'); } catch { return ['services', 'optionsForGame', 'options']; } })()
                 },
                 admin: {
                     shiftRate: parseFloat(config.admin_shiftRate) || 0,
