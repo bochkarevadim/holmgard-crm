@@ -106,17 +106,19 @@ const GCalSync = (() => {
     }
 
     // --- Auth ---
-    async function authorize() {
+    function authorize() {
         const clientId = getClientId();
         if (!clientId) {
             showToast('Введите Client ID в Настройках');
             return;
         }
-        // Ensure gapi is loaded before authorizing
-        try {
-            await loadGapi();
-        } catch (e) {
-            console.warn('gapi load failed during authorize:', e);
+        // IMPORTANT: This function must be synchronous from user click to
+        // requestAccessToken(), otherwise browser blocks the OAuth popup.
+        // gapi should already be loaded by init() at page load.
+        if (!gapiInited) {
+            showToast('Google API ещё загружается, попробуйте через пару секунд');
+            loadGapi().catch(() => {});
+            return;
         }
         if (!gisInited) {
             gisInited = false;
