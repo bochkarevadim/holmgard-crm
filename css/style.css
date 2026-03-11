@@ -2130,3 +2130,41 @@ body {
 .gcal-syncing .material-icons-round {
     animation: gcal-spin 1s linear infinite;
 }
+
+/* ===== DIRECTOR TARIFFS PAGE ===== */
+.tariff-card-editable {
+    cursor: pointer;
+    transition: var(--transition);
+    position: relative;
+}
+.tariff-card-editable:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+}
+.tariff-card-actions {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.tariff-card-editable:hover .tariff-card-actions {
+    opacity: 1;
+}
+
+/* ===== BONUS SOURCES ===== */
+.bonus-sources {
+    margin: 8px 0 12px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+.bonus-sources .option-checkbox {
+    margin: 4px 0;
+}
+
+/* ===== GOOGLE SHEETS SETTINGS ===== */
+.gsheets-settings .form-group input {
+    font-size: 13px;
+}

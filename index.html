@@ -351,6 +351,10 @@
                 <span class="material-icons-round">people</span>
                 <span class="nav-label">Клиенты</span>
             </a>
+            <a class="nav-item" data-page="tariffs">
+                <span class="material-icons-round">sell</span>
+                <span class="nav-label">Тарифы</span>
+            </a>
             <a class="nav-item" data-page="settings">
                 <span class="material-icons-round">settings</span>
                 <span class="nav-label">Настройки</span>
@@ -898,6 +902,103 @@
             </div>
         </div>
 
+        <!-- ===== DIRECTOR TARIFFS PAGE ===== -->
+        <div class="page" id="page-tariffs">
+            <div class="section-header">
+                <h2>Тарифы и услуги</h2>
+                <div class="schedule-actions">
+                    <button class="btn-secondary" id="btn-sync-gsheets-tariffs">
+                        <span class="material-icons-round">sync</span>
+                        Синхронизировать
+                    </button>
+                    <button class="btn-primary" id="btn-add-tariff">
+                        <span class="material-icons-round">add</span>
+                        Добавить
+                    </button>
+                </div>
+            </div>
+
+            <div class="tariff-tabs" id="dir-tariff-tabs">
+                <button class="tariff-tab active" data-dir-tariff-tab="services">Услуги</button>
+                <button class="tariff-tab" data-dir-tariff-tab="optionsForGame">Опции к игре</button>
+                <button class="tariff-tab" data-dir-tariff-tab="options">Доп. опции</button>
+            </div>
+
+            <div class="tariff-grid" id="dir-tariffs-grid"></div>
+        </div>
+
+        <!-- ===== TARIFF MODAL ===== -->
+        <div class="modal-overlay" id="modal-tariff">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2 id="modal-tariff-title">Новый тариф</h2>
+                    <button class="btn-close" id="modal-tariff-close">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="tariff-form">
+                        <input type="hidden" id="tariff-id">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Категория</label>
+                                <select id="tariff-category">
+                                    <option value="services">Услуга</option>
+                                    <option value="optionsForGame">Опция к игре</option>
+                                    <option value="options">Дополнительная опция</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>ID (англ.)</label>
+                                <input type="text" id="tariff-service-id" placeholder="например: pb_mission">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Название</label>
+                            <input type="text" id="tariff-name" placeholder="Название тарифа" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Цена (₽)</label>
+                                <input type="number" id="tariff-price" placeholder="0" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Ед. измерения</label>
+                                <input type="text" id="tariff-unit" placeholder="чел / шт / аренда">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Длительность (мин)</label>
+                                <input type="number" id="tariff-duration" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Мин. участников</label>
+                                <input type="number" id="tariff-min-people" placeholder="0">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Возраст</label>
+                            <input type="text" id="tariff-age" placeholder="напр. 6-80">
+                        </div>
+                        <div class="form-group">
+                            <label>Что включено</label>
+                            <textarea id="tariff-included" placeholder="Описание того, что входит в тариф" rows="2"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Описание</label>
+                            <textarea id="tariff-description" placeholder="Подробное описание" rows="3"></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" id="btn-cancel-tariff">Отмена</button>
+                            <button type="button" class="btn-danger" id="btn-delete-tariff" style="display:none;">Удалить</button>
+                            <button type="submit" class="btn-primary">Сохранить</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- ===== LOYALTY SETTINGS MODAL ===== -->
         <div class="modal-overlay" id="modal-loyalty">
             <div class="modal modal-sm">
@@ -944,7 +1045,13 @@
                                     <input type="number" id="rule-instructor-bonus" placeholder="0" min="0" max="100">
                                 </div>
                             </div>
-                            <p class="form-hint">Бонус начисляется от стоимости мероприятий, на которых работал инструктор</p>
+                            <div class="bonus-sources">
+                                <label class="form-hint" style="margin-bottom:6px;display:block;">Бонус начисляется от:</label>
+                                <label class="option-checkbox"><input type="checkbox" id="rule-instructor-src-services" checked> Услуги (тарифы)</label>
+                                <label class="option-checkbox"><input type="checkbox" id="rule-instructor-src-optionsForGame" checked> Опции к игре</label>
+                                <label class="option-checkbox"><input type="checkbox" id="rule-instructor-src-options" checked> Доп. опции</label>
+                            </div>
+                            <p class="form-hint">Бонус начисляется от стоимости выбранных позиций мероприятий инструктора</p>
                         </div>
                         <div class="salary-rule-block">
                             <div class="salary-rule-header">
@@ -961,7 +1068,13 @@
                                     <input type="number" id="rule-admin-bonus" placeholder="0" min="0" max="100">
                                 </div>
                             </div>
-                            <p class="form-hint">Бонус начисляется от всей выручки за смену администратора</p>
+                            <div class="bonus-sources">
+                                <label class="form-hint" style="margin-bottom:6px;display:block;">Бонус начисляется от:</label>
+                                <label class="option-checkbox"><input type="checkbox" id="rule-admin-src-services" checked> Услуги (тарифы)</label>
+                                <label class="option-checkbox"><input type="checkbox" id="rule-admin-src-optionsForGame" checked> Опции к игре</label>
+                                <label class="option-checkbox"><input type="checkbox" id="rule-admin-src-options" checked> Доп. опции</label>
+                            </div>
+                            <p class="form-hint">Бонус начисляется от выбранных позиций всей выручки за смену</p>
                         </div>
                     </div>
                     <button class="btn-primary" id="btn-save-salary-rules">
@@ -1030,12 +1143,26 @@
                         </div>
                     </div>
 
-                    <div class="integration-item">
-                        <div class="integration-info">
-                            <strong>Google Таблицы</strong>
-                            <p>Синхронизация тарифов и зарплат</p>
+                    <!-- Google Sheets -->
+                    <div class="gsheets-settings" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
+                        <div class="integration-item">
+                            <div class="integration-info">
+                                <strong>Google Таблицы</strong>
+                                <div class="gcal-status">
+                                    <span class="gcal-status-dot gcal-status-none" id="gsheets-status-dot"></span>
+                                    <span class="gcal-status-label" id="gsheets-status-label">Нет Spreadsheet ID</span>
+                                </div>
+                            </div>
+                            <button class="btn-secondary btn-sm" id="btn-connect-gsheets">Подключить</button>
                         </div>
-                        <button class="btn-secondary btn-sm" id="btn-connect-gsheets">Подключить</button>
+                        <div class="form-group" style="margin-top:12px">
+                            <label>Spreadsheet ID (из URL таблицы)</label>
+                            <input type="text" id="gsheets-spreadsheet-id" placeholder="1E6dtJ...kWPE">
+                        </div>
+                        <label class="option-checkbox" style="margin-top:8px;">
+                            <input type="checkbox" id="gsheets-autosync" checked>
+                            Авто-синхронизация при изменениях
+                        </label>
                     </div>
                     <div class="integration-item">
                         <div class="integration-info">
@@ -1343,6 +1470,7 @@
 </div>
 
 <script src="js/gcal.js"></script>
+<script src="js/gsheets.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

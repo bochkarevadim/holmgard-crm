@@ -1,6 +1,6 @@
 // ===== GOOGLE CALENDAR SYNC MODULE =====
 const GCalSync = (() => {
-    const SCOPES = 'https://www.googleapis.com/auth/calendar';
+    const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets';
     const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
 
     let tokenClient = null;

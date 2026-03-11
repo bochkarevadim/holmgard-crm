@@ -172,6 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateDate();
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     GCalSync.init();
+    GSheetsSync.init();
+    initDirectorTariffs();
 });
 
 // ===== PIN PAD =====
@@ -446,6 +448,7 @@ function initEmployeeScreen() {
             shifts[idx].earnings = earnings;
             DB.set('shifts', shifts);
             showToast(`Смена завершена! Заработок: ${formatMoney(earnings.total)}`);
+            GSheetsSync.pushSection('shifts');
         }
         loadEmployeeDashboard();
     });
@@ -570,13 +573,61 @@ function startShift(selectedEventIds) {
     pendingShiftRole = null;
     loadEmployeeDashboard();
     showToast('Смена начата! Хорошего рабочего дня!');
+    GSheetsSync.pushSection('shifts');
 }
 
 // ===== SALARY CALCULATION =====
+function calculateEventRevenueBySources(event, sources) {
+    // Calculate revenue from an event based on selected bonus sources
+    const tariffs = DB.get('tariffs', []);
+    let total = 0;
+
+    if (!sources || sources.length === 0) {
+        // Legacy: use full event price
+        return event.price || 0;
+    }
+
+    // Base service price
+    if (sources.includes('services')) {
+        if (event.tariffId) {
+            const tariff = tariffs.find(t => t.id === event.tariffId);
+            if (tariff) {
+                total += (tariff.price || 0) * (event.participants || 1);
+            }
+        } else {
+            // No specific tariff — use event price as service
+            total += event.price || 0;
+        }
+    }
+
+    // Options for game
+    if (sources.includes('optionsForGame') && event.selectedOptions) {
+        event.selectedOptions.forEach(optId => {
+            const opt = tariffs.find(t => t.id === optId && t.category === 'optionsForGame');
+            if (opt) total += (opt.price || 0) * (event.participants || 1);
+        });
+    }
+
+    // Additional options
+    if (sources.includes('options') && event.selectedOptions) {
+        event.selectedOptions.forEach(optId => {
+            const opt = tariffs.find(t => t.id === optId && t.category === 'options');
+            if (opt) total += opt.price || 0;
+        });
+    }
+
+    // If no tariff breakdown available, fallback to event price
+    if (total === 0 && (event.price || 0) > 0) {
+        total = event.price;
+    }
+
+    return total;
+}
+
 function calculateShiftEarnings(shift) {
     const rules = DB.get('salaryRules', {
-        instructor: { shiftRate: 1500, bonusPercent: 5 },
-        admin: { shiftRate: 0, bonusPercent: 5 }
+        instructor: { shiftRate: 1500, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] },
+        admin: { shiftRate: 0, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] }
     });
 
     const role = shift.shiftRole || shift.employeeRole;
@@ -585,25 +636,29 @@ function calculateShiftEarnings(shift) {
     let bonusDetail = '';
 
     if (role === 'instructor') {
-        const rule = rules.instructor || { shiftRate: 1500, bonusPercent: 5 };
+        const rule = rules.instructor || { shiftRate: 1500, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
         base = rule.shiftRate || 0;
+        const sources = rule.bonusSources || ['services', 'optionsForGame', 'options'];
 
         // Bonus from selected events
         const events = DB.get('events', []);
         const selectedEvents = (shift.selectedEvents || []).map(id => events.find(e => String(e.id) === String(id))).filter(Boolean);
-        const eventsRevenue = selectedEvents.reduce((sum, e) => sum + (e.price || 0), 0);
+        const eventsRevenue = selectedEvents.reduce((sum, e) => sum + calculateEventRevenueBySources(e, sources), 0);
         bonus = Math.round(eventsRevenue * (rule.bonusPercent || 0) / 100);
-        bonusDetail = `${rule.bonusPercent}% от ${formatMoney(eventsRevenue)} (${selectedEvents.length} мероп.)`;
+        const srcNames = sources.map(s => s === 'services' ? 'услуги' : s === 'optionsForGame' ? 'опции к игре' : 'доп. опции').join(', ');
+        bonusDetail = `${rule.bonusPercent}% от ${formatMoney(eventsRevenue)} (${srcNames})`;
 
     } else if (role === 'admin') {
-        const rule = rules.admin || { shiftRate: 0, bonusPercent: 5 };
+        const rule = rules.admin || { shiftRate: 0, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
         base = rule.shiftRate || 0;
+        const sources = rule.bonusSources || ['services', 'optionsForGame', 'options'];
 
         // Bonus from ALL revenue on this date
         const events = DB.get('events', []).filter(e => e.date === shift.date);
-        const dayRevenue = events.reduce((sum, e) => sum + (e.price || 0), 0);
+        const dayRevenue = events.reduce((sum, e) => sum + calculateEventRevenueBySources(e, sources), 0);
         bonus = Math.round(dayRevenue * (rule.bonusPercent || 0) / 100);
-        bonusDetail = `${rule.bonusPercent}% от ${formatMoney(dayRevenue)} (вся выручка)`;
+        const srcNames = sources.map(s => s === 'services' ? 'услуги' : s === 'optionsForGame' ? 'опции к игре' : 'доп. опции').join(', ');
+        bonusDetail = `${rule.bonusPercent}% от ${formatMoney(dayRevenue)} (${srcNames})`;
     }
 
     return { base, bonus, total: base + bonus, bonusDetail };
@@ -996,6 +1051,7 @@ function navigateTo(page) {
         finances: 'Финансы',
         documents: 'Документы',
         clients: 'Клиенты',
+        tariffs: 'Тарифы и услуги',
         settings: 'Настройки'
     };
     document.getElementById('page-title').textContent = titles[page] || page;
@@ -1006,6 +1062,7 @@ function navigateTo(page) {
     if (page === 'finances') loadFinances();
     if (page === 'documents') loadDocuments();
     if (page === 'clients') loadClients();
+    if (page === 'tariffs') loadDirectorTariffs();
 
     document.getElementById('sidebar').classList.remove('open');
 }
@@ -1294,6 +1351,7 @@ function saveEmployee(e) {
     closeModal('modal-employee');
     loadEmployees();
     showToast('Сотрудник сохранён');
+    GSheetsSync.pushSection('employees');
 }
 
 function deleteEmployee(id) {
@@ -1511,6 +1569,7 @@ function saveEvent(e) {
     if (document.getElementById('emp-page-booking').classList.contains('active')) renderEmpCalendar();
     if (document.getElementById('emp-page-events').classList.contains('active')) loadEmployeeEvents();
     showToast('Мероприятие сохранено');
+    GSheetsSync.pushSection('events');
 
     // Push to Google Calendar
     const savedEvent = id ? events.find(ev => ev.id === parseInt(id)) : events[events.length - 1];
@@ -1849,6 +1908,7 @@ function saveClient(e) {
     closeModal('modal-client');
     loadClients();
     showToast('Клиент сохранён');
+    GSheetsSync.pushSection('clients');
 }
 
 function deleteClient(id) {
@@ -1872,19 +1932,42 @@ function initSettings() {
     document.getElementById('rule-admin-rate').value = rules.admin?.shiftRate ?? 0;
     document.getElementById('rule-admin-bonus').value = rules.admin?.bonusPercent ?? 5;
 
+    // Bonus sources checkboxes
+    const instrSources = rules.instructor?.bonusSources || ['services', 'optionsForGame', 'options'];
+    const adminSources = rules.admin?.bonusSources || ['services', 'optionsForGame', 'options'];
+    document.getElementById('rule-instructor-src-services').checked = instrSources.includes('services');
+    document.getElementById('rule-instructor-src-optionsForGame').checked = instrSources.includes('optionsForGame');
+    document.getElementById('rule-instructor-src-options').checked = instrSources.includes('options');
+    document.getElementById('rule-admin-src-services').checked = adminSources.includes('services');
+    document.getElementById('rule-admin-src-optionsForGame').checked = adminSources.includes('optionsForGame');
+    document.getElementById('rule-admin-src-options').checked = adminSources.includes('options');
+
     document.getElementById('btn-save-salary-rules').addEventListener('click', () => {
+        const instructorSources = [];
+        if (document.getElementById('rule-instructor-src-services').checked) instructorSources.push('services');
+        if (document.getElementById('rule-instructor-src-optionsForGame').checked) instructorSources.push('optionsForGame');
+        if (document.getElementById('rule-instructor-src-options').checked) instructorSources.push('options');
+
+        const adminSrc = [];
+        if (document.getElementById('rule-admin-src-services').checked) adminSrc.push('services');
+        if (document.getElementById('rule-admin-src-optionsForGame').checked) adminSrc.push('optionsForGame');
+        if (document.getElementById('rule-admin-src-options').checked) adminSrc.push('options');
+
         const newRules = {
             instructor: {
                 shiftRate: parseFloat(document.getElementById('rule-instructor-rate').value) || 0,
-                bonusPercent: parseFloat(document.getElementById('rule-instructor-bonus').value) || 0
+                bonusPercent: parseFloat(document.getElementById('rule-instructor-bonus').value) || 0,
+                bonusSources: instructorSources
             },
             admin: {
                 shiftRate: parseFloat(document.getElementById('rule-admin-rate').value) || 0,
-                bonusPercent: parseFloat(document.getElementById('rule-admin-bonus').value) || 0
+                bonusPercent: parseFloat(document.getElementById('rule-admin-bonus').value) || 0,
+                bonusSources: adminSrc
             }
         };
         DB.set('salaryRules', newRules);
         showToast('Правила начисления зарплаты сохранены');
+        GSheetsSync.pushSection('config');
     });
 
     const stock = DB.get('stock', { balls: 0, ballsMax: 10000, grenades: 0, grenadesMax: 500 });
@@ -1903,6 +1986,7 @@ function initSettings() {
         DB.set('stock', newStock);
         loadStock();
         showToast('Данные склада обновлены');
+        GSheetsSync.pushSection('config');
     });
 
     document.querySelectorAll('.color-opt').forEach(btn => {
@@ -1949,9 +2033,35 @@ function initSettings() {
             GCalSync.authorize();
         }
     });
+    // Google Sheets settings
+    const gsheetsIdInput = document.getElementById('gsheets-spreadsheet-id');
+    const gsheetsAutoSync = document.getElementById('gsheets-autosync');
+    if (gsheetsIdInput) {
+        gsheetsIdInput.value = GSheetsSync.getSpreadsheetId();
+        gsheetsIdInput.addEventListener('change', () => {
+            GSheetsSync.setSpreadsheetId(gsheetsIdInput.value.trim());
+            GSheetsSync.init();
+        });
+    }
+    if (gsheetsAutoSync) {
+        gsheetsAutoSync.checked = GSheetsSync.getAutoSync();
+        gsheetsAutoSync.addEventListener('change', () => {
+            localStorage.setItem('hp_gsheets_autosync', gsheetsAutoSync.checked ? 'true' : 'false');
+        });
+    }
     const gsheetsBtn = document.getElementById('btn-connect-gsheets');
-    if (gsheetsBtn) gsheetsBtn.addEventListener('click', () => {
-        showToast('Интеграция с Google Таблицами будет доступна после подключения API');
+    if (gsheetsBtn) gsheetsBtn.addEventListener('click', async () => {
+        if (!GCalSync.isConnected()) {
+            showToast('Сначала подключите Google аккаунт (кнопка Google Calendar)');
+            return;
+        }
+        if (!GSheetsSync.getSpreadsheetId()) {
+            showToast('Введите Spreadsheet ID');
+            return;
+        }
+        await GSheetsSync.fullSync();
+        // Reload current page data
+        if (document.getElementById('page-tariffs')?.classList.contains('active')) loadDirectorTariffs();
     });
     document.getElementById('btn-connect-sigma').addEventListener('click', () => {
         showToast('Интеграция с SIGMA ATOL будет доступна после подключения API');
@@ -1997,6 +2107,154 @@ function updateDate() {
     });
     const topBarDate = document.getElementById('top-bar-date');
     if (topBarDate) topBarDate.textContent = dateStr;
+}
+
+// ===== DIRECTOR TARIFFS MANAGEMENT =====
+let currentDirTariffTab = 'services';
+
+function initDirectorTariffs() {
+    const addBtn = document.getElementById('btn-add-tariff');
+    if (addBtn) addBtn.addEventListener('click', () => openTariffModal());
+
+    const closeBtn = document.getElementById('modal-tariff-close');
+    if (closeBtn) closeBtn.addEventListener('click', () => closeModal('modal-tariff'));
+
+    const cancelBtn = document.getElementById('btn-cancel-tariff');
+    if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal('modal-tariff'));
+
+    const deleteBtn = document.getElementById('btn-delete-tariff');
+    if (deleteBtn) deleteBtn.addEventListener('click', () => {
+        const id = parseInt(document.getElementById('tariff-id').value);
+        if (!id) return;
+        showConfirm('Удалить тариф?', 'Это действие нельзя отменить', () => {
+            let tariffs = DB.get('tariffs', []);
+            tariffs = tariffs.filter(t => t.id !== id);
+            DB.set('tariffs', tariffs);
+            closeModal('modal-tariff');
+            loadDirectorTariffs();
+            showToast('Тариф удалён');
+            GSheetsSync.pushSection('tariffs');
+        });
+    });
+
+    const form = document.getElementById('tariff-form');
+    if (form) form.addEventListener('submit', saveTariff);
+
+    // Director tariff tabs
+    document.querySelectorAll('[data-dir-tariff-tab]').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('[data-dir-tariff-tab]').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentDirTariffTab = tab.dataset.dirTariffTab;
+            loadDirectorTariffs();
+        });
+    });
+
+    // Sync button
+    const syncBtn = document.getElementById('btn-sync-gsheets-tariffs');
+    if (syncBtn) syncBtn.addEventListener('click', async () => {
+        if (!GSheetsSync.isConnected()) {
+            showToast('Google Таблицы не подключены. Настройте в Настройках.');
+            return;
+        }
+        await GSheetsSync.fullSync();
+        loadDirectorTariffs();
+    });
+}
+
+function loadDirectorTariffs() {
+    const tariffs = DB.get('tariffs', []).filter(t => t.category === currentDirTariffTab);
+    const grid = document.getElementById('dir-tariffs-grid');
+    if (!grid) return;
+
+    if (tariffs.length === 0) {
+        grid.innerHTML = '<p class="empty-state">Нет тарифов в этой категории</p>';
+        return;
+    }
+
+    grid.innerHTML = tariffs.map(t => `
+        <div class="tariff-card tariff-card-editable" onclick="openTariffModal('${t.id}')">
+            <div class="tariff-card-header">
+                <h3>${t.name}</h3>
+                <div class="tariff-price">${formatMoney(t.price)} <span class="tariff-unit">/ ${t.unit || 'чел'}</span></div>
+            </div>
+            <p class="tariff-description">${t.description || t.included || '—'}</p>
+            <div class="tariff-meta">
+                ${t.serviceId ? `<span><span class="material-icons-round">tag</span> ${t.serviceId}</span>` : ''}
+                ${t.duration ? `<span><span class="material-icons-round">timer</span> ${t.duration} мин</span>` : ''}
+                ${t.minPeople ? `<span><span class="material-icons-round">group</span> от ${t.minPeople} чел.</span>` : ''}
+                ${t.age ? `<span><span class="material-icons-round">cake</span> ${t.age} лет</span>` : ''}
+            </div>
+            <div class="tariff-card-actions">
+                <button class="btn-action" title="Редактировать">
+                    <span class="material-icons-round">edit</span>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function openTariffModal(id = null) {
+    const form = document.getElementById('tariff-form');
+    form.reset();
+    document.getElementById('tariff-id').value = '';
+    document.getElementById('btn-delete-tariff').style.display = 'none';
+    document.getElementById('tariff-category').value = currentDirTariffTab;
+
+    if (id) {
+        const tariff = DB.get('tariffs', []).find(t => String(t.id) === String(id));
+        if (!tariff) return;
+        document.getElementById('modal-tariff-title').textContent = 'Редактировать тариф';
+        document.getElementById('tariff-id').value = tariff.id;
+        document.getElementById('tariff-category').value = tariff.category;
+        document.getElementById('tariff-service-id').value = tariff.serviceId || '';
+        document.getElementById('tariff-name').value = tariff.name;
+        document.getElementById('tariff-price').value = tariff.price || '';
+        document.getElementById('tariff-unit').value = tariff.unit || '';
+        document.getElementById('tariff-duration').value = tariff.duration || '';
+        document.getElementById('tariff-min-people').value = tariff.minPeople || '';
+        document.getElementById('tariff-age').value = tariff.age || '';
+        document.getElementById('tariff-included').value = tariff.included || '';
+        document.getElementById('tariff-description').value = tariff.description || '';
+        document.getElementById('btn-delete-tariff').style.display = 'inline-flex';
+    } else {
+        document.getElementById('modal-tariff-title').textContent = 'Новый тариф';
+    }
+
+    openModal('modal-tariff');
+}
+
+function saveTariff(e) {
+    e.preventDefault();
+    const tariffs = DB.get('tariffs', []);
+    const id = document.getElementById('tariff-id').value;
+
+    const data = {
+        category: document.getElementById('tariff-category').value,
+        serviceId: document.getElementById('tariff-service-id').value.trim(),
+        name: document.getElementById('tariff-name').value.trim(),
+        price: parseFloat(document.getElementById('tariff-price').value) || 0,
+        unit: document.getElementById('tariff-unit').value.trim() || 'чел',
+        duration: parseInt(document.getElementById('tariff-duration').value) || 0,
+        minPeople: parseInt(document.getElementById('tariff-min-people').value) || 0,
+        age: document.getElementById('tariff-age').value.trim(),
+        included: document.getElementById('tariff-included').value.trim(),
+        description: document.getElementById('tariff-description').value.trim(),
+    };
+
+    if (id) {
+        const idx = tariffs.findIndex(t => t.id === parseInt(id));
+        if (idx >= 0) tariffs[idx] = { ...tariffs[idx], ...data };
+    } else {
+        data.id = Date.now();
+        tariffs.push(data);
+    }
+
+    DB.set('tariffs', tariffs);
+    closeModal('modal-tariff');
+    loadDirectorTariffs();
+    showToast('Тариф сохранён');
+    GSheetsSync.pushSection('tariffs');
 }
 
 // ===== MODALS =====
