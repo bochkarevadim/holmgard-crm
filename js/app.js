@@ -113,34 +113,59 @@ function initData() {
         ]);
 
         DB.set('tariffs', [
-            { id: 1, category: 'services', name: 'Пейнтбол классический', price: 1500, unit: 'чел', duration: 60, minPeople: 6, description: 'Классическая игра в пейнтбол. Включает: маска, маркер, 100 шаров' },
-            { id: 2, category: 'services', name: 'Пейнтбол LOW IMPACT', price: 1200, unit: 'чел', duration: 60, minPeople: 4, description: 'Мягкие калиберные шары. Идеально для детей и новичков' },
-            { id: 3, category: 'services', name: 'Лазертаг', price: 1000, unit: 'чел', duration: 60, minPeople: 4, description: 'Лазерные бои на открытой площадке или в закрытом помещении' },
-            { id: 4, category: 'services', name: 'Квест', price: 3000, unit: 'команда', duration: 60, minPeople: 2, description: 'Квест-комната с различными сценариями' },
-            { id: 5, category: 'optionsForGame', name: 'Граната пейнтбольная', price: 300, unit: 'шт', duration: 0, minPeople: 0, description: 'Пейнтбольная граната для игры' },
-            { id: 6, category: 'optionsForGame', name: 'Дымовая шашка', price: 500, unit: 'шт', duration: 0, minPeople: 0, description: 'Цветной дым для тактических задач' },
-            { id: 7, category: 'options', name: 'Беседка', price: 2000, unit: 'аренда', duration: 120, minPeople: 0, description: 'Крытая беседка на 20 человек' },
-            { id: 8, category: 'options', name: 'Банкетный зал', price: 5000, unit: 'аренда', duration: 180, minPeople: 0, description: 'Зал на 40 человек с посудой' },
-            { id: 9, category: 'options', name: 'Фото/видеосъёмка', price: 3000, unit: 'услуга', duration: 0, minPeople: 0, description: 'Профессиональная съёмка мероприятия' },
+            // === Услуги (services) — из Google Таблицы ===
+            { id: 1, category: 'services', serviceId: 'pb_mission', sheetCategory: 'Пейнтбол', name: 'МИССИЯ ВЫПОЛНИМА', price: 1800, unit: 'чел', duration: 120, minPeople: 8, age: '', included: 'Комплект экипировки и защиты; 3 миссии ≈ 1 час; Беседка 2 часа; 300 шаров', description: '' },
+            { id: 2, category: 'services', serviceId: 'pb_bigcash', sheetCategory: 'Пейнтбол', name: 'БОЛЬШОЙ КУШ', price: 2200, unit: 'чел', duration: 180, minPeople: 6, age: '', included: 'Комплект экипировки и защиты; 4 миссии ≈ 2 часа; Беседка 3 часа; 500 шаров', description: '' },
+            { id: 3, category: 'services', serviceId: 'pb_unstop', sheetCategory: 'Пейнтбол', name: 'НЕУДЕРЖИМЫЕ', price: 2900, unit: 'чел', duration: 240, minPeople: 6, age: '', included: 'Комплект экипировки и защиты; 5 миссий ≈ 3 часа; Беседка 4 часа; 600 шаров; Граната; Удлинённый ствол; Щит', description: '' },
+            { id: 4, category: 'services', serviceId: 'kb_minepark', sheetCategory: 'Кидбол', name: 'MINEPARK', price: 1600, unit: 'чел', duration: 180, minPeople: 8, age: '6-12', included: 'Комплект детской экипировки, безлимитные шары, игровые сценарии, фотоотчёт, инструктор, беседка и мангальная зона', description: '' },
+            { id: 5, category: 'services', serviceId: 'kb_fightstars', sheetCategory: 'Кидбол', name: 'ЗВЁЗДНЫЕ БОИ', price: 2300, unit: 'чел', duration: 240, minPeople: 6, age: '6-12', included: 'Комплект экипировки; 4 миссии ≈ 2 часа; Беседка 3 часа; безлимитные шары', description: '' },
+            { id: 6, category: 'services', serviceId: 'lz_fightstars', sheetCategory: 'Лазертаг', name: 'ЗВЁЗДНЫЕ БОИ', price: 1100, unit: 'чел', duration: 180, minPeople: 10, age: '', included: 'Комплект экипировки; 4 миссии ≈ 2 часа; Беседка 3 часа', description: '' },
+            { id: 7, category: 'services', serviceId: 'lz_pubg', sheetCategory: 'Лазертаг', name: 'LASERPUBG', price: 1500, unit: 'чел', duration: 240, minPeople: 8, age: '', included: 'Комплект экипировки; 6 миссий ≈ 3 часа; Беседка 4 часа', description: '' },
+            { id: 8, category: 'services', serviceId: 'ATV_light', sheetCategory: 'Квадроциклы', name: 'Лёгкая трасса — 4 км', price: 2500, unit: 'чел', duration: 40, minPeople: 1, age: '14', included: 'Квадроцикл, комплект экипировки и защиты, небольшой пикник по завершении заезда', description: '' },
+            { id: 9, category: 'services', serviceId: 'ATV_medium', sheetCategory: 'Квадроциклы', name: 'Умеренная трасса — 5 км', price: 3000, unit: 'чел', duration: 60, minPeople: 1, age: '14', included: 'Квадроцикл, комплект экипировки и защиты, небольшой пикник по завершении заезда', description: '' },
+            { id: 10, category: 'services', serviceId: 'ATV_hard', sheetCategory: 'Квадроциклы', name: 'Сложная трасса — 9 км', price: 6000, unit: 'чел', duration: 90, minPeople: 1, age: '14', included: 'Квадроцикл, комплект экипировки и защиты, небольшой пикник по завершении заезда', description: '' },
+            { id: 11, category: 'services', serviceId: 'sup_group', sheetCategory: 'Водная прогулка на Сап-бордах', name: 'Сборная группа', price: 2200, unit: 'чел', duration: 180, minPeople: 1, age: '18', included: 'Комплект оборудования; ≈ 3 часа прогулка; Пикник; Сопровождение инструкторами', description: '' },
+            { id: 12, category: 'services', serviceId: 'sup_privet', sheetCategory: 'Водная прогулка на Сап-бордах', name: 'Все свои', price: 2800, unit: 'чел', duration: 180, minPeople: 6, age: '18', included: 'Комплект оборудования; ≈ 3 часа прогулка; Пикник; Сопровождение инструкторами', description: '' },
+            { id: 13, category: 'services', serviceId: 'sup_romantic', sheetCategory: 'Водная прогулка на Сап-бордах', name: 'Романтическая прогулка на двоих', price: 8000, unit: 'чел', duration: 180, minPeople: 2, age: '18', included: 'Комплект оборудования; ≈ 3 часа прогулка; Пикник; Сопровождение инструкторами', description: '' },
+            { id: 14, category: 'services', serviceId: 'Race_light', sheetCategory: 'Гонка с препятствиями', name: 'Лёгкая трасса — 1,6 км', price: 1600, unit: 'чел', duration: 30, minPeople: 8, age: '12', included: 'Трасса с препятствиями, сопровождающий инструктор, страховка', description: '' },
+            { id: 15, category: 'services', serviceId: 'Race_medium', sheetCategory: 'Гонка с препятствиями', name: 'Умеренная трасса — 2,2 км', price: 2200, unit: 'чел', duration: 40, minPeople: 8, age: '18', included: 'Трасса с препятствиями, сопровождающий инструктор, страховка', description: '' },
+            { id: 16, category: 'services', serviceId: 'Race_hard', sheetCategory: 'Гонка с препятствиями', name: 'Сложная трасса — 2,8 км', price: 2800, unit: 'чел', duration: 50, minPeople: 8, age: '18', included: 'Трасса с препятствиями, сопровождающий инструктор, страховка', description: '' },
+            { id: 17, category: 'services', serviceId: 'Tir_200', sheetCategory: 'Тир пейнтбольный', name: 'ТИР200', price: 500, unit: 'чел', duration: 10, minPeople: 1, age: '0', included: 'Пейнтбольный тир 200 выстрелов', description: '' },
+            { id: 18, category: 'services', serviceId: 'Tir_500', sheetCategory: 'Тир пейнтбольный', name: 'ТИР500', price: 1000, unit: 'чел', duration: 20, minPeople: 1, age: '0', included: 'Пейнтбольный тир 500 выстрелов', description: '' },
+            // === Опции к игре (optionsForGame) ===
+            { id: 19, category: 'optionsForGame', serviceId: 'opt_pb_grenade', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Граната', price: 300, quantity: 1, unit: 'штука', included: '', description: '' },
+            { id: 20, category: 'optionsForGame', serviceId: 'opt_pb_balls', sheetCategory: 'Доп. опции Пейнтбол/Кидбол', name: 'Дополнительные шары (200 шт)', price: 2, quantity: 1, unit: 'штука', included: '', description: '' },
+            { id: 21, category: 'optionsForGame', serviceId: 'opt_pb_smoke', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дымовая шашка', price: 300, quantity: 1, unit: 'штука', included: '', description: '' },
+            { id: 22, category: 'optionsForGame', serviceId: 'opt_pb_barrel', sheetCategory: 'Доп. опции Пейнтбол', name: 'Удлинённый ствол', price: 200, quantity: 1, unit: 'штука', included: '', description: '' },
+            { id: 23, category: 'optionsForGame', serviceId: 'opt_pb_gazebo', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дополнительное время в беседке (1 час)', price: 0, quantity: 1, unit: 'час', included: '', description: '' },
+            // === Дополнительные опции (options) ===
+            { id: 24, category: 'options', serviceId: 'Coffee', sheetCategory: 'Кофе', name: 'Кофе', price: 150, quantity: 1, unit: 'штука', included: '', description: '' },
+            { id: 25, category: 'options', serviceId: 'Shop', sheetCategory: 'Магазин', name: 'Магазин', price: 0, quantity: 1, unit: 'штука', included: '', description: '' },
+            { id: 26, category: 'options', serviceId: 'opt_gazebo_small', sheetCategory: 'Аренда беседки', name: 'Малая беседка', price: 1000, quantity: 1, unit: 'час', included: '', description: '' },
+            { id: 27, category: 'options', serviceId: 'opt_gazebo_big', sheetCategory: 'Аренда беседки', name: 'Большая беседка', price: 2000, quantity: 1, unit: 'час', included: '', description: '' },
+            { id: 28, category: 'options', serviceId: 'opt_tent', sheetCategory: 'Аренда беседки', name: 'Шатёр', price: 1000, quantity: 1, unit: 'час', included: '', description: '' },
         ]);
 
         DB.set('accentColor', '#FFD600');
+
+        // Pre-populate integration settings
+        if (!localStorage.getItem('hp_gcal_client_id')) {
+            localStorage.setItem('hp_gcal_client_id', '707236174149-jvoffkaka7c03s70ek5ecknebao7nhk3.apps.googleusercontent.com');
+        }
+        if (!localStorage.getItem('hp_gsheets_id')) {
+            localStorage.setItem('hp_gsheets_id', '1E6dtJNWzSNFCI3CXDUBsb2rWMuwpEbmIljrDmbBkWPE');
+        }
+
         DB.set('initialized', true);
     }
 
-    // Data migration: ensure tariffs exist (for upgrades from older versions)
-    if (DB.get('tariffs', []).length === 0) {
-        DB.set('tariffs', [
-            { id: 1, category: 'services', name: 'Пейнтбол классический', price: 1500, unit: 'чел', duration: 60, minPeople: 6, description: 'Классическая игра в пейнтбол. Включает: маска, маркер, 100 шаров' },
-            { id: 2, category: 'services', name: 'Пейнтбол LOW IMPACT', price: 1200, unit: 'чел', duration: 60, minPeople: 4, description: 'Мягкие калиберные шары. Идеально для детей и новичков' },
-            { id: 3, category: 'services', name: 'Лазертаг', price: 1000, unit: 'чел', duration: 60, minPeople: 4, description: 'Лазерные бои на открытой площадке' },
-            { id: 4, category: 'services', name: 'Квест', price: 3000, unit: 'команда', duration: 60, minPeople: 2, description: 'Квест-комната с различными сценариями' },
-            { id: 5, category: 'optionsForGame', name: 'Граната пейнтбольная', price: 300, unit: 'шт', duration: 0, minPeople: 0, description: 'Пейнтбольная граната для игры' },
-            { id: 6, category: 'optionsForGame', name: 'Дымовая шашка', price: 500, unit: 'шт', duration: 0, minPeople: 0, description: 'Цветной дым для тактических задач' },
-            { id: 7, category: 'options', name: 'Беседка', price: 2000, unit: 'аренда', duration: 120, minPeople: 0, description: 'Крытая беседка на 20 человек' },
-            { id: 8, category: 'options', name: 'Банкетный зал', price: 5000, unit: 'аренда', duration: 180, minPeople: 0, description: 'Зал на 40 человек с посудой' },
-            { id: 9, category: 'options', name: 'Фото/видеосъёмка', price: 3000, unit: 'услуга', duration: 0, minPeople: 0, description: 'Профессиональная съёмка мероприятия' },
-        ]);
+    // Data migration v2: replace old generic tariffs with real spreadsheet data
+    if (DB.get('tariffs_version') !== 'v2') {
+        DB.remove('initialized');
+        DB.remove('tariffs');
+        DB.set('tariffs_version', 'v2');
+        initData(); // re-run to populate real tariffs
+        return;
     }
 }
 
@@ -2051,15 +2076,17 @@ function initSettings() {
     }
     const gsheetsBtn = document.getElementById('btn-connect-gsheets');
     if (gsheetsBtn) gsheetsBtn.addEventListener('click', async () => {
-        if (!GCalSync.isConnected()) {
-            showToast('Сначала подключите Google аккаунт (кнопка Google Calendar)');
-            return;
-        }
         if (!GSheetsSync.getSpreadsheetId()) {
             showToast('Введите Spreadsheet ID');
             return;
         }
-        await GSheetsSync.fullSync();
+        if (GCalSync.isConnected()) {
+            // Full two-way sync via Sheets API (OAuth)
+            await GSheetsSync.fullSync();
+        } else {
+            // Try public CSV import (no OAuth needed, spreadsheet must be published)
+            await GSheetsSync.importFromPublicCSV();
+        }
         // Reload current page data
         if (document.getElementById('page-tariffs')?.classList.contains('active')) loadDirectorTariffs();
     });
@@ -2153,11 +2180,14 @@ function initDirectorTariffs() {
     // Sync button
     const syncBtn = document.getElementById('btn-sync-gsheets-tariffs');
     if (syncBtn) syncBtn.addEventListener('click', async () => {
-        if (!GSheetsSync.isConnected()) {
-            showToast('Google Таблицы не подключены. Настройте в Настройках.');
+        if (GCalSync.isConnected() && GSheetsSync.getSpreadsheetId()) {
+            await GSheetsSync.fullSync();
+        } else if (GSheetsSync.getSpreadsheetId()) {
+            await GSheetsSync.importFromPublicCSV();
+        } else {
+            showToast('Введите Spreadsheet ID в Настройках');
             return;
         }
-        await GSheetsSync.fullSync();
         loadDirectorTariffs();
     });
 }

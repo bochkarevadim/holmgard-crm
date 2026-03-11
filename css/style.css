@@ -2113,6 +2113,7 @@ body {
     display: inline-block;
 }
 .gcal-status-connected { background: #00E676; box-shadow: 0 0 6px #00E67666; }
+.gcal-status-ready { background: #448AFF; box-shadow: 0 0 6px #448AFF66; }
 .gcal-status-disconnected { background: #FF5252; }
 .gcal-status-error { background: #FF5252; animation: pulse 1.5s infinite; }
 .gcal-status-none { background: #666; }

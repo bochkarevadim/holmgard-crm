@@ -27,11 +27,12 @@ const GSheetsSync = (() => {
             if (getAccessToken()) {
                 updateStatus('connected');
             } else {
-                updateStatus('disconnected');
+                updateStatus('ready'); // Has spreadsheet ID but no OAuth — ready for CSV import
             }
         } catch (err) {
-            console.error('GSheetsSync init error:', err);
-            updateStatus('error');
+            // gapi not loaded (expected on some environments) — still functional with CSV import
+            console.warn('GSheetsSync: gapi not available, CSV import still works');
+            updateStatus('ready');
         }
     }
 
@@ -58,7 +59,8 @@ const GSheetsSync = (() => {
 
         dot.className = 'gcal-status-dot gcal-status-' + state;
         const labels = {
-            connected: 'Подключено',
+            connected: 'Подключено (OAuth)',
+            ready: 'Готово к импорту',
             disconnected: 'Отключено',
             error: 'Ошибка',
             none: 'Нет Spreadsheet ID',
@@ -69,6 +71,9 @@ const GSheetsSync = (() => {
         if (btnConnect) {
             if (state === 'connected') {
                 btnConnect.textContent = 'Синхронизировать';
+                btnConnect.className = 'btn-primary btn-sm';
+            } else if (state === 'ready') {
+                btnConnect.textContent = 'Импортировать';
                 btnConnect.className = 'btn-primary btn-sm';
             } else {
                 btnConnect.textContent = 'Подключить';
@@ -663,6 +668,77 @@ const GSheetsSync = (() => {
         }
     }
 
+    // --- PUBLIC CSV IMPORT (no OAuth needed, spreadsheet must be published to web) ---
+    function parseCSV(text) {
+        const rows = [];
+        let inQuote = false, field = '', record = [];
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (ch === '"') {
+                if (inQuote && text[i + 1] === '"') { field += '"'; i++; }
+                else inQuote = !inQuote;
+            } else if (ch === ',' && !inQuote) {
+                record.push(field); field = '';
+            } else if ((ch === '\n' || ch === '\r') && !inQuote) {
+                if (field || record.length > 0) { record.push(field); rows.push(record); record = []; field = ''; }
+            } else {
+                field += ch;
+            }
+        }
+        if (field || record.length > 0) { record.push(field); rows.push(record); }
+        return rows.filter(r => r[0] && r[0] !== '');
+    }
+
+    async function importFromPublicCSV() {
+        const ssId = getSpreadsheetId();
+        if (!ssId) { showToast('Введите Spreadsheet ID в Настройках'); return null; }
+
+        updateStatus('syncing');
+        const baseUrl = `https://docs.google.com/spreadsheets/d/${ssId}/gviz/tq?tqx=out:csv&sheet=`;
+
+        try {
+            const [servResp, ofgResp, optResp] = await Promise.all([
+                fetch(baseUrl + encodeURIComponent('services')),
+                fetch(baseUrl + encodeURIComponent('options for game')),
+                fetch(baseUrl + encodeURIComponent('options'))
+            ]);
+
+            if (!servResp.ok && servResp.status === 401) {
+                updateStatus('disconnected');
+                showToast('Таблица не опубликована. Опубликуйте через Файл → Опубликовать в интернете, или подключите Google аккаунт.');
+                return null;
+            }
+
+            const [servText, ofgText, optText] = await Promise.all([
+                servResp.text(), ofgResp.text(), optResp.text()
+            ]);
+
+            const servRows = parseCSV(servText);
+            const ofgRows = parseCSV(ofgText);
+            const optRows = parseCSV(optText);
+
+            if (servRows.length > 1 || ofgRows.length > 1 || optRows.length > 1) {
+                const importedTariffs = rowsToTariffs(servRows, ofgRows, optRows);
+                if (importedTariffs.length > 0) {
+                    DB.set('tariffs', importedTariffs);
+                    updateStatus('connected');
+                    showToast(`Импортировано ${importedTariffs.length} тарифов из Google Таблицы`);
+                    return importedTariffs;
+                }
+            }
+
+            updateStatus('disconnected');
+            showToast('Таблица пуста или недоступна');
+            return null;
+
+        } catch (err) {
+            console.error('CSV import error:', err);
+            updateStatus('error');
+            showToast('Ошибка импорта из Google Таблицы: ' + (err.message || err));
+            return null;
+        }
+    }
+
     // --- Get scope string (for OAuth) ---
     function getScope() {
         return SCOPES;
@@ -678,6 +754,7 @@ const GSheetsSync = (() => {
         getSpreadsheetId,
         setSpreadsheetId,
         getScope,
-        getAutoSync
+        getAutoSync,
+        importFromPublicCSV
     };
 })();
