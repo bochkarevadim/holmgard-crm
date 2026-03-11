@@ -56,14 +56,30 @@ const GCalSync = (() => {
     function loadGapi() {
         return new Promise((resolve, reject) => {
             if (gapiInited) { resolve(); return; }
-            if (typeof gapi === 'undefined') { reject('gapi not loaded'); return; }
-            gapi.load('client', async () => {
-                try {
-                    await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
-                    gapiInited = true;
-                    resolve();
-                } catch (e) { reject(e); }
-            });
+
+            function tryLoad() {
+                if (typeof gapi === 'undefined' || typeof gapi.load !== 'function') {
+                    return false;
+                }
+                gapi.load('client', async () => {
+                    try {
+                        await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+                        gapiInited = true;
+                        resolve();
+                    } catch (e) { reject(e); }
+                });
+                return true;
+            }
+
+            if (tryLoad()) return;
+
+            // gapi script loaded async — wait up to 5s for it
+            let attempts = 0;
+            const interval = setInterval(() => {
+                attempts++;
+                if (tryLoad()) { clearInterval(interval); return; }
+                if (attempts >= 25) { clearInterval(interval); reject('gapi not loaded after timeout'); }
+            }, 200);
         });
     }
 
@@ -90,14 +106,19 @@ const GCalSync = (() => {
     }
 
     // --- Auth ---
-    function authorize() {
+    async function authorize() {
         const clientId = getClientId();
         if (!clientId) {
             showToast('Введите Client ID в Настройках');
             return;
         }
+        // Ensure gapi is loaded before authorizing
+        try {
+            await loadGapi();
+        } catch (e) {
+            console.warn('gapi load failed during authorize:', e);
+        }
         if (!gisInited) {
-            // Re-init GIS with possibly new client ID
             gisInited = false;
             tokenClient = null;
             initGis();

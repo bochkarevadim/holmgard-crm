@@ -39,14 +39,27 @@ const GSheetsSync = (() => {
     function loadGapi() {
         return new Promise((resolve, reject) => {
             if (gapiInited) { resolve(); return; }
-            if (typeof gapi === 'undefined') { reject('gapi not loaded'); return; }
-            gapi.load('client', async () => {
-                try {
-                    await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
-                    gapiInited = true;
-                    resolve();
-                } catch (e) { reject(e); }
-            });
+
+            function tryLoad() {
+                if (typeof gapi === 'undefined' || typeof gapi.load !== 'function') return false;
+                gapi.load('client', async () => {
+                    try {
+                        await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+                        gapiInited = true;
+                        resolve();
+                    } catch (e) { reject(e); }
+                });
+                return true;
+            }
+
+            if (tryLoad()) return;
+
+            let attempts = 0;
+            const interval = setInterval(() => {
+                attempts++;
+                if (tryLoad()) { clearInterval(interval); return; }
+                if (attempts >= 25) { clearInterval(interval); reject('gapi not loaded after timeout'); }
+            }, 200);
         });
     }
 
