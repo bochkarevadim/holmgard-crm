@@ -3,9 +3,7 @@ const GCalSync = (() => {
     const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets';
     const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
 
-    let tokenClient = null;
     let gapiInited = false;
-    let gisInited = false;
     let accessToken = null;
 
     // --- Storage helpers ---
@@ -36,14 +34,44 @@ const GCalSync = (() => {
         sessionStorage.removeItem('hp_gcal_token_expiry');
     }
 
+    // --- Check URL hash for OAuth redirect response ---
+    function handleRedirectResponse() {
+        const hash = window.location.hash.substring(1);
+        if (!hash) return false;
+
+        const params = new URLSearchParams(hash);
+        const token = params.get('access_token');
+        const expiresIn = params.get('expires_in');
+
+        if (token && expiresIn) {
+            storeToken(token, parseInt(expiresIn));
+            // Clean URL hash
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+            return true;
+        }
+
+        // Check for error
+        const error = params.get('error');
+        if (error) {
+            console.error('OAuth error:', error);
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+        return false;
+    }
+
     // --- Init ---
     async function init() {
         if (!getClientId()) { updateStatus('none'); return; }
+
+        // Check if returning from OAuth redirect
+        const gotToken = handleRedirectResponse();
+
         try {
             await loadGapi();
-            initGis();
-            if (restoreToken()) {
+            if (gotToken || restoreToken()) {
+                gapi.client.setToken({ access_token: accessToken });
                 updateStatus('connected');
+                if (gotToken) showToast('Google Calendar подключён');
             } else {
                 updateStatus('disconnected');
             }
@@ -83,65 +111,36 @@ const GCalSync = (() => {
         });
     }
 
-    function initGis() {
-        if (gisInited) return;
-        if (typeof google === 'undefined' || !google.accounts) return;
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: getClientId(),
-            scope: SCOPES,
-            callback: (resp) => {
-                if (resp.error) {
-                    console.error('GIS error:', resp);
-                    showToast('Ошибка авторизации Google: ' + resp.error);
-                    updateStatus('error');
-                    return;
-                }
-                storeToken(resp.access_token, resp.expires_in);
-                gapi.client.setToken({ access_token: resp.access_token });
-                updateStatus('connected');
-                showToast('Google Calendar подключён');
-            },
-        });
-        gisInited = true;
-    }
-
-    // --- Auth ---
+    // --- Auth via OAuth redirect (no popup needed) ---
     function authorize() {
         const clientId = getClientId();
         if (!clientId) {
             showToast('Введите Client ID в Настройках');
             return;
         }
-        // IMPORTANT: This function must be synchronous from user click to
-        // requestAccessToken(), otherwise browser blocks the OAuth popup.
-        // gapi should already be loaded by init() at page load.
-        if (!gapiInited) {
-            showToast('Google API ещё загружается, попробуйте через пару секунд');
-            loadGapi().catch(() => {});
-            return;
-        }
-        if (!gisInited) {
-            gisInited = false;
-            tokenClient = null;
-            initGis();
-        }
-        if (!tokenClient) {
-            showToast('Google Identity Services не загружен. Проверьте соединение.');
-            return;
-        }
-        if (accessToken) {
-            tokenClient.requestAccessToken({ prompt: '' });
-        } else {
-            tokenClient.requestAccessToken({ prompt: 'consent' });
-        }
+        // Save current page state before redirect
+        sessionStorage.setItem('hp_gcal_pre_auth_page', 'settings');
+
+        // Build OAuth 2.0 implicit flow URL
+        const redirectUri = window.location.origin + window.location.pathname;
+        const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' +
+            'client_id=' + encodeURIComponent(clientId) +
+            '&redirect_uri=' + encodeURIComponent(redirectUri) +
+            '&response_type=token' +
+            '&scope=' + encodeURIComponent(SCOPES) +
+            '&include_granted_scopes=true' +
+            '&prompt=consent';
+
+        window.location.href = authUrl;
     }
 
     function disconnect() {
         if (accessToken) {
-            google.accounts.oauth2.revoke(accessToken, () => {});
+            // Revoke token via Google's endpoint
+            fetch('https://oauth2.googleapis.com/revoke?token=' + accessToken, { method: 'POST' }).catch(() => {});
         }
         clearToken();
-        gapi.client.setToken(null);
+        if (gapiInited) gapi.client.setToken(null);
         updateStatus('disconnected');
         showToast('Google Calendar отключён');
     }
@@ -255,19 +254,11 @@ const GCalSync = (() => {
             return await fn();
         } catch (err) {
             if (err.status === 401) {
-                // Token expired — try silent refresh
-                return new Promise((resolve, reject) => {
-                    tokenClient.requestAccessToken({ prompt: '' });
-                    // Wait for callback to fire, then retry
-                    const check = setInterval(() => {
-                        if (accessToken) {
-                            clearInterval(check);
-                            gapi.client.setToken({ access_token: accessToken });
-                            fn().then(resolve).catch(reject);
-                        }
-                    }, 200);
-                    setTimeout(() => { clearInterval(check); reject(err); }, 10000);
-                });
+                // Token expired — need to re-authorize
+                clearToken();
+                updateStatus('disconnected');
+                showToast('Токен истёк. Нажмите Подключить заново.');
+                throw err;
             }
             throw err;
         }
@@ -437,12 +428,8 @@ const GCalSync = (() => {
         return { ...pullResult, pushed };
     }
 
-    // --- Re-init GIS if client ID changed ---
-    function reinitGis() {
-        gisInited = false;
-        tokenClient = null;
-        initGis();
-    }
+    // --- Re-init (no longer needed but kept for compatibility) ---
+    function reinitGis() {}
 
     return {
         init,
