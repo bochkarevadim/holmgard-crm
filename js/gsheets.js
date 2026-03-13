@@ -530,6 +530,10 @@ const GSheetsSync = (() => {
     // FINANCES
     function financesToRows(finances) {
         const header = ['key', 'value'];
+        // Also include ATOL receipts
+        const atolReceipts = (() => {
+            try { return JSON.parse(localStorage.getItem('hp_atol_receipts') || '[]'); } catch { return []; }
+        })();
         const rows = [
             ['income', finances.income || 0],
             ['expense', finances.expense || 0],
@@ -537,7 +541,8 @@ const GSheetsSync = (() => {
             ['shifts', JSON.stringify(finances.shifts || [])],
             ['receipts', JSON.stringify(finances.receipts || [])],
             ['orders', JSON.stringify(finances.orders || [])],
-            ['cashOps', JSON.stringify(finances.cashOps || [])]
+            ['cashOps', JSON.stringify(finances.cashOps || [])],
+            ['atolReceipts', JSON.stringify(atolReceipts)]
         ];
         return [header, ...rows];
     }
@@ -625,7 +630,8 @@ const GSheetsSync = (() => {
         salaryRules: 'config',
         loyaltyPercent: 'config',
         documents: 'documents',
-        finances: 'finances'
+        finances: 'finances',
+        atol_receipts: 'finances'
     };
 
     // --- Debounced auto-sync queue ---
