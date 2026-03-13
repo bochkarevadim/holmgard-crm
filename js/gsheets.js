@@ -2,8 +2,11 @@
 const GSheetsSync = (() => {
     const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
     const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/sheets/v4/rest';
+    const ALL_SHEETS = ['services', 'options for game', 'options', 'crm_employees', 'crm_clients', 'crm_events', 'crm_shifts', 'crm_config', 'crm_documents', 'crm_finances'];
 
     let gapiInited = false;
+    let syncQueue = [];
+    let syncRunning = false;
 
     // --- Storage helpers ---
     function getSpreadsheetId() { return localStorage.getItem('hp_gsheets_id') || ''; }
@@ -27,10 +30,9 @@ const GSheetsSync = (() => {
             if (getAccessToken()) {
                 updateStatus('connected');
             } else {
-                updateStatus('ready'); // Has spreadsheet ID but no OAuth — ready for CSV import
+                updateStatus('ready');
             }
         } catch (err) {
-            // gapi not loaded (expected on some environments) — still functional with CSV import
             console.warn('GSheetsSync: gapi not available, CSV import still works');
             updateStatus('ready');
         }
@@ -104,7 +106,6 @@ const GSheetsSync = (() => {
             return await fn();
         } catch (err) {
             if (err.status === 401) {
-                // Token expired — notify
                 updateStatus('disconnected');
                 showToast('Токен Google истёк. Переподключите в Настройках.');
                 throw err;
@@ -148,14 +149,13 @@ const GSheetsSync = (() => {
             );
             return resp.result.values || [];
         } catch (err) {
-            if (err.status === 400) return []; // Sheet empty
+            if (err.status === 400) return [];
             throw err;
         }
     }
 
     async function writeSheet(sheetName, data) {
         const ssId = getSpreadsheetId();
-        // Clear existing
         try {
             await apiCall(() =>
                 gapi.client.sheets.spreadsheets.values.clear({
@@ -234,7 +234,6 @@ const GSheetsSync = (() => {
         const tariffs = [];
         let nextId = 1;
 
-        // Parse services
         if (servicesRows.length > 1) {
             const headers = servicesRows[0];
             for (let i = 1; i < servicesRows.length; i++) {
@@ -261,7 +260,6 @@ const GSheetsSync = (() => {
             }
         }
 
-        // Parse options for game
         if (optionsForGameRows.length > 1) {
             const headers = optionsForGameRows[0];
             for (let i = 1; i < optionsForGameRows.length; i++) {
@@ -286,7 +284,6 @@ const GSheetsSync = (() => {
             }
         }
 
-        // Parse options
         if (optionsRows.length > 1) {
             const headers = optionsRows[0];
             for (let i = 1; i < optionsRows.length; i++) {
@@ -496,14 +493,80 @@ const GSheetsSync = (() => {
         return shifts.length > 0 ? shifts : null;
     }
 
+    // DOCUMENTS
+    function documentsToRows(documents) {
+        const header = ['id', 'type', 'date', 'item', 'qty', 'amount', 'comment'];
+        const rows = documents.map(d => [
+            d.id, d.type || 'incoming', d.date || '', d.item || '',
+            d.qty || 0, d.amount || 0, d.comment || ''
+        ]);
+        return [header, ...rows];
+    }
+
+    function rowsToDocuments(data) {
+        if (data.length < 2) return null;
+        const headers = data[0];
+        const documents = [];
+        for (let i = 1; i < data.length; i++) {
+            const row = data[i];
+            if (!row || !row[0]) continue;
+            const get = (name) => {
+                const idx = headers.indexOf(name);
+                return idx >= 0 ? (row[idx] || '') : '';
+            };
+            documents.push({
+                id: parseInt(get('id')) || Date.now() + i,
+                type: get('type') || 'incoming',
+                date: get('date'),
+                item: get('item'),
+                qty: parseInt(get('qty')) || 0,
+                amount: parseFloat(get('amount')) || 0,
+                comment: get('comment')
+            });
+        }
+        return documents.length > 0 ? documents : null;
+    }
+
+    // FINANCES
+    function financesToRows(finances) {
+        const header = ['key', 'value'];
+        const rows = [
+            ['income', finances.income || 0],
+            ['expense', finances.expense || 0],
+            ['cash', finances.cash || 0],
+            ['shifts', JSON.stringify(finances.shifts || [])],
+            ['receipts', JSON.stringify(finances.receipts || [])],
+            ['orders', JSON.stringify(finances.orders || [])],
+            ['cashOps', JSON.stringify(finances.cashOps || [])]
+        ];
+        return [header, ...rows];
+    }
+
+    function rowsToFinances(data) {
+        if (data.length < 2) return null;
+        const config = {};
+        for (let i = 1; i < data.length; i++) {
+            if (data[i] && data[i][0]) config[data[i][0]] = data[i][1] || '';
+        }
+        return {
+            income: parseFloat(config.income) || 0,
+            expense: parseFloat(config.expense) || 0,
+            cash: parseFloat(config.cash) || 0,
+            shifts: (() => { try { return JSON.parse(config.shifts || '[]'); } catch { return []; } })(),
+            receipts: (() => { try { return JSON.parse(config.receipts || '[]'); } catch { return []; } })(),
+            orders: (() => { try { return JSON.parse(config.orders || '[]'); } catch { return []; } })(),
+            cashOps: (() => { try { return JSON.parse(config.cashOps || '[]'); } catch { return []; } })()
+        };
+    }
+
     // STOCK & SALARY RULES (config sheet)
     function configToRows(stock, salaryRules, loyaltyPercent) {
         return [
             ['key', 'value'],
             ['balls', stock.balls || 0],
-            ['ballsMax', stock.ballsMax || 10000],
+            ['ballsCritical', stock.ballsCritical || 60000],
             ['grenades', stock.grenades || 0],
-            ['grenadesMax', stock.grenadesMax || 500],
+            ['grenadesCritical', stock.grenadesCritical || 100],
             ['instructor_shiftRate', salaryRules.instructor?.shiftRate || 0],
             ['instructor_bonusPercent', salaryRules.instructor?.bonusPercent || 0],
             ['instructor_bonusSources', JSON.stringify(salaryRules.instructor?.bonusSources || ['services', 'optionsForGame', 'options'])],
@@ -526,9 +589,9 @@ const GSheetsSync = (() => {
         return {
             stock: {
                 balls: parseInt(config.balls) || 0,
-                ballsMax: parseInt(config.ballsMax) || 10000,
+                ballsCritical: parseInt(config.ballsCritical || config.ballsMax) || 60000,
                 grenades: parseInt(config.grenades) || 0,
-                grenadesMax: parseInt(config.grenadesMax) || 500
+                grenadesCritical: parseInt(config.grenadesCritical || config.grenadesMax) || 100
             },
             salaryRules: {
                 instructor: {
@@ -551,7 +614,105 @@ const GSheetsSync = (() => {
         };
     }
 
-    // --- FULL SYNC ---
+    // --- DB key -> section mapping for auto-sync ---
+    const KEY_TO_SECTION = {
+        tariffs: 'tariffs',
+        employees: 'employees',
+        clients: 'clients',
+        events: 'events',
+        shifts: 'shifts',
+        stock: 'config',
+        salaryRules: 'config',
+        loyaltyPercent: 'config',
+        documents: 'documents',
+        finances: 'finances'
+    };
+
+    // --- Debounced auto-sync queue ---
+    let syncTimer = null;
+    const pendingSections = new Set();
+
+    function autoSyncKey(key) {
+        if (!isConnected() || !getAutoSync()) return;
+        const section = KEY_TO_SECTION[key];
+        if (!section) return;
+        pendingSections.add(section);
+        if (syncTimer) clearTimeout(syncTimer);
+        syncTimer = setTimeout(flushSyncQueue, 1000);
+    }
+
+    async function flushSyncQueue() {
+        syncTimer = null;
+        if (pendingSections.size === 0 || !isConnected()) return;
+        const sections = [...pendingSections];
+        pendingSections.clear();
+        for (const section of sections) {
+            try {
+                await pushSection(section);
+            } catch (err) {
+                console.error('Auto-sync error for section:', section, err);
+            }
+        }
+    }
+
+    // --- PULL all data from Google Sheets (startup sync) ---
+    async function pullAllData() {
+        if (!isConnected()) return false;
+
+        try {
+            await ensureSheets(ALL_SHEETS);
+
+            const [servicesData, optForGameData, optData, empData, clientData, eventData, shiftData, configData, docsData, finData] = await Promise.all([
+                readSheet('services'),
+                readSheet('options for game'),
+                readSheet('options'),
+                readSheet('crm_employees'),
+                readSheet('crm_clients'),
+                readSheet('crm_events'),
+                readSheet('crm_shifts'),
+                readSheet('crm_config'),
+                readSheet('crm_documents'),
+                readSheet('crm_finances')
+            ]);
+
+            // Import tariffs
+            if (servicesData.length > 1 || optForGameData.length > 1 || optData.length > 1) {
+                const importedTariffs = rowsToTariffs(servicesData, optForGameData, optData);
+                if (importedTariffs.length > 0) {
+                    localStorage.setItem('hp_tariffs', JSON.stringify(importedTariffs));
+                }
+            }
+
+            // Import CRM data (use localStorage directly to avoid triggering auto-sync)
+            const importedEmp = rowsToEmployees(empData);
+            const importedClients = rowsToClients(clientData);
+            const importedEvents = rowsToEvents(eventData);
+            const importedShifts = rowsToShifts(shiftData);
+            const importedConfig = rowsToConfig(configData);
+            const importedDocs = rowsToDocuments(docsData);
+            const importedFin = rowsToFinances(finData);
+
+            if (importedEmp) localStorage.setItem('hp_employees', JSON.stringify(importedEmp));
+            if (importedClients) localStorage.setItem('hp_clients', JSON.stringify(importedClients));
+            if (importedEvents) localStorage.setItem('hp_events', JSON.stringify(importedEvents));
+            if (importedShifts) localStorage.setItem('hp_shifts', JSON.stringify(importedShifts));
+            if (importedConfig) {
+                localStorage.setItem('hp_stock', JSON.stringify(importedConfig.stock));
+                localStorage.setItem('hp_salaryRules', JSON.stringify(importedConfig.salaryRules));
+                localStorage.setItem('hp_loyaltyPercent', JSON.stringify(importedConfig.loyaltyPercent));
+            }
+            if (importedDocs) localStorage.setItem('hp_documents', JSON.stringify(importedDocs));
+            if (importedFin) localStorage.setItem('hp_finances', JSON.stringify(importedFin));
+
+            console.log('GSheetsSync: pulled all data from Google Sheets');
+            return true;
+        } catch (err) {
+            console.error('GSheetsSync pull error:', err);
+            return false;
+        }
+    }
+
+    // --- FULL SYNC (pull then push) ---
     async function fullSync() {
         if (!isConnected()) {
             showToast('Google Таблицы не подключены');
@@ -561,17 +722,15 @@ const GSheetsSync = (() => {
         updateStatus('syncing');
 
         try {
-            // Ensure all required sheets exist
-            await ensureSheets(['services', 'options for game', 'options', 'crm_employees', 'crm_clients', 'crm_events', 'crm_shifts', 'crm_config']);
+            await ensureSheets(ALL_SHEETS);
 
-            // --- PULL: Read tariffs from existing sheets (services, options for game, options) ---
+            // --- PULL ---
             const [servicesData, optForGameData, optData] = await Promise.all([
                 readSheet('services'),
                 readSheet('options for game'),
                 readSheet('options')
             ]);
 
-            // Import tariffs from Google Sheets
             if (servicesData.length > 1 || optForGameData.length > 1 || optData.length > 1) {
                 const importedTariffs = rowsToTariffs(servicesData, optForGameData, optData);
                 if (importedTariffs.length > 0) {
@@ -579,21 +738,23 @@ const GSheetsSync = (() => {
                 }
             }
 
-            // --- Read CRM data from sheets ---
-            const [empData, clientData, eventData, shiftData, configData] = await Promise.all([
+            const [empData, clientData, eventData, shiftData, configData, docsData, finData] = await Promise.all([
                 readSheet('crm_employees'),
                 readSheet('crm_clients'),
                 readSheet('crm_events'),
                 readSheet('crm_shifts'),
-                readSheet('crm_config')
+                readSheet('crm_config'),
+                readSheet('crm_documents'),
+                readSheet('crm_finances')
             ]);
 
-            // Import CRM data (sheets -> local, only if sheets have data)
             const importedEmp = rowsToEmployees(empData);
             const importedClients = rowsToClients(clientData);
             const importedEvents = rowsToEvents(eventData);
             const importedShifts = rowsToShifts(shiftData);
             const importedConfig = rowsToConfig(configData);
+            const importedDocs = rowsToDocuments(docsData);
+            const importedFin = rowsToFinances(finData);
 
             if (importedEmp) DB.set('employees', importedEmp);
             if (importedClients) DB.set('clients', importedClients);
@@ -604,8 +765,10 @@ const GSheetsSync = (() => {
                 DB.set('salaryRules', importedConfig.salaryRules);
                 DB.set('loyaltyPercent', importedConfig.loyaltyPercent);
             }
+            if (importedDocs) DB.set('documents', importedDocs);
+            if (importedFin) DB.set('finances', importedFin);
 
-            // --- PUSH: Write CRM data back to sheets ---
+            // --- PUSH ---
             await pushAllData();
 
             updateStatus('connected');
@@ -633,8 +796,10 @@ const GSheetsSync = (() => {
             const stock = DB.get('stock', {});
             const salaryRules = DB.get('salaryRules', {});
             const loyaltyPercent = DB.get('loyaltyPercent', 5);
+            const documents = DB.get('documents', []);
+            const finances = DB.get('finances', {});
 
-            await ensureSheets(['services', 'options for game', 'options', 'crm_employees', 'crm_clients', 'crm_events', 'crm_shifts', 'crm_config']);
+            await ensureSheets(ALL_SHEETS);
 
             await Promise.all([
                 writeSheet('services', tariffsServicesToRows(tariffs)),
@@ -644,7 +809,9 @@ const GSheetsSync = (() => {
                 writeSheet('crm_clients', clientsToRows(clients)),
                 writeSheet('crm_events', eventsToRows(events)),
                 writeSheet('crm_shifts', shiftsToRows(shifts)),
-                writeSheet('crm_config', configToRows(stock, salaryRules, loyaltyPercent))
+                writeSheet('crm_config', configToRows(stock, salaryRules, loyaltyPercent)),
+                writeSheet('crm_documents', documentsToRows(documents)),
+                writeSheet('crm_finances', financesToRows(finances))
             ]);
 
         } catch (err) {
@@ -657,7 +824,7 @@ const GSheetsSync = (() => {
         if (!isConnected() || !getAutoSync()) return;
 
         try {
-            await ensureSheets(['services', 'options for game', 'options', 'crm_employees', 'crm_clients', 'crm_events', 'crm_shifts', 'crm_config']);
+            await ensureSheets(ALL_SHEETS);
 
             switch (section) {
                 case 'tariffs': {
@@ -688,6 +855,12 @@ const GSheetsSync = (() => {
                     await writeSheet('crm_config', configToRows(stock, salaryRules, loyaltyPercent));
                     break;
                 }
+                case 'documents':
+                    await writeSheet('crm_documents', documentsToRows(DB.get('documents', [])));
+                    break;
+                case 'finances':
+                    await writeSheet('crm_finances', financesToRows(DB.get('finances', {})));
+                    break;
             }
         } catch (err) {
             console.error('GSheetsSync push section error:', err);
@@ -765,7 +938,6 @@ const GSheetsSync = (() => {
         }
     }
 
-    // --- Get scope string (for OAuth) ---
     function getScope() {
         return SCOPES;
     }
@@ -774,8 +946,10 @@ const GSheetsSync = (() => {
         init,
         isConnected,
         fullSync,
+        pullAllData,
         pushAllData,
         pushSection,
+        autoSyncKey,
         updateStatus,
         getSpreadsheetId,
         setSpreadsheetId,

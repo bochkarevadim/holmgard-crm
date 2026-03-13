@@ -18,6 +18,7 @@ function formatDuration(min) {
 
 // ===== DATA LAYER =====
 const DB = {
+    _skipSync: false,
     get(key, fallback = null) {
         try {
             const d = localStorage.getItem('hp_' + key);
@@ -26,6 +27,10 @@ const DB = {
     },
     set(key, val) {
         localStorage.setItem('hp_' + key, JSON.stringify(val));
+        // Auto-sync to Google Sheets (debounced)
+        if (!this._skipSync && typeof GSheetsSync !== 'undefined') {
+            GSheetsSync.autoSyncKey(key);
+        }
     },
     remove(key) {
         localStorage.removeItem('hp_' + key);
@@ -42,19 +47,28 @@ function initData() {
                 passport: '', bank: '', paid: 100000
             },
             {
-                id: 2, firstName: 'Анна', lastName: 'Смирнова', role: 'admin',
-                pin: '2222', phone: '+7 (900) 222-22-22', dob: '1992-03-20',
-                passport: '', bank: '', paid: 60000
+                id: 2, firstName: 'Савелий', lastName: 'Данилов', role: 'admin',
+                pin: '2222', phone: '+7 (900) 222-22-22', dob: '1990-05-12',
+                passport: '', bank: '', paid: 60000,
+                allowedShiftRoles: ['admin', 'senior_instructor']
             },
             {
-                id: 3, firstName: 'Максим', lastName: 'Волков', role: 'instructor',
-                pin: '3333', phone: '+7 (900) 333-33-33', dob: '1995-09-10',
-                passport: '', bank: '', paid: 30000
+                id: 3, firstName: 'Елена', lastName: 'Бундзен', role: 'admin',
+                pin: '3333', phone: '+7 (900) 333-33-33', dob: '1993-08-25',
+                passport: '', bank: '', paid: 30000,
+                allowedShiftRoles: ['admin']
             },
             {
-                id: 4, firstName: 'Дмитрий', lastName: 'Козлов', role: 'instructor',
-                pin: '4444', phone: '+7 (900) 444-44-44', dob: '1998-12-05',
-                passport: '', bank: '', paid: 50000
+                id: 4, firstName: 'Дмитрий', lastName: 'Князев', role: 'admin',
+                pin: '4444', phone: '+7 (900) 444-44-44', dob: '1995-11-03',
+                passport: '', bank: '', paid: 50000,
+                allowedShiftRoles: ['admin', 'instructor']
+            },
+            {
+                id: 5, firstName: 'Ольга', lastName: 'Гусакова', role: 'admin',
+                pin: '5555', phone: '+7 (900) 555-55-55', dob: '1997-02-18',
+                passport: '', bank: '', paid: 40000,
+                allowedShiftRoles: ['admin']
             }
         ]);
 
@@ -85,7 +99,7 @@ function initData() {
             senior_instructor: { shiftRate: 2000, bonusPercent: 7 },
             admin: { shiftRate: 0, bonusPercent: 5 }
         });
-        DB.set('stock', { balls: 4500, ballsMax: 10000, grenades: 120, grenadesMax: 500 });
+        DB.set('stock', { balls: 4500, ballsCritical: 60000, grenades: 120, grenadesCritical: 100 });
         DB.set('loyaltyPercent', 5);
         DB.set('finances', {
             income: 847000, expense: 312000, cash: 125000,
@@ -192,6 +206,19 @@ function initData() {
         DB.set('multirole_v1', true);
     }
 
+    // Data migration: stock ballsMax → ballsCritical
+    if (!DB.get('stock_critical_v1')) {
+        const stock = DB.get('stock', {});
+        if (stock.ballsMax !== undefined && stock.ballsCritical === undefined) {
+            stock.ballsCritical = 60000;
+            stock.grenadesCritical = 100;
+            delete stock.ballsMax;
+            delete stock.grenadesMax;
+            DB.set('stock', stock);
+        }
+        DB.set('stock_critical_v1', true);
+    }
+
     // Data migration v2: replace old generic tariffs with real spreadsheet data
     if (DB.get('tariffs_version') !== 'v2') {
         DB.remove('initialized');
@@ -215,7 +242,7 @@ let shiftTimerInterval = null;
 let pendingShiftRole = null;
 
 // ===== INIT =====
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     initData();
     initPinPad();
     initNavigation();
@@ -230,8 +257,23 @@ document.addEventListener('DOMContentLoaded', () => {
     updateDate();
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     GCalSync.init();
-    GSheetsSync.init();
+    await GSheetsSync.init();
     initDirectorTariffs();
+
+    // Auto-pull from Google Sheets on startup if connected
+    if (GSheetsSync.isConnected()) {
+        try {
+            DB._skipSync = true;
+            const pulled = await GSheetsSync.pullAllData();
+            DB._skipSync = false;
+            if (pulled) {
+                console.log('CRM: synced data from Google Sheets on startup');
+            }
+        } catch (err) {
+            DB._skipSync = false;
+            console.error('CRM: startup sync error', err);
+        }
+    }
 });
 
 // ===== PIN PAD =====
@@ -533,7 +575,7 @@ function initEmployeeScreen() {
             shifts[idx].earnings = earnings;
             DB.set('shifts', shifts);
             showToast(`Смена завершена! Заработок: ${formatMoney(earnings.total)}`);
-            GSheetsSync.pushSection('shifts');
+        
         }
         loadEmployeeDashboard();
     });
@@ -658,7 +700,7 @@ function startShift(selectedEventIds) {
     pendingShiftRole = null;
     loadEmployeeDashboard();
     showToast('Смена начата! Хорошего рабочего дня!');
-    GSheetsSync.pushSection('shifts');
+
 }
 
 // ===== SALARY CALCULATION =====
@@ -1015,16 +1057,62 @@ function selectEmpCalDay(dateStr) {
 }
 
 // ===== TARIFFS PAGE =====
-function loadTariffs(category = 'services') {
-    const tariffs = DB.get('tariffs', []).filter(t => t.category === category);
+let empTariffSubcategory = null;
+
+function getServiceSubcategories() {
+    const tariffs = DB.get('tariffs', []).filter(t => t.category === 'services');
+    const cats = [];
+    tariffs.forEach(t => {
+        if (t.sheetCategory && !cats.includes(t.sheetCategory)) cats.push(t.sheetCategory);
+    });
+    return cats;
+}
+
+function renderSubcategoryButtons(cats, onClickFn) {
+    const icons = {
+        'Пейнтбол': 'sports_mma', 'Кидбол': 'child_care', 'Лазертаг': 'bolt',
+        'Квадроциклы': 'two_wheeler', 'Водная прогулка на Сап-бордах': 'surfing',
+        'Гонка с препятствиями': 'directions_run', 'Тир пейнтбольный': 'gps_fixed'
+    };
+    return cats.map(cat => `
+        <button class="tariff-subcategory-btn" data-subcat="${cat}">
+            <span class="material-icons-round">${icons[cat] || 'category'}</span>
+            <span>${cat}</span>
+        </button>
+    `).join('');
+}
+
+function loadTariffs(category = 'services', subcategory = null) {
     const grid = document.getElementById('emp-tariffs-grid');
+
+    if (category === 'services' && !subcategory) {
+        empTariffSubcategory = null;
+        const cats = getServiceSubcategories();
+        if (cats.length === 0) {
+            grid.innerHTML = '<p class="empty-state">Нет тарифов</p>';
+            return;
+        }
+        grid.innerHTML = '<div class="tariff-subcategories">' + renderSubcategoryButtons(cats) + '</div>';
+        grid.querySelectorAll('.tariff-subcategory-btn').forEach(btn => {
+            btn.addEventListener('click', () => loadTariffs('services', btn.dataset.subcat));
+        });
+        return;
+    }
+
+    empTariffSubcategory = subcategory;
+    const tariffs = DB.get('tariffs', []).filter(t => {
+        if (category === 'services' && subcategory) return t.category === 'services' && t.sheetCategory === subcategory;
+        return t.category === category;
+    });
 
     if (tariffs.length === 0) {
         grid.innerHTML = '<p class="empty-state">Нет тарифов в этой категории</p>';
         return;
     }
 
-    grid.innerHTML = tariffs.map(t => `
+    const backBtn = subcategory ? `<button class="tariff-back-btn" id="emp-tariff-back"><span class="material-icons-round">arrow_back</span> ${subcategory}</button>` : '';
+
+    grid.innerHTML = backBtn + tariffs.map(t => `
         <div class="tariff-card">
             <div class="tariff-card-header">
                 <h3>${t.name}</h3>
@@ -1037,6 +1125,9 @@ function loadTariffs(category = 'services') {
             </div>
         </div>
     `).join('');
+
+    const back = document.getElementById('emp-tariff-back');
+    if (back) back.addEventListener('click', () => loadTariffs('services'));
 }
 
 // ===== DASHBOARD DRAG & DROP =====
@@ -1397,11 +1488,26 @@ function loadEmployeeRating() {
 }
 
 function loadStock() {
-    const stock = DB.get('stock', { balls: 0, ballsMax: 10000, grenades: 0, grenadesMax: 500 });
+    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, grenades: 0, grenadesCritical: 100 });
+    const ballsCrit = stock.ballsCritical || 60000;
+    const grenadesCrit = stock.grenadesCritical || 100;
+
     document.getElementById('stock-balls').textContent = stock.balls.toLocaleString('ru-RU');
     document.getElementById('stock-grenades').textContent = stock.grenades.toLocaleString('ru-RU');
-    document.getElementById('stock-balls-bar').style.width = Math.min(100, (stock.balls / stock.ballsMax * 100)) + '%';
-    document.getElementById('stock-grenades-bar').style.width = Math.min(100, (stock.grenades / stock.grenadesMax * 100)) + '%';
+
+    const ballsPct = Math.min(100, (stock.balls / ballsCrit) * 100);
+    const ballsBar = document.getElementById('stock-balls-bar');
+    ballsBar.style.width = ballsPct + '%';
+    ballsBar.className = 'stock-bar-fill' + (stock.balls < ballsCrit ? ' warning' : '');
+    const ballsWarn = document.getElementById('stock-balls-warning');
+    if (ballsWarn) ballsWarn.textContent = stock.balls < ballsCrit ? `Ниже критического уровня (${ballsCrit.toLocaleString('ru-RU')})` : '';
+
+    const grenadesPct = Math.min(100, (stock.grenades / grenadesCrit) * 100);
+    const grenadesBar = document.getElementById('stock-grenades-bar');
+    grenadesBar.style.width = grenadesPct + '%';
+    grenadesBar.className = 'stock-bar-fill' + (stock.grenades < grenadesCrit ? ' warning' : '');
+    const grenadesWarn = document.getElementById('stock-grenades-warning');
+    if (grenadesWarn) grenadesWarn.textContent = stock.grenades < grenadesCrit ? `Ниже критического уровня (${grenadesCrit.toLocaleString('ru-RU')})` : '';
 }
 
 document.querySelectorAll('.period-btn').forEach(btn => {
@@ -1572,7 +1678,7 @@ function saveEmployee(e) {
     closeModal('modal-employee');
     loadEmployees();
     showToast('Сотрудник сохранён');
-    GSheetsSync.pushSection('employees');
+
 }
 
 function deleteEmployee(id) {
@@ -1790,7 +1896,7 @@ function saveEvent(e) {
     if (document.getElementById('emp-page-booking').classList.contains('active')) renderEmpCalendar();
     if (document.getElementById('emp-page-events').classList.contains('active')) loadEmployeeEvents();
     showToast('Мероприятие сохранено');
-    GSheetsSync.pushSection('events');
+
 
     // Push to Google Calendar
     const savedEvent = id ? events.find(ev => ev.id === parseInt(id)) : events[events.length - 1];
@@ -2129,7 +2235,7 @@ function saveClient(e) {
     closeModal('modal-client');
     loadClients();
     showToast('Клиент сохранён');
-    GSheetsSync.pushSection('clients');
+
 }
 
 function deleteClient(id) {
@@ -2205,26 +2311,26 @@ function initSettings() {
         };
         DB.set('salaryRules', newRules);
         showToast('Правила начисления зарплаты сохранены');
-        GSheetsSync.pushSection('config');
+
     });
 
-    const stock = DB.get('stock', { balls: 0, ballsMax: 10000, grenades: 0, grenadesMax: 500 });
+    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, grenades: 0, grenadesCritical: 100 });
     document.getElementById('set-balls').value = stock.balls;
-    document.getElementById('set-balls-max').value = stock.ballsMax;
+    document.getElementById('set-balls-critical').value = stock.ballsCritical || 60000;
     document.getElementById('set-grenades').value = stock.grenades;
-    document.getElementById('set-grenades-max').value = stock.grenadesMax;
+    document.getElementById('set-grenades-critical').value = stock.grenadesCritical || 100;
 
     document.getElementById('btn-save-stock').addEventListener('click', () => {
         const newStock = {
             balls: parseInt(document.getElementById('set-balls').value) || 0,
-            ballsMax: parseInt(document.getElementById('set-balls-max').value) || 10000,
+            ballsCritical: parseInt(document.getElementById('set-balls-critical').value) || 60000,
             grenades: parseInt(document.getElementById('set-grenades').value) || 0,
-            grenadesMax: parseInt(document.getElementById('set-grenades-max').value) || 500,
+            grenadesCritical: parseInt(document.getElementById('set-grenades-critical').value) || 100,
         };
         DB.set('stock', newStock);
         loadStock();
         showToast('Данные склада обновлены');
-        GSheetsSync.pushSection('config');
+
     });
 
     document.querySelectorAll('.color-opt').forEach(btn => {
@@ -2373,7 +2479,7 @@ function initDirectorTariffs() {
             closeModal('modal-tariff');
             loadDirectorTariffs();
             showToast('Тариф удалён');
-            GSheetsSync.pushSection('tariffs');
+
         });
     });
 
@@ -2386,6 +2492,7 @@ function initDirectorTariffs() {
             document.querySelectorAll('[data-dir-tariff-tab]').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             currentDirTariffTab = tab.dataset.dirTariffTab;
+            dirTariffSubcategory = null;
             loadDirectorTariffs();
         });
     });
@@ -2405,17 +2512,43 @@ function initDirectorTariffs() {
     });
 }
 
-function loadDirectorTariffs() {
-    const tariffs = DB.get('tariffs', []).filter(t => t.category === currentDirTariffTab);
+let dirTariffSubcategory = null;
+
+function loadDirectorTariffs(subcategory = undefined) {
     const grid = document.getElementById('dir-tariffs-grid');
     if (!grid) return;
+
+    // If services tab and no subcategory — show subcategory buttons
+    if (currentDirTariffTab === 'services' && subcategory === undefined && dirTariffSubcategory === null) {
+        const cats = getServiceSubcategories();
+        if (cats.length === 0) {
+            grid.innerHTML = '<p class="empty-state">Нет тарифов</p>';
+            return;
+        }
+        grid.innerHTML = '<div class="tariff-subcategories">' + renderSubcategoryButtons(cats) + '</div>';
+        grid.querySelectorAll('.tariff-subcategory-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                dirTariffSubcategory = btn.dataset.subcat;
+                loadDirectorTariffs(btn.dataset.subcat);
+            });
+        });
+        return;
+    }
+
+    const subcat = subcategory !== undefined ? subcategory : dirTariffSubcategory;
+    const tariffs = DB.get('tariffs', []).filter(t => {
+        if (currentDirTariffTab === 'services' && subcat) return t.category === 'services' && t.sheetCategory === subcat;
+        return t.category === currentDirTariffTab;
+    });
 
     if (tariffs.length === 0) {
         grid.innerHTML = '<p class="empty-state">Нет тарифов в этой категории</p>';
         return;
     }
 
-    grid.innerHTML = tariffs.map(t => `
+    const backBtn = subcat ? `<button class="tariff-back-btn" id="dir-tariff-back"><span class="material-icons-round">arrow_back</span> ${subcat}</button>` : '';
+
+    grid.innerHTML = backBtn + tariffs.map(t => `
         <div class="tariff-card tariff-card-editable" onclick="openTariffModal('${t.id}')">
             <div class="tariff-card-header">
                 <h3>${t.name}</h3>
@@ -2435,6 +2568,12 @@ function loadDirectorTariffs() {
             </div>
         </div>
     `).join('');
+
+    const back = document.getElementById('dir-tariff-back');
+    if (back) back.addEventListener('click', () => {
+        dirTariffSubcategory = null;
+        loadDirectorTariffs();
+    });
 }
 
 function openTariffModal(id = null) {
@@ -2497,7 +2636,6 @@ function saveTariff(e) {
     closeModal('modal-tariff');
     loadDirectorTariffs();
     showToast('Тариф сохранён');
-    GSheetsSync.pushSection('tariffs');
 }
 
 // ===== MODALS =====

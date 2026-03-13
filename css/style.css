@@ -729,6 +729,48 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 16px;
 }
+.tariff-subcategories {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+}
+.tariff-subcategory-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.tariff-subcategory-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+}
+.tariff-subcategory-btn .material-icons-round {
+    color: var(--accent);
+    font-size: 28px;
+}
+.tariff-back-btn {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0 0 8px;
+    margin-bottom: 4px;
+}
 .tariff-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -1001,6 +1043,16 @@ body {
     background: var(--accent);
     border-radius: 100px;
     transition: width 0.6s ease;
+}
+.stock-bar-fill.warning {
+    background: var(--red);
+}
+.stock-warning {
+    color: var(--red);
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 4px;
+    min-height: 16px;
 }
 
 .empty-state {
