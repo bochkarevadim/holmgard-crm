@@ -1526,6 +1526,7 @@ function navigateTo(page) {
     if (page === 'documents') loadDocuments();
     if (page === 'clients') loadClients();
     if (page === 'tariffs') loadDirectorTariffs();
+    if (page === 'settings') loadFirebaseAccounts();
 
     document.getElementById('sidebar').classList.remove('open');
 }
