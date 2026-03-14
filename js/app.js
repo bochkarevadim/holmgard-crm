@@ -306,17 +306,16 @@ function initData() {
 
         DB.set('accentColor', '#FFD600');
 
-        // Pre-populate integration settings
-        if (!localStorage.getItem('hp_gcal_client_id')) {
-            localStorage.setItem('hp_gcal_client_id', '707236174149-jvoffkaka7c03s70ek5ecknebao7nhk3.apps.googleusercontent.com');
-        }
-        if (!localStorage.getItem('hp_gsheets_id')) {
-            localStorage.setItem('hp_gsheets_id', '1E6dtJNWzSNFCI3CXDUBsb2rWMuwpEbmIljrDmbBkWPE');
-        }
-
         DB.set('initialized', true);
     }
 
+    // Pre-populate integration settings (runs on every device)
+    if (!localStorage.getItem('hp_gcal_client_id')) {
+        localStorage.setItem('hp_gcal_client_id', '707236174149-jvoffkaka7c03s70ek5ecknebao7nhk3.apps.googleusercontent.com');
+    }
+    if (!localStorage.getItem('hp_gsheets_id')) {
+        localStorage.setItem('hp_gsheets_id', '1E6dtJNWzSNFCI3CXDUBsb2rWMuwpEbmIljrDmbBkWPE');
+    }
 }
 
 // ===== DATA MIGRATIONS =====
