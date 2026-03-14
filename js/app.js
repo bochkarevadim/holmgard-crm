@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     GCalSync.init();
     await GSheetsSync.init();
-    if (typeof AtolOnline !== 'undefined') AtolOnline.init();
+    // ATOL Sigma 8Ф — физическая касса, облачный модуль не используется
     initDirectorTariffs();
 
     // Auto-pull from Google Sheets on startup if connected
@@ -918,18 +918,14 @@ function openPaymentModal(eventId) {
     document.getElementById('combo-transfer').value = '';
     document.getElementById('combo-qr').value = '';
 
-    // Show/hide ATOL receipt email field
-    const atolSection = document.getElementById('atol-receipt-section');
-    if (atolSection) {
-        atolSection.style.display = (typeof AtolOnline !== 'undefined' && AtolOnline.isConnected()) ? 'block' : 'none';
-        const emailField = document.getElementById('payment-client-email');
-        if (emailField) emailField.value = '';
-    }
+    // Reset receipt checkbox
+    const receiptCheckbox = document.getElementById('payment-receipt-printed');
+    if (receiptCheckbox) receiptCheckbox.checked = false;
 
     openModal('modal-payment');
 }
 
-async function completeEventPayment() {
+function completeEventPayment() {
     if (!currentPaymentEventId) return;
     const events = DB.get('events', []);
     const idx = events.findIndex(e => String(e.id) === String(currentPaymentEventId));
@@ -956,42 +952,12 @@ async function completeEventPayment() {
     closeModal('modal-payment');
     currentPaymentEventId = null;
 
-    // ATOL Online — fiscal receipt
-    if (typeof AtolOnline !== 'undefined' && AtolOnline.isConnected()) {
-        try {
-            const clientEmail = document.getElementById('payment-client-email')?.value?.trim() || '';
-            const receipt = AtolOnline.buildReceipt(events[idx], clientEmail);
-            const result = await AtolOnline.sell(receipt);
+    // Track receipt status from Sigma 8Ф
+    const receiptPrinted = document.getElementById('payment-receipt-printed')?.checked || false;
+    events[idx].receiptPrinted = receiptPrinted;
+    DB.set('events', events);
 
-            events[idx].fiscalData = {
-                uuid: result.uuid,
-                status: result.status || 'wait',
-                timestamp: new Date().toISOString()
-            };
-            AtolOnline.setReceiptEventId(result.uuid, events[idx].id);
-            DB.set('events', events);
-
-            showToast('Заказ выполнен! Чек отправлен в ATOL Online');
-
-            // Async poll for final status
-            AtolOnline.pollStatus(result.uuid).then(final => {
-                const evts = DB.get('events', []);
-                const i = evts.findIndex(e => String(e.id) === String(events[idx].id));
-                if (i >= 0 && final) {
-                    evts[i].fiscalData.status = final.status;
-                    if (final.payload) {
-                        evts[i].fiscalData.payload = final.payload;
-                    }
-                    DB.set('events', evts);
-                }
-            }).catch(err => console.warn('ATOL poll error:', err));
-        } catch (err) {
-            console.error('ATOL sell error:', err);
-            showToast('Заказ выполнен, но ошибка ATOL: ' + (err.message || err));
-        }
-    } else {
-        showToast('Заказ выполнен!');
-    }
+    showToast(receiptPrinted ? 'Заказ выполнен! Чек пробит ✓' : 'Заказ выполнен! Не забудьте пробить чек на кассе');
 
     // Reload current page
     if (document.getElementById('emp-page-events')?.classList.contains('active')) {
@@ -1994,24 +1960,22 @@ function loadFinances(tab = 'shifts') {
             `).join('') || '<tr><td colspan="5" class="empty-state">Нет данных</td></tr>';
             break;
         case 'receipts': {
-            // Show ATOL Online receipts
-            const atolReceipts = (typeof AtolOnline !== 'undefined') ? AtolOnline.getReceipts() : [];
-            thead.innerHTML = '<tr><th>Дата</th><th>Время</th><th>Сумма</th><th>Тип</th><th>Статус</th><th>UUID</th></tr>';
-            if (atolReceipts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет фискальных чеков</td></tr>';
+            // Show receipt status from completed events (Sigma 8Ф)
+            const events = DB.get('events', []).filter(e => e.status === 'completed');
+            thead.innerHTML = '<tr><th>Дата</th><th>Клиент</th><th>Услуга</th><th>Сумма</th><th>Чек</th></tr>';
+            if (events.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Нет выполненных заказов</td></tr>';
             } else {
-                tbody.innerHTML = atolReceipts.slice().reverse().map(r => {
-                    const typeNames = { sell: 'Продажа', sell_refund: 'Возврат', sell_correction: 'Коррекция' };
-                    const statusClass = r.status === 'done' ? 'done' : r.status === 'fail' ? 'fail' : 'wait';
-                    const statusText = r.status === 'done' ? 'Готов' : r.status === 'fail' ? 'Ошибка' : 'Ожидание';
-                    const ofdLink = r.payload?.ofdUrl ? `<a href="${r.payload.ofdUrl}" target="_blank" class="fiscal-badge"><span class="material-icons-round">receipt_long</span>ОФД</a>` : '';
+                tbody.innerHTML = events.slice().reverse().map(ev => {
+                    const receiptOk = ev.receiptPrinted;
+                    const statusClass = receiptOk ? 'done' : 'fail';
+                    const statusText = receiptOk ? '✓ Пробит' : '✗ Не пробит';
                     return `<tr>
-                        <td>${r.date || '—'}</td>
-                        <td>${r.time || '—'}</td>
-                        <td>${formatMoney(r.amount || 0)}</td>
-                        <td>${typeNames[r.type] || r.type}</td>
-                        <td><span class="receipt-status ${statusClass}">${statusText}</span>${ofdLink}</td>
-                        <td><span class="receipt-uuid" title="${r.uuid || ''}">${(r.uuid || '').substring(0, 8)}...</span></td>
+                        <td>${ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('ru-RU') : ev.date || '—'}</td>
+                        <td>${ev.clientName || '—'}</td>
+                        <td>${getEventTypeName(ev.type)}</td>
+                        <td>${formatMoney(ev.totalPrice || 0)}</td>
+                        <td><span class="receipt-status ${statusClass}">${statusText}</span></td>
                     </tr>`;
                 }).join('');
             }
@@ -2471,145 +2435,7 @@ function initSettings() {
         // Reload current page data
         if (document.getElementById('page-tariffs')?.classList.contains('active')) loadDirectorTariffs();
     });
-    // --- ATOL Online settings ---
-    initAtolSettings();
-}
-
-function initAtolSettings() {
-    if (typeof AtolOnline === 'undefined') return;
-    AtolOnline.init();
-
-    // Fill fields from localStorage
-    const fields = {
-        'atol-login':           AtolOnline.KEYS.login,
-        'atol-password':        AtolOnline.KEYS.password,
-        'atol-group-code':      AtolOnline.KEYS.groupCode,
-        'atol-inn':             AtolOnline.KEYS.inn,
-        'atol-payment-address': AtolOnline.KEYS.paymentAddress,
-        'atol-company-email':   AtolOnline.KEYS.companyEmail,
-        'atol-sno':             AtolOnline.KEYS.sno,
-        'atol-proxy-url':       AtolOnline.KEYS.proxyUrl
-    };
-
-    Object.entries(fields).forEach(([elId, key]) => {
-        const el = document.getElementById(elId);
-        if (!el) return;
-        const val = localStorage.getItem('hp_' + key);
-        if (val) el.value = JSON.parse(val);
-
-        el.addEventListener('change', () => {
-            const obj = {};
-            const keyName = Object.keys(AtolOnline.KEYS).find(k => AtolOnline.KEYS[k] === key);
-            if (keyName) {
-                obj[keyName] = el.value.trim();
-                AtolOnline.saveConfig(obj);
-                AtolOnline.updateStatusUI();
-            }
-        });
-    });
-
-    // Show test button if configured
-    const btnTest = document.getElementById('btn-test-atol');
-    if (btnTest && AtolOnline.isConfigured()) btnTest.style.display = '';
-
-    // Connect button
-    const btnConnect = document.getElementById('btn-connect-atol');
-    if (btnConnect) {
-        btnConnect.addEventListener('click', async () => {
-            // Save all fields first
-            saveAtolFields();
-
-            if (!AtolOnline.isConfigured()) {
-                showToast('Заполните все обязательные поля ATOL');
-                return;
-            }
-            try {
-                await AtolOnline.getToken();
-                showToast('ATOL Online подключен!');
-                if (btnTest) btnTest.style.display = '';
-                // Show correction button in finances
-                const corrBtn = document.getElementById('btn-correction-receipt');
-                if (corrBtn) corrBtn.style.display = '';
-            } catch (err) {
-                showToast('Ошибка подключения ATOL: ' + (err.message || err));
-            }
-        });
-    }
-
-    // Test receipt button
-    if (btnTest) {
-        btnTest.addEventListener('click', async () => {
-            try {
-                showToast('Отправка тестового чека...');
-                const result = await AtolOnline.sendTestReceipt();
-                showToast('Тестовый чек отправлен! UUID: ' + (result.uuid || '').substring(0, 8) + '...');
-            } catch (err) {
-                showToast('Ошибка тестового чека: ' + (err.message || err));
-            }
-        });
-    }
-
-    // Correction receipt modal
-    const btnCorrection = document.getElementById('btn-correction-receipt');
-    if (btnCorrection) {
-        if (AtolOnline.isConnected()) btnCorrection.style.display = '';
-        btnCorrection.addEventListener('click', () => {
-            document.getElementById('correction-base-date').value = todayLocal();
-            openModal('modal-correction');
-        });
-    }
-    const btnCorrClose = document.getElementById('modal-correction-close');
-    if (btnCorrClose) btnCorrClose.addEventListener('click', () => closeModal('modal-correction'));
-    const btnCancelCorr = document.getElementById('btn-cancel-correction');
-    if (btnCancelCorr) btnCancelCorr.addEventListener('click', () => closeModal('modal-correction'));
-
-    const btnSendCorr = document.getElementById('btn-send-correction');
-    if (btnSendCorr) {
-        btnSendCorr.addEventListener('click', async () => {
-            const amount = parseFloat(document.getElementById('correction-amount').value);
-            if (!amount || amount <= 0) { showToast('Укажите сумму коррекции'); return; }
-
-            try {
-                const corrData = {
-                    type: document.getElementById('correction-type').value,
-                    baseDate: document.getElementById('correction-base-date').value,
-                    baseNumber: document.getElementById('correction-base-number').value,
-                    description: document.getElementById('correction-description').value,
-                    amount: amount,
-                    paymentType: parseInt(document.getElementById('correction-payment-type').value)
-                };
-                const receipt = AtolOnline.buildCorrectionReceipt(corrData);
-                const result = await AtolOnline.sellCorrection(receipt);
-                closeModal('modal-correction');
-                showToast('Чек коррекции отправлен! UUID: ' + (result.uuid || '').substring(0, 8) + '...');
-
-                // Poll status async
-                AtolOnline.pollStatus(result.uuid).catch(e => console.warn('Correction poll error:', e));
-            } catch (err) {
-                showToast('Ошибка коррекции: ' + (err.message || err));
-            }
-        });
-    }
-
-    // Update ATOL badge in finances
-    const atolBadge = document.getElementById('badge-atol-status');
-    if (atolBadge) {
-        atolBadge.style.color = AtolOnline.isConnected() ? '#22c55e' : 'var(--text-muted)';
-    }
-}
-
-function saveAtolFields() {
-    const cfg = {
-        login: (document.getElementById('atol-login')?.value || '').trim(),
-        password: (document.getElementById('atol-password')?.value || '').trim(),
-        groupCode: (document.getElementById('atol-group-code')?.value || '').trim(),
-        inn: (document.getElementById('atol-inn')?.value || '').trim(),
-        paymentAddress: (document.getElementById('atol-payment-address')?.value || '').trim(),
-        companyEmail: (document.getElementById('atol-company-email')?.value || '').trim(),
-        sno: (document.getElementById('atol-sno')?.value || 'usn_income'),
-        proxyUrl: (document.getElementById('atol-proxy-url')?.value || '').trim()
-    };
-    AtolOnline.saveConfig(cfg);
+    // --- Sigma 8Ф — физическая касса, облачные настройки не нужны ---
 }
 
 function applyAccentColor(color) {

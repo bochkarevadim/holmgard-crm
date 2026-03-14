@@ -669,14 +669,10 @@
             <div class="section-header">
                 <h2>Финансы</h2>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <div class="badge-sigma" id="badge-atol-status">
-                        <span class="material-icons-round">link</span>
-                        ATOL Online
+                    <div class="badge-sigma" id="badge-atol-status" style="color:#22c55e;">
+                        <span class="material-icons-round">point_of_sale</span>
+                        Sigma 8Ф
                     </div>
-                    <button class="btn-secondary btn-sm" id="btn-correction-receipt" style="display:none;">
-                        <span class="material-icons-round">edit_note</span>
-                        Чек коррекции
-                    </button>
                 </div>
             </div>
 
@@ -1206,61 +1202,22 @@
                     </div>
                     <div class="integration-item">
                         <div class="integration-info">
-                            <strong>ATOL Online</strong>
+                            <strong>Касса АТОЛ Sigma 8Ф</strong>
                             <div class="gcal-status">
-                                <span class="gcal-status-dot gcal-status-none" id="atol-status-dot"></span>
-                                <span class="gcal-status-label" id="atol-status-label">Не настроено</span>
+                                <span class="gcal-status-dot gcal-status-ok"></span>
+                                <span class="gcal-status-label">Подключена (Платформа ОФД)</span>
                             </div>
                         </div>
-                        <button class="btn-secondary btn-sm" id="btn-connect-atol">Подключить</button>
-                        <button class="btn-secondary btn-sm" id="btn-test-atol" style="margin-left:6px;display:none;">Тест</button>
                     </div>
-                    <div class="form-row" style="margin-top:12px;">
-                        <div class="form-group" style="flex:1">
-                            <label>Логин ATOL</label>
-                            <input type="text" id="atol-login" placeholder="login">
+                    <div style="margin-top:12px;padding:12px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:13px;">
+                            <div><span class="text-muted">Модель:</span> АТОЛ Sigma 8Ф</div>
+                            <div><span class="text-muted">РНМ:</span> 0006294249001492</div>
+                            <div><span class="text-muted">ФН:</span> 7381440800755655</div>
+                            <div><span class="text-muted">ОФД:</span> Платформа ОФД (до 28.01.2029)</div>
+                            <div style="grid-column:1/-1"><span class="text-muted">Адрес:</span> 173512, Новгородская обл., д. Ращеп, д.1, стр.1</div>
                         </div>
-                        <div class="form-group" style="flex:1">
-                            <label>Пароль ATOL</label>
-                            <input type="password" id="atol-password" placeholder="password">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex:1">
-                            <label>Код группы ККТ</label>
-                            <input type="text" id="atol-group-code" placeholder="v4-online-atol-ru_XXX">
-                        </div>
-                        <div class="form-group" style="flex:1">
-                            <label>ИНН организации</label>
-                            <input type="text" id="atol-inn" placeholder="1234567890">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex:1">
-                            <label>Адрес расчёта</label>
-                            <input type="text" id="atol-payment-address" placeholder="https://holmgardpark.ru">
-                        </div>
-                        <div class="form-group" style="flex:1">
-                            <label>Email организации</label>
-                            <input type="email" id="atol-company-email" placeholder="holmgardpark@gmail.com">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex:1">
-                            <label>Система налогообложения</label>
-                            <select id="atol-sno">
-                                <option value="osn">ОСН (общая)</option>
-                                <option value="usn_income" selected>УСН Доход</option>
-                                <option value="usn_income_outcome">УСН Доход-Расход</option>
-                                <option value="envd">ЕНВД</option>
-                                <option value="esn">ЕСН</option>
-                                <option value="patent">Патент</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="flex:1">
-                            <label>URL прокси (Cloudflare Worker)</label>
-                            <input type="text" id="atol-proxy-url" placeholder="https://atol-proxy.workers.dev">
-                        </div>
+                        <p class="form-hint" style="margin-top:8px;">Чеки пробиваются на физической кассе при оплате</p>
                     </div>
                 </div>
 
@@ -1528,12 +1485,12 @@
                     </div>
                 </div>
             </div>
-            <div class="atol-receipt-section" id="atol-receipt-section" style="display:none;">
-                <div class="form-group">
-                    <label><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">receipt_long</span> Email клиента для чека (54-ФЗ)</label>
-                    <input type="email" id="payment-client-email" placeholder="client@email.com">
-                    <p class="form-hint">Электронный чек будет отправлен клиенту</p>
-                </div>
+            <div class="atol-receipt-section" id="atol-receipt-section">
+                <label class="option-checkbox">
+                    <input type="checkbox" id="payment-receipt-printed">
+                    <span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">receipt_long</span>
+                    Чек пробит на кассе Sigma 8Ф
+                </label>
             </div>
             <div class="form-actions">
                 <button class="btn-secondary" id="btn-cancel-payment">Отмена</button>
@@ -1547,56 +1504,7 @@
 </div>
 
 <!-- ===== CORRECTION RECEIPT MODAL ===== -->
-<div class="modal-overlay" id="modal-correction">
-    <div class="modal">
-        <div class="modal-header">
-            <h2>Чек коррекции</h2>
-            <button class="btn-close" id="modal-correction-close">
-                <span class="material-icons-round">close</span>
-            </button>
-        </div>
-        <div class="modal-body">
-            <div class="form-group">
-                <label>Тип коррекции</label>
-                <select id="correction-type">
-                    <option value="self">Самостоятельная</option>
-                    <option value="instruction">По предписанию ФНС</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Дата основания</label>
-                <input type="date" id="correction-base-date">
-            </div>
-            <div class="form-group">
-                <label>Номер документа-основания</label>
-                <input type="text" id="correction-base-number" placeholder="Номер акта или предписания">
-            </div>
-            <div class="form-group">
-                <label>Описание</label>
-                <input type="text" id="correction-description" placeholder="Причина коррекции">
-            </div>
-            <div class="form-row">
-                <div class="form-group" style="flex:1">
-                    <label>Сумма (₽)</label>
-                    <input type="number" id="correction-amount" placeholder="0" min="0" step="0.01">
-                </div>
-                <div class="form-group" style="flex:1">
-                    <label>Способ оплаты</label>
-                    <select id="correction-payment-type">
-                        <option value="1">Наличные</option>
-                        <option value="2">Безналичные</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-actions">
-                <button class="btn-secondary" id="btn-cancel-correction">Отмена</button>
-                <button class="btn-primary" id="btn-send-correction">
-                    <span class="material-icons-round">send</span>
-                    Отправить коррекцию
-                </button>
-            </div>
-        </div>
-    </div>
+<!-- Коррекционные чеки пробиваются на физической кассе АТОЛ Sigma 8Ф -->
 </div>
 
 <!-- TOAST NOTIFICATION -->
@@ -1623,7 +1531,7 @@
 
 <script src="js/gcal.js?v=5"></script>
 <script src="js/gsheets.js?v=6"></script>
-<script src="js/atol.js?v=1"></script>
+<!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
 <script src="js/app.js?v=8"></script>
 </body>
 </html>
