@@ -16,24 +16,166 @@ function formatDuration(min) {
     return m ? `${h} ч ${m} мин` : `${h} ч`;
 }
 
-// ===== DATA LAYER =====
+// ===== DATA LAYER (Firestore-backed) =====
+const FIRESTORE_KEYS = new Set([
+    'employees', 'events', 'clients', 'tariffs', 'shifts',
+    'stock', 'salaryRules', 'finances', 'documents',
+    'loyaltyPercent', 'accentColor', 'empDashOrder',
+    'initialized', 'roles_version_v2', 'multirole_v1',
+    'stock_critical_v1', 'consumables_v1', 'tariffs_version'
+]);
+
 const DB = {
     _skipSync: false,
+    _cache: {},
+    _ready: false,
+    _readyPromise: null,
+    _readyResolve: null,
+    _db: null,
+    _uid: null,
+    _unsubscribers: [],
+    _onChangeCallbacks: [],
+
     get(key, fallback = null) {
+        if (FIRESTORE_KEYS.has(key)) {
+            const val = this._cache[key];
+            return val !== undefined ? val : fallback;
+        }
         try {
             const d = localStorage.getItem('hp_' + key);
             return d ? JSON.parse(d) : fallback;
         } catch { return fallback; }
     },
+
     set(key, val) {
-        localStorage.setItem('hp_' + key, JSON.stringify(val));
-        // Auto-sync to Google Sheets (debounced)
+        if (FIRESTORE_KEYS.has(key)) {
+            this._cache[key] = val;
+            if (this._db) {
+                this._db.collection('orgs').doc('holmgard')
+                    .collection('data').doc(key)
+                    .set({ value: val, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
+                    .catch(err => console.error('DB.set Firestore error:', key, err));
+            }
+        } else {
+            localStorage.setItem('hp_' + key, JSON.stringify(val));
+        }
         if (!this._skipSync && typeof GSheetsSync !== 'undefined') {
             GSheetsSync.autoSyncKey(key);
         }
     },
+
     remove(key) {
-        localStorage.removeItem('hp_' + key);
+        if (FIRESTORE_KEYS.has(key)) {
+            delete this._cache[key];
+            if (this._db) {
+                this._db.collection('orgs').doc('holmgard')
+                    .collection('data').doc(key)
+                    .delete()
+                    .catch(err => console.error('DB.remove Firestore error:', key, err));
+            }
+        } else {
+            localStorage.removeItem('hp_' + key);
+        }
+    },
+
+    async initFirestore() {
+        this._db = firebase.firestore();
+
+        try {
+            await this._db.enablePersistence({ synchronizeTabs: true });
+        } catch (err) {
+            if (err.code === 'failed-precondition') {
+                console.warn('Firestore persistence: multiple tabs open');
+            } else if (err.code === 'unimplemented') {
+                console.warn('Firestore persistence: not supported');
+            }
+        }
+
+        this._readyPromise = new Promise(resolve => {
+            this._readyResolve = resolve;
+        });
+
+        const dataRef = this._db.collection('orgs').doc('holmgard').collection('data');
+        const unsub = dataRef.onSnapshot(snapshot => {
+            let changed = false;
+            snapshot.docChanges().forEach(change => {
+                const key = change.doc.id;
+                if (!FIRESTORE_KEYS.has(key)) return;
+                if (change.type === 'removed') {
+                    delete this._cache[key];
+                } else {
+                    this._cache[key] = change.doc.data().value;
+                }
+                changed = true;
+            });
+
+            if (!this._ready) {
+                this._ready = true;
+                if (this._readyResolve) this._readyResolve();
+            }
+
+            if (changed && this._ready) {
+                this._notifyChange();
+            }
+        }, err => {
+            console.error('Firestore onSnapshot error:', err);
+            if (!this._ready) {
+                this._ready = true;
+                if (this._readyResolve) this._readyResolve();
+            }
+        });
+
+        this._unsubscribers.push(unsub);
+        return this._readyPromise;
+    },
+
+    teardown() {
+        this._unsubscribers.forEach(fn => fn());
+        this._unsubscribers = [];
+        this._cache = {};
+        this._ready = false;
+        this._readyPromise = null;
+        this._readyResolve = null;
+    },
+
+    onChange(callback) {
+        this._onChangeCallbacks.push(callback);
+    },
+
+    _notifyChange() {
+        this._onChangeCallbacks.forEach(cb => {
+            try { cb(); } catch (e) { console.error('DB onChange error:', e); }
+        });
+    },
+
+    async migrateFromLocalStorage() {
+        if (!this._db) return;
+        const batch = this._db.batch();
+        let hasMigrations = false;
+        const dataRef = this._db.collection('orgs').doc('holmgard').collection('data');
+
+        for (const key of FIRESTORE_KEYS) {
+            if (this._cache[key] !== undefined) continue;
+            try {
+                const raw = localStorage.getItem('hp_' + key);
+                if (raw) {
+                    const val = JSON.parse(raw);
+                    batch.set(dataRef.doc(key), {
+                        value: val,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    this._cache[key] = val;
+                    hasMigrations = true;
+                }
+            } catch (e) {
+                console.warn('Migration skip:', key, e);
+            }
+        }
+
+        if (hasMigrations) {
+            await batch.commit();
+            console.log('DB: migrated localStorage → Firestore');
+        }
     }
 };
 
@@ -175,7 +317,11 @@ function initData() {
         DB.set('initialized', true);
     }
 
-    // Data migration: add senior_instructor to salary rules
+}
+
+// ===== DATA MIGRATIONS =====
+function runDataMigrations() {
+    // Migration: add senior_instructor to salary rules
     if (!DB.get('roles_version_v2')) {
         const rules = DB.get('salaryRules', {});
         if (!rules.senior_instructor) {
@@ -185,7 +331,7 @@ function initData() {
         DB.set('roles_version_v2', true);
     }
 
-    // Data migration: add allowedShiftRoles to employees
+    // Migration: add allowedShiftRoles to employees
     if (!DB.get('multirole_v1')) {
         const emps = DB.get('employees', []);
         let changed = false;
@@ -207,7 +353,7 @@ function initData() {
         DB.set('multirole_v1', true);
     }
 
-    // Data migration: stock ballsMax → ballsCritical
+    // Migration: stock ballsMax → ballsCritical
     if (!DB.get('stock_critical_v1')) {
         const stock = DB.get('stock', {});
         if (stock.ballsMax !== undefined && stock.ballsCritical === undefined) {
@@ -220,11 +366,10 @@ function initData() {
         DB.set('stock_critical_v1', true);
     }
 
-    // Data migration: add consumable fields to tariffs
+    // Migration: add consumable fields to tariffs
     if (!DB.get('consumables_v1')) {
         const tariffs = DB.get('tariffs', []);
         let changed = false;
-        // Default consumables per serviceId (from spreadsheet data)
         const defaultConsumables = {
             'pb_mission': { balls: 300, grenades: 0 },
             'pb_bigcash': { balls: 500, grenades: 0 },
@@ -247,13 +392,21 @@ function initData() {
         DB.set('consumables_v1', true);
     }
 
-    // Data migration v2: replace old generic tariffs with real spreadsheet data
+    // Migration: add email/blocked fields to employees
+    const emps = DB.get('employees', []);
+    let emailChanged = false;
+    emps.forEach(function(e) {
+        if (typeof e.email === 'undefined') { e.email = ''; emailChanged = true; }
+        if (typeof e.blocked === 'undefined') { e.blocked = false; emailChanged = true; }
+    });
+    if (emailChanged) DB.set('employees', emps);
+
+    // Migration v2: replace old generic tariffs with real spreadsheet data
     if (DB.get('tariffs_version') !== 'v2') {
         DB.remove('initialized');
         DB.remove('tariffs');
         DB.set('tariffs_version', 'v2');
-        initData(); // re-run to populate real tariffs
-        return;
+        initData();
     }
 }
 
@@ -270,18 +423,16 @@ let shiftTimerInterval = null;
 let pendingShiftRole = null;
 
 // ===== INIT =====
+// Called from auth.js after Firestore is ready and user is authenticated
+function onFirestoreReady() {
+    // Refresh UI with data from Firestore
+    applyAccentColor(DB.get('accentColor', '#FFD600'));
+    if (typeof loadDashboard === 'function') loadDashboard();
+    if (typeof loadDirectorTariffs === 'function') loadDirectorTariffs();
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
-    initData();
-    // Migrate: add email/blocked fields to employees if missing
-    (function() {
-        const emps = DB.get('employees', []);
-        let changed = false;
-        emps.forEach(function(e) {
-            if (typeof e.email === 'undefined') { e.email = ''; changed = true; }
-            if (typeof e.blocked === 'undefined') { e.blocked = false; changed = true; }
-        });
-        if (changed) DB.set('employees', emps);
-    })();
+    // UI initialization only — data comes from Firestore via auth.js
     initPinPad();
     initNavigation();
     initEmployeeNavigation();
@@ -296,7 +447,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     GCalSync.init();
     await GSheetsSync.init();
-    // ATOL Sigma 8Ф — физическая касса, облачный модуль не используется
     initDirectorTariffs();
 
     // Auto-pull from Google Sheets on startup if connected
@@ -313,6 +463,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('CRM: startup sync error', err);
         }
     }
+
+    // Real-time UI updates from other devices via Firestore
+    DB.onChange(() => {
+        // Re-render the active director page
+        const activeDir = document.querySelector('#app-screen .page.active');
+        if (activeDir) {
+            const pid = activeDir.id;
+            if (pid === 'page-dashboard') loadDashboard();
+            else if (pid === 'page-employees') loadEmployees();
+            else if (pid === 'page-schedule') renderCalendar();
+            else if (pid === 'page-finances') loadFinances();
+            else if (pid === 'page-documents') loadDocuments();
+            else if (pid === 'page-clients') loadClients();
+            else if (pid === 'page-tariffs') loadDirectorTariffs();
+        }
+        // Re-render employee screen if active
+        const empScreen = document.getElementById('employee-screen');
+        if (empScreen && empScreen.classList.contains('active')) {
+            if (typeof loadEmployeeDashboard === 'function') loadEmployeeDashboard();
+        }
+        applyAccentColor(DB.get('accentColor', '#FFD600'));
+    });
 });
 
 // ===== PIN PAD =====
@@ -2472,9 +2644,24 @@ function initSettings() {
     });
 
     document.getElementById('btn-reset-data').addEventListener('click', () => {
-        showConfirm('Сбросить все данные?', 'Все данные будут удалены без возможности восстановления', () => {
+        showConfirm('Сбросить все данные?', 'Все данные будут удалены без возможности восстановления', async () => {
+            // Clear Firestore data
+            if (DB._db) {
+                try {
+                    const dataRef = DB._db.collection('orgs').doc('holmgard').collection('data');
+                    const snapshot = await dataRef.get();
+                    const batch = DB._db.batch();
+                    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                    await batch.commit();
+                } catch (err) {
+                    console.error('Firestore reset error:', err);
+                }
+            }
+            // Clear localStorage
             Object.keys(localStorage).filter(k => k.startsWith('hp_')).forEach(k => localStorage.removeItem(k));
+            DB._cache = {};
             initData();
+            runDataMigrations();
             showToast('Данные сброшены');
             setTimeout(() => location.reload(), 500);
         });

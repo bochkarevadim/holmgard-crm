@@ -685,11 +685,11 @@ const GSheetsSync = (() => {
             if (servicesData.length > 1 || optForGameData.length > 1 || optData.length > 1) {
                 const importedTariffs = rowsToTariffs(servicesData, optForGameData, optData);
                 if (importedTariffs.length > 0) {
-                    localStorage.setItem('hp_tariffs', JSON.stringify(importedTariffs));
+                    DB.set('tariffs', importedTariffs);
                 }
             }
 
-            // Import CRM data (use localStorage directly to avoid triggering auto-sync)
+            // Import CRM data (DB._skipSync is set by caller to avoid push loops)
             const importedEmp = rowsToEmployees(empData);
             const importedClients = rowsToClients(clientData);
             const importedEvents = rowsToEvents(eventData);
@@ -698,17 +698,17 @@ const GSheetsSync = (() => {
             const importedDocs = rowsToDocuments(docsData);
             const importedFin = rowsToFinances(finData);
 
-            if (importedEmp) localStorage.setItem('hp_employees', JSON.stringify(importedEmp));
-            if (importedClients) localStorage.setItem('hp_clients', JSON.stringify(importedClients));
-            if (importedEvents) localStorage.setItem('hp_events', JSON.stringify(importedEvents));
-            if (importedShifts) localStorage.setItem('hp_shifts', JSON.stringify(importedShifts));
+            if (importedEmp) DB.set('employees', importedEmp);
+            if (importedClients) DB.set('clients', importedClients);
+            if (importedEvents) DB.set('events', importedEvents);
+            if (importedShifts) DB.set('shifts', importedShifts);
             if (importedConfig) {
-                localStorage.setItem('hp_stock', JSON.stringify(importedConfig.stock));
-                localStorage.setItem('hp_salaryRules', JSON.stringify(importedConfig.salaryRules));
-                localStorage.setItem('hp_loyaltyPercent', JSON.stringify(importedConfig.loyaltyPercent));
+                DB.set('stock', importedConfig.stock);
+                DB.set('salaryRules', importedConfig.salaryRules);
+                DB.set('loyaltyPercent', importedConfig.loyaltyPercent);
             }
-            if (importedDocs) localStorage.setItem('hp_documents', JSON.stringify(importedDocs));
-            if (importedFin) localStorage.setItem('hp_finances', JSON.stringify(importedFin));
+            if (importedDocs) DB.set('documents', importedDocs);
+            if (importedFin) DB.set('finances', importedFin);
 
             console.log('GSheetsSync: pulled all data from Google Sheets');
             return true;

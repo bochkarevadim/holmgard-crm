@@ -40,19 +40,30 @@ var FirebaseAuth = (function() {
     }
 
     // ===== AUTH STATE OBSERVER =====
-    auth.onAuthStateChanged(function(user) {
+    auth.onAuthStateChanged(async function(user) {
         if (user) {
-            // User is signed in — check if employee exists and not blocked
             const email = user.email;
             sessionStorage.setItem('hp_firebase_email', email);
 
+            // Initialize Firestore and wait for data
+            try {
+                await DB.initFirestore();
+                await DB.migrateFromLocalStorage();
+            } catch (err) {
+                console.error('Firestore init error:', err);
+            }
+
+            // Run data initialization and migrations
+            if (typeof initData === 'function') initData();
+            if (typeof runDataMigrations === 'function') runDataMigrations();
+
+            // Check if employee is blocked
             const employees = DB.get('employees', []);
             const employee = employees.find(function(e) {
                 return e.email && e.email.toLowerCase() === email.toLowerCase();
             });
 
             if (employee && employee.blocked) {
-                // Account is blocked
                 showFirebaseError('Ваш аккаунт заблокирован. Обратитесь к директору');
                 auth.signOut();
                 return;
@@ -61,9 +72,13 @@ var FirebaseAuth = (function() {
             // Show PIN screen
             hideFirebaseLogin();
             showPinScreen();
+
+            // Notify app that data is ready (for UI refresh)
+            if (typeof onFirestoreReady === 'function') onFirestoreReady();
         } else {
-            // User is signed out — show Firebase login
+            // User is signed out
             sessionStorage.removeItem('hp_firebase_email');
+            DB.teardown();
             showFirebaseLogin();
         }
     });
