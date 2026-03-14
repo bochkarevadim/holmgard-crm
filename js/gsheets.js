@@ -15,7 +15,7 @@ const GSheetsSync = (() => {
 
     // Use same token as GCalSync (shared OAuth)
     function getAccessToken() {
-        return sessionStorage.getItem('hp_gcal_token') || null;
+        return localStorage.getItem('hp_gcal_token') || null;
     }
 
     function isConnected() {
