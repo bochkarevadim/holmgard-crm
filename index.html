@@ -10,12 +10,40 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
-    <link rel="stylesheet" href="css/style.css?v=3">
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
-<!-- ===== LOGIN SCREEN ===== -->
-<div id="login-screen" class="screen active">
+<!-- ===== FIREBASE LOGIN SCREEN ===== -->
+<div id="firebase-login-screen" class="screen active">
+    <div class="login-container">
+        <div class="login-logo">
+            <div class="logo-icon">
+                <span class="material-icons-round">park</span>
+            </div>
+            <h1>HOLMGARD PARK</h1>
+            <p class="login-subtitle">CRM СИСТЕМА</p>
+        </div>
+        <form id="fb-login-form" class="firebase-login-form">
+            <div class="fb-form-group">
+                <label for="fb-email">Email</label>
+                <input type="email" id="fb-email" placeholder="email@example.com" autocomplete="email" required>
+            </div>
+            <div class="fb-form-group">
+                <label for="fb-password">Пароль</label>
+                <input type="password" id="fb-password" placeholder="Введите пароль" autocomplete="current-password" required>
+            </div>
+            <div id="fb-error" class="fb-error" style="display:none;"></div>
+            <button type="submit" class="fb-login-btn" id="fb-login-btn">Войти</button>
+            <a href="#" id="fb-forgot-password" class="fb-forgot-link">Забыли пароль?</a>
+        </form>
+    </div>
+</div>
+
+<!-- ===== LOGIN SCREEN (PIN) ===== -->
+<div id="login-screen" class="screen">
     <div class="login-container">
         <div class="login-logo">
             <div class="logo-icon">
@@ -1221,6 +1249,26 @@
                     </div>
                 </div>
 
+                <div class="settings-card settings-card-wide">
+                    <h3><span class="material-icons-round">manage_accounts</span> Аккаунты сотрудников</h3>
+                    <p class="form-hint" style="margin-bottom:12px;">Firebase авторизация — управление доступом к CRM</p>
+                    <div class="table-scroll">
+                        <table class="data-table" id="firebase-accounts-table">
+                            <thead>
+                                <tr>
+                                    <th>Сотрудник</th>
+                                    <th>Email</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="firebase-accounts-body">
+                                <!-- Filled by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="settings-card">
                     <h3><span class="material-icons-round">info</span> О системе</h3>
                     <p>HOLMGARD PARK CRM v2.0</p>
@@ -1507,6 +1555,38 @@
 <!-- Коррекционные чеки пробиваются на физической кассе АТОЛ Sigma 8Ф -->
 </div>
 
+<!-- FIREBASE ACCOUNT MODAL -->
+<div class="modal-overlay" id="modal-fb-account">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h2>Создать аккаунт</h2>
+            <button class="modal-close" onclick="closeModal('modal-fb-account')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Сотрудник</label>
+                <input type="text" id="fb-acc-name" readonly class="input-readonly">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="fb-acc-email" placeholder="email@example.com" required>
+            </div>
+            <div class="form-group">
+                <label>Временный пароль</label>
+                <input type="text" id="fb-acc-password" placeholder="Минимум 6 символов" required>
+            </div>
+            <div id="fb-acc-error" class="fb-error" style="display:none;"></div>
+            <div class="form-actions">
+                <button class="btn-secondary" onclick="closeModal('modal-fb-account')">Отмена</button>
+                <button class="btn-primary" id="fb-acc-create-btn" onclick="createFirebaseAccount()">
+                    <span class="material-icons-round">person_add</span>
+                    Создать
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- TOAST NOTIFICATION -->
 <div class="toast" id="toast">
     <span class="material-icons-round" id="toast-icon">check_circle</span>
@@ -1529,9 +1609,10 @@
     </div>
 </div>
 
+<script src="js/auth.js?v=1"></script>
 <script src="js/gcal.js?v=5"></script>
 <script src="js/gsheets.js?v=6"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=8"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>

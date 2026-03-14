@@ -44,7 +44,8 @@ function initData() {
             {
                 id: 1, firstName: 'Вадим', lastName: 'Бочкарёв', role: 'director',
                 pin: '1111', phone: '+7 (900) 111-11-11', dob: '1985-06-15',
-                passport: '', bank: '', paid: 100000
+                passport: '', bank: '', paid: 100000,
+                email: '', blocked: false
             },
             {
                 id: 2, firstName: 'Савелий', lastName: 'Данилов', role: 'admin',
@@ -244,6 +245,16 @@ let pendingShiftRole = null;
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', async () => {
     initData();
+    // Migrate: add email/blocked fields to employees if missing
+    (function() {
+        const emps = DB.get('employees', []);
+        let changed = false;
+        emps.forEach(function(e) {
+            if (typeof e.email === 'undefined') { e.email = ''; changed = true; }
+            if (typeof e.blocked === 'undefined') { e.blocked = false; changed = true; }
+        });
+        if (changed) DB.set('employees', emps);
+    })();
     initPinPad();
     initNavigation();
     initEmployeeNavigation();
@@ -323,6 +334,18 @@ function attemptLogin() {
     const user = employees.find(e => e.pin === currentPin);
 
     if (user) {
+        // Check if PIN matches Firebase email
+        const firebaseEmail = sessionStorage.getItem('hp_firebase_email');
+        if (firebaseEmail && user.email && user.email.toLowerCase() !== firebaseEmail.toLowerCase()) {
+            document.querySelectorAll('.pin-dot').forEach(d => d.classList.add('error'));
+            document.getElementById('pin-message').textContent = 'ПИН не соответствует аккаунту';
+            document.getElementById('pin-message').className = 'pin-label error';
+            setTimeout(() => {
+                currentPin = '';
+                updatePinDots();
+            }, 800);
+            return;
+        }
         currentUser = user;
         showToast(`Добро пожаловать, ${user.firstName}!`);
         if (user.role === 'director') {
@@ -359,7 +382,12 @@ function logout() {
     currentPin = '';
     if (shiftTimerInterval) { clearInterval(shiftTimerInterval); shiftTimerInterval = null; }
     updatePinDots();
-    showScreen('login-screen');
+    // Firebase signOut — onAuthStateChanged will show firebase-login-screen
+    if (typeof FirebaseAuth !== 'undefined') {
+        FirebaseAuth.signOut();
+    } else {
+        showScreen('login-screen');
+    }
     document.getElementById('pin-message').textContent = 'Введите ПИН-код';
     document.getElementById('pin-message').className = 'pin-label';
 }
@@ -2436,6 +2464,9 @@ function initSettings() {
         if (document.getElementById('page-tariffs')?.classList.contains('active')) loadDirectorTariffs();
     });
     // --- Sigma 8Ф — физическая касса, облачные настройки не нужны ---
+
+    // Firebase Accounts management
+    loadFirebaseAccounts();
 }
 
 function applyAccentColor(color) {
@@ -2715,3 +2746,121 @@ document.getElementById('confirm-cancel').addEventListener('click', () => {
     closeModal('modal-confirm');
     confirmCallback = null;
 });
+
+// ===== FIREBASE ACCOUNTS MANAGEMENT =====
+function loadFirebaseAccounts() {
+    const tbody = document.getElementById('firebase-accounts-body');
+    if (!tbody) return;
+    const employees = DB.get('employees', []);
+    tbody.innerHTML = employees.map(emp => {
+        const hasEmail = emp.email && emp.email.trim();
+        const isBlocked = emp.blocked === true;
+        let statusBadge, actions;
+
+        if (!hasEmail) {
+            statusBadge = '<span class="fb-status fb-status-none">Нет аккаунта</span>';
+            actions = `<button class="btn-secondary btn-sm" onclick="openCreateAccountModal(${emp.id})">
+                <span class="material-icons-round" style="font-size:16px;">person_add</span> Создать
+            </button>`;
+        } else if (isBlocked) {
+            statusBadge = '<span class="fb-status fb-status-blocked">Заблокирован</span>';
+            actions = `<button class="btn-secondary btn-sm" onclick="toggleBlockAccount(${emp.id}, false)">
+                <span class="material-icons-round" style="font-size:16px;">lock_open</span> Разблокировать
+            </button>
+            <button class="btn-secondary btn-sm" onclick="resetEmployeePassword('${emp.email}')">
+                <span class="material-icons-round" style="font-size:16px;">key</span>
+            </button>`;
+        } else {
+            statusBadge = '<span class="fb-status fb-status-active">Активен</span>';
+            actions = `<button class="btn-secondary btn-sm" onclick="toggleBlockAccount(${emp.id}, true)">
+                <span class="material-icons-round" style="font-size:16px;">lock</span> Блокировать
+            </button>
+            <button class="btn-secondary btn-sm" onclick="resetEmployeePassword('${emp.email}')">
+                <span class="material-icons-round" style="font-size:16px;">key</span>
+            </button>`;
+        }
+
+        return `<tr>
+            <td>${emp.firstName} ${emp.lastName}</td>
+            <td>${hasEmail ? emp.email : '<span class="text-muted">—</span>'}</td>
+            <td>${statusBadge}</td>
+            <td>${actions}</td>
+        </tr>`;
+    }).join('');
+}
+
+var _fbAccountEmployeeId = null;
+
+function openCreateAccountModal(empId) {
+    const employees = DB.get('employees', []);
+    const emp = employees.find(e => e.id === empId);
+    if (!emp) return;
+    _fbAccountEmployeeId = empId;
+    document.getElementById('fb-acc-name').value = emp.firstName + ' ' + emp.lastName;
+    document.getElementById('fb-acc-email').value = '';
+    document.getElementById('fb-acc-password').value = '';
+    const errEl = document.getElementById('fb-acc-error');
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+    openModal('modal-fb-account');
+}
+
+function createFirebaseAccount() {
+    const email = document.getElementById('fb-acc-email').value.trim();
+    const password = document.getElementById('fb-acc-password').value;
+    const errEl = document.getElementById('fb-acc-error');
+    const btn = document.getElementById('fb-acc-create-btn');
+
+    if (!email || !password) {
+        if (errEl) { errEl.textContent = 'Заполните email и пароль'; errEl.style.display = 'block'; }
+        return;
+    }
+    if (password.length < 6) {
+        if (errEl) { errEl.textContent = 'Пароль должен быть не менее 6 символов'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Создание...'; }
+    if (errEl) errEl.style.display = 'none';
+
+    FirebaseAuth.createAccount(email, password)
+        .then(function() {
+            // Save email to employee
+            const employees = DB.get('employees', []);
+            const idx = employees.findIndex(e => e.id === _fbAccountEmployeeId);
+            if (idx !== -1) {
+                employees[idx].email = email;
+                employees[idx].blocked = false;
+                DB.set('employees', employees);
+            }
+            closeModal('modal-fb-account');
+            loadFirebaseAccounts();
+            showToast('Аккаунт создан для ' + email);
+        })
+        .catch(function(errorMsg) {
+            if (errEl) { errEl.textContent = errorMsg; errEl.style.display = 'block'; }
+        })
+        .finally(function() {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-icons-round">person_add</span> Создать'; }
+        });
+}
+
+function toggleBlockAccount(empId, block) {
+    const employees = DB.get('employees', []);
+    const idx = employees.findIndex(e => e.id === empId);
+    if (idx === -1) return;
+    employees[idx].blocked = block;
+    DB.set('employees', employees);
+    loadFirebaseAccounts();
+    showToast(block ? 'Аккаунт заблокирован' : 'Аккаунт разблокирован');
+}
+
+function resetEmployeePassword(email) {
+    if (!email) return;
+    FirebaseAuth.resetPassword(email)
+        .then(function() {
+            showToast('Письмо для сброса пароля отправлено на ' + email);
+        })
+        .catch(function(errorMsg) {
+            showToast('Ошибка: ' + errorMsg);
+        });
+}
