@@ -193,8 +193,11 @@ const GCalSync = (() => {
             showToast('Введите Client ID в Настройках');
             return;
         }
-        // Save current page state before redirect
+        // Save current session before redirect (so PIN screen is skipped on return)
         sessionStorage.setItem('hp_gcal_pre_auth_page', 'settings');
+        if (typeof currentUser !== 'undefined' && currentUser) {
+            sessionStorage.setItem('hp_gcal_returning_user_id', String(currentUser.id));
+        }
 
         // Build OAuth 2.0 implicit flow URL
         const redirectUri = window.location.origin + window.location.pathname;

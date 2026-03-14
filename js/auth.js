@@ -69,6 +69,32 @@ var FirebaseAuth = (function() {
                 return;
             }
 
+            // Check if returning from Google OAuth redirect — restore session
+            var returningUserId = sessionStorage.getItem('hp_gcal_returning_user_id');
+            var returningPage = sessionStorage.getItem('hp_gcal_pre_auth_page');
+            if (returningUserId) {
+                sessionStorage.removeItem('hp_gcal_returning_user_id');
+                sessionStorage.removeItem('hp_gcal_pre_auth_page');
+                var emps = DB.get('employees', []);
+                var savedUser = emps.find(function(e) { return String(e.id) === returningUserId; });
+                if (savedUser && typeof currentUser !== 'undefined') {
+                    currentUser = savedUser;
+                    hideFirebaseLogin();
+                    if (typeof onFirestoreReady === 'function') onFirestoreReady();
+                    if (savedUser.role === 'director') {
+                        showScreen('app-screen');
+                        var dirName = document.getElementById('director-name');
+                        if (dirName) dirName.textContent = savedUser.firstName + ' ' + savedUser.lastName;
+                        if (typeof navigateTo === 'function') navigateTo(returningPage || 'settings');
+                    } else {
+                        showScreen('employee-screen');
+                        if (typeof setupEmployeeScreen === 'function') setupEmployeeScreen(savedUser);
+                        if (typeof empNavigateTo === 'function') empNavigateTo('emp-dashboard');
+                    }
+                    return;
+                }
+            }
+
             // Show PIN screen
             hideFirebaseLogin();
             showPinScreen();
