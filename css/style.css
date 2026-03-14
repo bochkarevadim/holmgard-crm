@@ -902,6 +902,20 @@ body {
 .tariff-meta .material-icons-round {
     font-size: 16px;
 }
+.tariff-meta .consumable-badge {
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-weight: 600;
+    font-size: 11px;
+}
+.tariff-meta .consumable-badge.balls {
+    background: rgba(255, 214, 0, 0.15);
+    color: var(--accent);
+}
+.tariff-meta .consumable-badge.grenades {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
 
 /* ===== OPTIONS CHECKBOXES ===== */
 .options-checkboxes {

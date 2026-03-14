@@ -130,36 +130,36 @@ function initData() {
 
         DB.set('tariffs', [
             // === Услуги (services) — из Google Таблицы ===
-            { id: 1, category: 'services', serviceId: 'pb_mission', sheetCategory: 'Пейнтбол', name: 'МИССИЯ ВЫПОЛНИМА', price: 1800, unit: 'чел', duration: 120, minPeople: 8, age: '', included: 'Комплект экипировки и защиты; 3 миссии ≈ 1 час; Беседка 2 часа; 300 шаров', description: '' },
-            { id: 2, category: 'services', serviceId: 'pb_bigcash', sheetCategory: 'Пейнтбол', name: 'БОЛЬШОЙ КУШ', price: 2200, unit: 'чел', duration: 180, minPeople: 6, age: '', included: 'Комплект экипировки и защиты; 4 миссии ≈ 2 часа; Беседка 3 часа; 500 шаров', description: '' },
-            { id: 3, category: 'services', serviceId: 'pb_unstop', sheetCategory: 'Пейнтбол', name: 'НЕУДЕРЖИМЫЕ', price: 2900, unit: 'чел', duration: 240, minPeople: 6, age: '', included: 'Комплект экипировки и защиты; 5 миссий ≈ 3 часа; Беседка 4 часа; 600 шаров; Граната; Удлинённый ствол; Щит', description: '' },
-            { id: 4, category: 'services', serviceId: 'kb_minepark', sheetCategory: 'Кидбол', name: 'MINEPARK', price: 1600, unit: 'чел', duration: 180, minPeople: 8, age: '6-12', included: 'Комплект детской экипировки, безлимитные шары, игровые сценарии, фотоотчёт, инструктор, беседка и мангальная зона', description: '' },
-            { id: 5, category: 'services', serviceId: 'kb_fightstars', sheetCategory: 'Кидбол', name: 'ЗВЁЗДНЫЕ БОИ', price: 2300, unit: 'чел', duration: 240, minPeople: 6, age: '6-12', included: 'Комплект экипировки; 4 миссии ≈ 2 часа; Беседка 3 часа; безлимитные шары', description: '' },
-            { id: 6, category: 'services', serviceId: 'lz_fightstars', sheetCategory: 'Лазертаг', name: 'ЗВЁЗДНЫЕ БОИ', price: 1100, unit: 'чел', duration: 180, minPeople: 10, age: '', included: 'Комплект экипировки; 4 миссии ≈ 2 часа; Беседка 3 часа', description: '' },
-            { id: 7, category: 'services', serviceId: 'lz_pubg', sheetCategory: 'Лазертаг', name: 'LASERPUBG', price: 1500, unit: 'чел', duration: 240, minPeople: 8, age: '', included: 'Комплект экипировки; 6 миссий ≈ 3 часа; Беседка 4 часа', description: '' },
-            { id: 8, category: 'services', serviceId: 'ATV_light', sheetCategory: 'Квадроциклы', name: 'Лёгкая трасса — 4 км', price: 2500, unit: 'чел', duration: 40, minPeople: 1, age: '14', included: 'Квадроцикл, комплект экипировки и защиты, небольшой пикник по завершении заезда', description: '' },
-            { id: 9, category: 'services', serviceId: 'ATV_medium', sheetCategory: 'Квадроциклы', name: 'Умеренная трасса — 5 км', price: 3000, unit: 'чел', duration: 60, minPeople: 1, age: '14', included: 'Квадроцикл, комплект экипировки и защиты, небольшой пикник по завершении заезда', description: '' },
-            { id: 10, category: 'services', serviceId: 'ATV_hard', sheetCategory: 'Квадроциклы', name: 'Сложная трасса — 9 км', price: 6000, unit: 'чел', duration: 90, minPeople: 1, age: '14', included: 'Квадроцикл, комплект экипировки и защиты, небольшой пикник по завершении заезда', description: '' },
-            { id: 11, category: 'services', serviceId: 'sup_group', sheetCategory: 'Водная прогулка на Сап-бордах', name: 'Сборная группа', price: 2200, unit: 'чел', duration: 180, minPeople: 1, age: '18', included: 'Комплект оборудования; ≈ 3 часа прогулка; Пикник; Сопровождение инструкторами', description: '' },
-            { id: 12, category: 'services', serviceId: 'sup_privet', sheetCategory: 'Водная прогулка на Сап-бордах', name: 'Все свои', price: 2800, unit: 'чел', duration: 180, minPeople: 6, age: '18', included: 'Комплект оборудования; ≈ 3 часа прогулка; Пикник; Сопровождение инструкторами', description: '' },
-            { id: 13, category: 'services', serviceId: 'sup_romantic', sheetCategory: 'Водная прогулка на Сап-бордах', name: 'Романтическая прогулка на двоих', price: 8000, unit: 'чел', duration: 180, minPeople: 2, age: '18', included: 'Комплект оборудования; ≈ 3 часа прогулка; Пикник; Сопровождение инструкторами', description: '' },
-            { id: 14, category: 'services', serviceId: 'Race_light', sheetCategory: 'Гонка с препятствиями', name: 'Лёгкая трасса — 1,6 км', price: 1600, unit: 'чел', duration: 30, minPeople: 8, age: '12', included: 'Трасса с препятствиями, сопровождающий инструктор, страховка', description: '' },
-            { id: 15, category: 'services', serviceId: 'Race_medium', sheetCategory: 'Гонка с препятствиями', name: 'Умеренная трасса — 2,2 км', price: 2200, unit: 'чел', duration: 40, minPeople: 8, age: '18', included: 'Трасса с препятствиями, сопровождающий инструктор, страховка', description: '' },
-            { id: 16, category: 'services', serviceId: 'Race_hard', sheetCategory: 'Гонка с препятствиями', name: 'Сложная трасса — 2,8 км', price: 2800, unit: 'чел', duration: 50, minPeople: 8, age: '18', included: 'Трасса с препятствиями, сопровождающий инструктор, страховка', description: '' },
-            { id: 17, category: 'services', serviceId: 'Tir_200', sheetCategory: 'Тир пейнтбольный', name: 'ТИР200', price: 500, unit: 'чел', duration: 10, minPeople: 1, age: '0', included: 'Пейнтбольный тир 200 выстрелов', description: '' },
-            { id: 18, category: 'services', serviceId: 'Tir_500', sheetCategory: 'Тир пейнтбольный', name: 'ТИР500', price: 1000, unit: 'чел', duration: 20, minPeople: 1, age: '0', included: 'Пейнтбольный тир 500 выстрелов', description: '' },
+            { id: 1, category: 'services', serviceId: 'pb_mission', sheetCategory: 'Пейнтбол', name: 'МИССИЯ ВЫПОЛНИМА', price: 1800, unit: 'чел', duration: 120, minPeople: 8, age: '', included: 'Комплект экипировки и защиты; 3 миссии ≈ 1 час; Беседка 2 часа; 300 шаров', description: '', ballsPerPerson: 300, grenadesPerPerson: 0 },
+            { id: 2, category: 'services', serviceId: 'pb_bigcash', sheetCategory: 'Пейнтбол', name: 'БОЛЬШОЙ КУШ', price: 2200, unit: 'чел', duration: 180, minPeople: 6, age: '', included: 'Комплект экипировки и защиты; 4 миссии ≈ 2 часа; Беседка 3 часа; 500 шаров', description: '', ballsPerPerson: 500, grenadesPerPerson: 0 },
+            { id: 3, category: 'services', serviceId: 'pb_unstop', sheetCategory: 'Пейнтбол', name: 'НЕУДЕРЖИМЫЕ', price: 2900, unit: 'чел', duration: 240, minPeople: 6, age: '', included: 'Комплект экипировки и защиты; 5 миссий ≈ 3 часа; Беседка 4 часа; 600 шаров; Граната; Удлинённый ствол; Щит', description: '', ballsPerPerson: 600, grenadesPerPerson: 1 },
+            { id: 4, category: 'services', serviceId: 'kb_minepark', sheetCategory: 'Кидбол', name: 'MINEPARK', price: 1600, unit: 'чел', duration: 180, minPeople: 8, age: '6-12', included: 'Комплект детской экипировки, безлимитные шары, игровые сценарии, фотоотчёт, инструктор, беседка и мангальная зона', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 5, category: 'services', serviceId: 'kb_fightstars', sheetCategory: 'Кидбол', name: 'ЗВЁЗДНЫЕ БОИ', price: 2300, unit: 'чел', duration: 240, minPeople: 6, age: '6-12', included: 'Комплект экипировки; 4 миссии ≈ 2 часа; Беседка 3 часа; безлимитные шары', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 6, category: 'services', serviceId: 'lz_fightstars', sheetCategory: 'Лазертаг', name: 'ЗВЁЗДНЫЕ БОИ', price: 1100, unit: 'чел', duration: 180, minPeople: 10, age: '', included: 'Комплект экипировки; 4 миссии ≈ 2 часа; Беседка 3 часа', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 7, category: 'services', serviceId: 'lz_pubg', sheetCategory: 'Лазертаг', name: 'LASERPUBG', price: 1500, unit: 'чел', duration: 240, minPeople: 8, age: '', included: 'Комплект экипировки; 6 миссий ≈ 3 часа; Беседка 4 часа', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 8, category: 'services', serviceId: 'ATV_light', sheetCategory: 'Квадроциклы', name: 'Лёгкая трасса — 4 км', price: 2500, unit: 'чел', duration: 40, minPeople: 1, age: '14', included: 'Квадроцикл, комплект экипировки и защиты, небольшой пикник по завершении заезда', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 9, category: 'services', serviceId: 'ATV_medium', sheetCategory: 'Квадроциклы', name: 'Умеренная трасса — 5 км', price: 3000, unit: 'чел', duration: 60, minPeople: 1, age: '14', included: 'Квадроцикл, комплект экипировки и защиты, небольшой пикник по завершении заезда', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 10, category: 'services', serviceId: 'ATV_hard', sheetCategory: 'Квадроциклы', name: 'Сложная трасса — 9 км', price: 6000, unit: 'чел', duration: 90, minPeople: 1, age: '14', included: 'Квадроцикл, комплект экипировки и защиты, небольшой пикник по завершении заезда', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 11, category: 'services', serviceId: 'sup_group', sheetCategory: 'Водная прогулка на Сап-бордах', name: 'Сборная группа', price: 2200, unit: 'чел', duration: 180, minPeople: 1, age: '18', included: 'Комплект оборудования; ≈ 3 часа прогулка; Пикник; Сопровождение инструкторами', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 12, category: 'services', serviceId: 'sup_privet', sheetCategory: 'Водная прогулка на Сап-бордах', name: 'Все свои', price: 2800, unit: 'чел', duration: 180, minPeople: 6, age: '18', included: 'Комплект оборудования; ≈ 3 часа прогулка; Пикник; Сопровождение инструкторами', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 13, category: 'services', serviceId: 'sup_romantic', sheetCategory: 'Водная прогулка на Сап-бордах', name: 'Романтическая прогулка на двоих', price: 8000, unit: 'чел', duration: 180, minPeople: 2, age: '18', included: 'Комплект оборудования; ≈ 3 часа прогулка; Пикник; Сопровождение инструкторами', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 14, category: 'services', serviceId: 'Race_light', sheetCategory: 'Гонка с препятствиями', name: 'Лёгкая трасса — 1,6 км', price: 1600, unit: 'чел', duration: 30, minPeople: 8, age: '12', included: 'Трасса с препятствиями, сопровождающий инструктор, страховка', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 15, category: 'services', serviceId: 'Race_medium', sheetCategory: 'Гонка с препятствиями', name: 'Умеренная трасса — 2,2 км', price: 2200, unit: 'чел', duration: 40, minPeople: 8, age: '18', included: 'Трасса с препятствиями, сопровождающий инструктор, страховка', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 16, category: 'services', serviceId: 'Race_hard', sheetCategory: 'Гонка с препятствиями', name: 'Сложная трасса — 2,8 км', price: 2800, unit: 'чел', duration: 50, minPeople: 8, age: '18', included: 'Трасса с препятствиями, сопровождающий инструктор, страховка', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 17, category: 'services', serviceId: 'Tir_200', sheetCategory: 'Тир пейнтбольный', name: 'ТИР200', price: 500, unit: 'чел', duration: 10, minPeople: 1, age: '0', included: 'Пейнтбольный тир 200 выстрелов', description: '', ballsPerPerson: 200, grenadesPerPerson: 0 },
+            { id: 18, category: 'services', serviceId: 'Tir_500', sheetCategory: 'Тир пейнтбольный', name: 'ТИР500', price: 1000, unit: 'чел', duration: 20, minPeople: 1, age: '0', included: 'Пейнтбольный тир 500 выстрелов', description: '', ballsPerPerson: 500, grenadesPerPerson: 0 },
             // === Опции к игре (optionsForGame) ===
-            { id: 19, category: 'optionsForGame', serviceId: 'opt_pb_grenade', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Граната', price: 300, quantity: 1, unit: 'штука', included: '', description: '' },
-            { id: 20, category: 'optionsForGame', serviceId: 'opt_pb_balls', sheetCategory: 'Доп. опции Пейнтбол/Кидбол', name: 'Дополнительные шары (200 шт)', price: 2, quantity: 1, unit: 'штука', included: '', description: '' },
-            { id: 21, category: 'optionsForGame', serviceId: 'opt_pb_smoke', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дымовая шашка', price: 300, quantity: 1, unit: 'штука', included: '', description: '' },
-            { id: 22, category: 'optionsForGame', serviceId: 'opt_pb_barrel', sheetCategory: 'Доп. опции Пейнтбол', name: 'Удлинённый ствол', price: 200, quantity: 1, unit: 'штука', included: '', description: '' },
-            { id: 23, category: 'optionsForGame', serviceId: 'opt_pb_gazebo', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дополнительное время в беседке (1 час)', price: 0, quantity: 1, unit: 'час', included: '', description: '' },
+            { id: 19, category: 'optionsForGame', serviceId: 'opt_pb_grenade', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Граната', price: 300, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 1 },
+            { id: 20, category: 'optionsForGame', serviceId: 'opt_pb_balls', sheetCategory: 'Доп. опции Пейнтбол/Кидбол', name: 'Дополнительные шары (200 шт)', price: 2, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 200, grenadesPerPerson: 0 },
+            { id: 21, category: 'optionsForGame', serviceId: 'opt_pb_smoke', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дымовая шашка', price: 300, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 1 },
+            { id: 22, category: 'optionsForGame', serviceId: 'opt_pb_barrel', sheetCategory: 'Доп. опции Пейнтбол', name: 'Удлинённый ствол', price: 200, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 23, category: 'optionsForGame', serviceId: 'opt_pb_gazebo', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дополнительное время в беседке (1 час)', price: 0, quantity: 1, unit: 'час', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
             // === Дополнительные опции (options) ===
-            { id: 24, category: 'options', serviceId: 'Coffee', sheetCategory: 'Кофе', name: 'Кофе', price: 150, quantity: 1, unit: 'штука', included: '', description: '' },
-            { id: 25, category: 'options', serviceId: 'Shop', sheetCategory: 'Магазин', name: 'Магазин', price: 0, quantity: 1, unit: 'штука', included: '', description: '' },
-            { id: 26, category: 'options', serviceId: 'opt_gazebo_small', sheetCategory: 'Аренда беседки', name: 'Малая беседка', price: 1000, quantity: 1, unit: 'час', included: '', description: '' },
-            { id: 27, category: 'options', serviceId: 'opt_gazebo_big', sheetCategory: 'Аренда беседки', name: 'Большая беседка', price: 2000, quantity: 1, unit: 'час', included: '', description: '' },
-            { id: 28, category: 'options', serviceId: 'opt_tent', sheetCategory: 'Аренда беседки', name: 'Шатёр', price: 1000, quantity: 1, unit: 'час', included: '', description: '' },
+            { id: 24, category: 'options', serviceId: 'Coffee', sheetCategory: 'Кофе', name: 'Кофе', price: 150, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 25, category: 'options', serviceId: 'Shop', sheetCategory: 'Магазин', name: 'Магазин', price: 0, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 26, category: 'options', serviceId: 'opt_gazebo_small', sheetCategory: 'Аренда беседки', name: 'Малая беседка', price: 1000, quantity: 1, unit: 'час', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 27, category: 'options', serviceId: 'opt_gazebo_big', sheetCategory: 'Аренда беседки', name: 'Большая беседка', price: 2000, quantity: 1, unit: 'час', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 28, category: 'options', serviceId: 'opt_tent', sheetCategory: 'Аренда беседки', name: 'Шатёр', price: 1000, quantity: 1, unit: 'час', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
         ]);
 
         DB.set('accentColor', '#FFD600');
@@ -218,6 +218,33 @@ function initData() {
             DB.set('stock', stock);
         }
         DB.set('stock_critical_v1', true);
+    }
+
+    // Data migration: add consumable fields to tariffs
+    if (!DB.get('consumables_v1')) {
+        const tariffs = DB.get('tariffs', []);
+        let changed = false;
+        // Default consumables per serviceId (from spreadsheet data)
+        const defaultConsumables = {
+            'pb_mission': { balls: 300, grenades: 0 },
+            'pb_bigcash': { balls: 500, grenades: 0 },
+            'pb_unstop': { balls: 600, grenades: 1 },
+            'Tir_200': { balls: 200, grenades: 0 },
+            'Tir_500': { balls: 500, grenades: 0 },
+            'opt_pb_grenade': { balls: 0, grenades: 1 },
+            'opt_pb_balls': { balls: 200, grenades: 0 },
+            'opt_pb_smoke': { balls: 0, grenades: 1 },
+        };
+        tariffs.forEach(t => {
+            if (t.ballsPerPerson === undefined) {
+                changed = true;
+                const def = defaultConsumables[t.serviceId];
+                t.ballsPerPerson = def ? def.balls : 0;
+                t.grenadesPerPerson = def ? def.grenades : 0;
+            }
+        });
+        if (changed) DB.set('tariffs', tariffs);
+        DB.set('consumables_v1', true);
     }
 
     // Data migration v2: replace old generic tariffs with real spreadsheet data
@@ -975,6 +1002,42 @@ function completeEventPayment() {
     events[idx].paymentDetails = paymentDetails;
     events[idx].completedAt = new Date().toISOString();
     events[idx].completedBy = currentUser ? currentUser.id : null;
+
+    // === AUTO-DEDUCT CONSUMABLES FROM STOCK ===
+    const tariffs = DB.get('tariffs', []);
+    const evt = events[idx];
+    let totalBalls = 0, totalGrenades = 0;
+
+    // Main tariff × participants
+    if (evt.tariffId) {
+        const tariff = tariffs.find(t => t.id === evt.tariffId);
+        if (tariff) {
+            totalBalls += (tariff.ballsPerPerson || 0) * (evt.participants || 1);
+            totalGrenades += (tariff.grenadesPerPerson || 0) * (evt.participants || 1);
+        }
+    }
+
+    // Options × quantity (grenades, extra balls, smoke)
+    if (evt.selectedOptions && evt.selectedOptions.length > 0) {
+        evt.selectedOptions.forEach(optId => {
+            const opt = tariffs.find(t => t.id === optId);
+            if (opt) {
+                totalBalls += (opt.ballsPerPerson || 0) * (evt.participants || 1);
+                totalGrenades += (opt.grenadesPerPerson || 0) * (evt.participants || 1);
+            }
+        });
+    }
+
+    // Deduct from stock
+    if (totalBalls > 0 || totalGrenades > 0) {
+        const stock = DB.get('stock', {});
+        stock.balls = Math.max(0, (stock.balls || 0) - totalBalls);
+        stock.grenades = Math.max(0, (stock.grenades || 0) - totalGrenades);
+        DB.set('stock', stock);
+        // Save what was consumed in the event
+        events[idx].consumablesUsed = { balls: totalBalls, grenades: totalGrenades };
+    }
+
     DB.set('events', events);
 
     closeModal('modal-payment');
@@ -985,7 +1048,15 @@ function completeEventPayment() {
     events[idx].receiptPrinted = receiptPrinted;
     DB.set('events', events);
 
-    showToast(receiptPrinted ? 'Заказ выполнен! Чек пробит ✓' : 'Заказ выполнен! Не забудьте пробить чек на кассе');
+    // Build toast message
+    let toastMsg = receiptPrinted ? 'Заказ выполнен! Чек пробит ✓' : 'Заказ выполнен! Не забудьте пробить чек на кассе';
+    if (totalBalls > 0 || totalGrenades > 0) {
+        const parts = [];
+        if (totalBalls > 0) parts.push(`${totalBalls} шаров`);
+        if (totalGrenades > 0) parts.push(`${totalGrenades} гранат`);
+        toastMsg += ` | Списано: ${parts.join(', ')}`;
+    }
+    showToast(toastMsg);
 
     // Reload current page
     if (document.getElementById('emp-page-events')?.classList.contains('active')) {
@@ -1161,6 +1232,8 @@ function loadTariffs(category = 'services', subcategory = null) {
             <div class="tariff-meta">
                 ${t.duration ? `<span><span class="material-icons-round">timer</span> ${t.duration} мин</span>` : ''}
                 ${t.minPeople ? `<span><span class="material-icons-round">group</span> от ${t.minPeople} чел.</span>` : ''}
+                ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров</span>` : ''}
+                ${t.grenadesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">brightness_7</span> ${t.grenadesPerPerson} гранат</span>` : ''}
             </div>
         </div>
     `).join('');
@@ -2615,6 +2688,8 @@ function loadDirectorTariffs(subcategory = undefined) {
                 ${t.duration ? `<span><span class="material-icons-round">timer</span> ${t.duration} мин</span>` : ''}
                 ${t.minPeople ? `<span><span class="material-icons-round">group</span> от ${t.minPeople} чел.</span>` : ''}
                 ${t.age ? `<span><span class="material-icons-round">cake</span> ${t.age} лет</span>` : ''}
+                ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров</span>` : ''}
+                ${t.grenadesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">brightness_7</span> ${t.grenadesPerPerson} гранат</span>` : ''}
             </div>
             <div class="tariff-card-actions">
                 <button class="btn-action" title="Редактировать">
@@ -2653,6 +2728,8 @@ function openTariffModal(id = null) {
         document.getElementById('tariff-age').value = tariff.age || '';
         document.getElementById('tariff-included').value = tariff.included || '';
         document.getElementById('tariff-description').value = tariff.description || '';
+        document.getElementById('tariff-balls').value = tariff.ballsPerPerson || '';
+        document.getElementById('tariff-grenades').value = tariff.grenadesPerPerson || '';
         document.getElementById('btn-delete-tariff').style.display = 'inline-flex';
     } else {
         document.getElementById('modal-tariff-title').textContent = 'Новый тариф';
@@ -2677,6 +2754,8 @@ function saveTariff(e) {
         age: document.getElementById('tariff-age').value.trim(),
         included: document.getElementById('tariff-included').value.trim(),
         description: document.getElementById('tariff-description').value.trim(),
+        ballsPerPerson: parseInt(document.getElementById('tariff-balls').value) || 0,
+        grenadesPerPerson: parseInt(document.getElementById('tariff-grenades').value) || 0,
     };
 
     if (id) {
