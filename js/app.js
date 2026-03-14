@@ -556,6 +556,10 @@ function attemptLogin() {
             setupEmployeeScreen(user);
             empNavigateTo('emp-dashboard');
         }
+        // Auto-sync Google Calendar after login
+        if (typeof GCalSync !== 'undefined' && GCalSync.isConnected()) {
+            setTimeout(() => GCalSync.autoSync(), 1500);
+        }
     } else {
         document.querySelectorAll('.pin-dot').forEach(d => d.classList.add('error'));
         document.getElementById('pin-message').textContent = 'Неверный ПИН-код';

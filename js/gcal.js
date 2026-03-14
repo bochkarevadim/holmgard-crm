@@ -15,8 +15,8 @@ const GCalSync = (() => {
     function setEventMap(map) { localStorage.setItem('hp_gcal_event_map', JSON.stringify(map)); }
 
     function restoreToken() {
-        const t = sessionStorage.getItem('hp_gcal_token');
-        const exp = parseInt(sessionStorage.getItem('hp_gcal_token_expiry') || '0');
+        const t = localStorage.getItem('hp_gcal_token');
+        const exp = parseInt(localStorage.getItem('hp_gcal_token_expiry') || '0');
         if (t && Date.now() < exp) { accessToken = t; return true; }
         accessToken = null;
         return false;
@@ -24,14 +24,66 @@ const GCalSync = (() => {
 
     function storeToken(token, expiresIn) {
         accessToken = token;
-        sessionStorage.setItem('hp_gcal_token', token);
-        sessionStorage.setItem('hp_gcal_token_expiry', String(Date.now() + expiresIn * 1000));
+        localStorage.setItem('hp_gcal_token', token);
+        localStorage.setItem('hp_gcal_token_expiry', String(Date.now() + expiresIn * 1000));
     }
 
     function clearToken() {
         accessToken = null;
-        sessionStorage.removeItem('hp_gcal_token');
-        sessionStorage.removeItem('hp_gcal_token_expiry');
+        localStorage.removeItem('hp_gcal_token');
+        localStorage.removeItem('hp_gcal_token_expiry');
+    }
+
+    // --- Silent token refresh via hidden iframe ---
+    function silentRefresh() {
+        return new Promise((resolve) => {
+            const clientId = getClientId();
+            if (!clientId) { resolve(false); return; }
+
+            const redirectUri = window.location.origin + window.location.pathname;
+            const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' +
+                'client_id=' + encodeURIComponent(clientId) +
+                '&redirect_uri=' + encodeURIComponent(redirectUri) +
+                '&response_type=token' +
+                '&scope=' + encodeURIComponent(SCOPES) +
+                '&include_granted_scopes=true' +
+                '&prompt=none';
+
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+
+            let resolved = false;
+            const timeout = setTimeout(() => {
+                if (!resolved) { resolved = true; cleanup(); resolve(false); }
+            }, 8000);
+
+            function cleanup() {
+                clearTimeout(timeout);
+                try { document.body.removeChild(iframe); } catch {}
+            }
+
+            iframe.addEventListener('load', () => {
+                try {
+                    const hash = iframe.contentWindow.location.hash;
+                    if (hash) {
+                        const params = new URLSearchParams(hash.substring(1));
+                        const token = params.get('access_token');
+                        const expiresIn = params.get('expires_in');
+                        if (token && expiresIn) {
+                            storeToken(token, parseInt(expiresIn));
+                            resolved = true; cleanup(); resolve(true);
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    // cross-origin — Google login page, no consent cached
+                }
+                if (!resolved) { resolved = true; cleanup(); resolve(false); }
+            });
+
+            iframe.src = authUrl;
+        });
     }
 
     // --- Check URL hash for OAuth redirect response ---
@@ -73,11 +125,34 @@ const GCalSync = (() => {
                 updateStatus('connected');
                 if (gotToken) showToast('Google Calendar подключён');
             } else {
-                updateStatus('disconnected');
+                // Token missing or expired — try silent refresh
+                const refreshed = await silentRefresh();
+                if (refreshed) {
+                    gapi.client.setToken({ access_token: accessToken });
+                    updateStatus('connected');
+                } else {
+                    updateStatus('disconnected');
+                }
             }
         } catch (err) {
             console.error('GCalSync init error:', err);
             updateStatus('error');
+        }
+    }
+
+    // --- Auto-sync: called after CRM login ---
+    async function autoSync() {
+        if (!isConnected()) return;
+        try {
+            const now = new Date();
+            const from = new Date(now); from.setDate(from.getDate() - 7);
+            const to = new Date(now); to.setDate(to.getDate() + 30);
+            const result = await pullEvents(from.toISOString(), to.toISOString());
+            if (result.added > 0) {
+                showToast(`Google Calendar: +${result.added} новых мероприятий`);
+            }
+        } catch (err) {
+            console.error('GCal autoSync error:', err);
         }
     }
 
@@ -129,7 +204,7 @@ const GCalSync = (() => {
             '&response_type=token' +
             '&scope=' + encodeURIComponent(SCOPES) +
             '&include_granted_scopes=true' +
-            '&prompt=consent';
+            '&prompt=select_account';
 
         window.location.href = authUrl;
     }
@@ -248,13 +323,19 @@ const GCalSync = (() => {
         };
     }
 
-    // --- API calls with retry on 401 ---
+    // --- API calls with retry on 401 (auto-refresh token) ---
     async function apiCall(fn) {
         try {
             return await fn();
         } catch (err) {
             if (err.status === 401) {
-                // Token expired — need to re-authorize
+                // Token expired — try silent refresh
+                const refreshed = await silentRefresh();
+                if (refreshed && gapiInited) {
+                    gapi.client.setToken({ access_token: accessToken });
+                    updateStatus('connected');
+                    return await fn(); // retry once
+                }
                 clearToken();
                 updateStatus('disconnected');
                 showToast('Токен истёк. Нажмите Подключить заново.');
@@ -440,6 +521,7 @@ const GCalSync = (() => {
         deleteEvent,
         pullEvents,
         fullSync,
+        autoSync,
         updateStatus,
         reinitGis
     };
