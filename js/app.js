@@ -3268,23 +3268,41 @@ function createFirebaseAccount() {
     FirebaseAuth.createAccount(email, password)
         .then(function() {
             // Save email to employee
-            const employees = DB.get('employees', []);
-            const idx = employees.findIndex(e => e.id === _fbAccountEmployeeId);
-            if (idx !== -1) {
-                employees[idx].email = email;
-                employees[idx].blocked = false;
-                DB.set('employees', employees);
-            }
+            linkEmailToEmployee(_fbAccountEmployeeId, email);
             closeModal('modal-fb-account');
             loadFirebaseAccounts();
             showToast('Аккаунт создан для ' + email);
         })
         .catch(function(errorMsg) {
-            if (errEl) { errEl.textContent = errorMsg; errEl.style.display = 'block'; }
+            // If email already exists in Firebase Auth — offer to link it
+            if (errorMsg && (errorMsg.indexOf('уже используется') !== -1 || errorMsg.indexOf('already') !== -1)) {
+                showConfirm(
+                    'Привязать существующий аккаунт?',
+                    'Аккаунт с email ' + email + ' уже существует в Firebase. Привязать его к этому сотруднику?',
+                    function() {
+                        linkEmailToEmployee(_fbAccountEmployeeId, email);
+                        closeModal('modal-fb-account');
+                        loadFirebaseAccounts();
+                        showToast('Аккаунт ' + email + ' привязан к сотруднику');
+                    }
+                );
+            } else {
+                if (errEl) { errEl.textContent = errorMsg; errEl.style.display = 'block'; }
+            }
         })
         .finally(function() {
             if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-icons-round">person_add</span> Создать'; }
         });
+}
+
+function linkEmailToEmployee(empId, email) {
+    var employees = DB.get('employees', []);
+    var idx = employees.findIndex(function(e) { return e.id === empId; });
+    if (idx !== -1) {
+        employees[idx].email = email;
+        employees[idx].blocked = false;
+        DB.set('employees', employees);
+    }
 }
 
 function toggleBlockAccount(empId, block) {
