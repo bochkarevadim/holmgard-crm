@@ -571,6 +571,7 @@ const GCalSync = (() => {
         fullSync,
         autoSync,
         updateStatus,
-        reinitGis
+        reinitGis,
+        deduplicateEvents
     };
 })();

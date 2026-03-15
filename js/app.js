@@ -428,6 +428,14 @@ function onFirestoreReady() {
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     if (typeof loadDashboard === 'function') loadDashboard();
     if (typeof loadDirectorTariffs === 'function') loadDirectorTariffs();
+
+    // Auto-cleanup duplicate events on startup
+    if (typeof GCalSync !== 'undefined' && GCalSync.deduplicateEvents) {
+        var removed = GCalSync.deduplicateEvents();
+        if (removed > 0) {
+            console.log('Startup dedup: removed ' + removed + ' duplicate events');
+        }
+    }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
