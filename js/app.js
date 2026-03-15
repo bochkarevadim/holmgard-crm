@@ -615,6 +615,7 @@ function loadEmployeeDashboard() {
 
     const btnStart = document.getElementById('emp-btn-start-work');
     const btnFinish = document.getElementById('emp-btn-finish-work');
+    const btnCancel = document.getElementById('emp-btn-cancel-shift');
     const btnDone = document.getElementById('emp-btn-shift-done');
     const shiftInfo = document.getElementById('emp-shift-info');
     const shiftStatus = document.getElementById('emp-shift-status');
@@ -625,6 +626,7 @@ function loadEmployeeDashboard() {
 
     btnStart.style.display = 'none';
     btnFinish.style.display = 'none';
+    btnCancel.style.display = 'none';
     btnDone.style.display = 'none';
     shiftInfo.style.display = 'none';
     selectedEventsDiv.style.display = 'none';
@@ -659,6 +661,7 @@ function loadEmployeeDashboard() {
             // On shift
             document.getElementById('emp-shift-end-row').style.display = 'none';
             btnFinish.style.display = 'flex';
+            btnCancel.style.display = 'flex';
             shiftStatus.className = 'shift-status active';
             statusText.textContent = 'На смене';
             shiftBadge.style.display = 'flex';
@@ -753,7 +756,8 @@ function initEmployeeScreen() {
         const roleIcons = {
             admin: 'support_agent',
             senior_instructor: 'military_tech',
-            instructor: 'sports'
+            instructor: 'sports',
+            manager: 'badge'
         };
         const roleDescriptions = {
             admin: 'Бонус от всей выручки за смену',
@@ -809,6 +813,22 @@ function initEmployeeScreen() {
         
         }
         loadEmployeeDashboard();
+    });
+
+    // Cancel shift button
+    document.getElementById('emp-btn-cancel-shift').addEventListener('click', () => {
+        showConfirm('Отменить смену?', 'Данные о смене будут удалены', () => {
+            const todayStr = todayLocal();
+            const shifts = DB.get('shifts', []);
+            const idx = shifts.findIndex(s => s.date === todayStr && s.employeeId === currentUser.id && !s.endTime);
+            if (idx >= 0) {
+                shifts.splice(idx, 1);
+                DB.set('shifts', shifts);
+            }
+            if (shiftTimerInterval) { clearInterval(shiftTimerInterval); shiftTimerInterval = null; }
+            loadEmployeeDashboard();
+            showToast('Смена отменена');
+        });
     });
 
     // Shift done button (just a visual indicator, no action needed)
@@ -1017,9 +1037,14 @@ function calculateShiftEarnings(shift) {
         bonus = Math.round(dayRevenue * (rule.bonusPercent || 0) / 100);
         const srcNames = sources.map(s => s === 'services' ? 'услуги' : s === 'optionsForGame' ? 'опции к игре' : 'доп. опции').join(', ');
         bonusDetail = `${rule.bonusPercent}% от ${formatMoney(dayRevenue)} (${srcNames})`;
+    } else if (role === 'manager') {
+        // Manager: weekly rate, not per-shift. Mark as weekly for payroll view.
+        base = 0;
+        bonus = 0;
+        bonusDetail = 'Недельная ставка';
     }
 
-    return { base, bonus, total: base + bonus, bonusDetail };
+    return { base, bonus, total: base + bonus, bonusDetail, isWeekly: role === 'manager' };
 }
 
 function getEmployeeMonthEarnings(employeeId) {
@@ -1526,7 +1551,7 @@ function navigateTo(page) {
     if (page === 'documents') loadDocuments();
     if (page === 'clients') loadClients();
     if (page === 'tariffs') loadDirectorTariffs();
-    if (page === 'settings') loadFirebaseAccounts();
+    if (page === 'settings') { loadSettingsData(); loadFirebaseAccounts(); }
 
     document.getElementById('sidebar').classList.remove('open');
 }
@@ -1860,9 +1885,10 @@ function setAllowedRolesCheckboxes(allowedRoles) {
 }
 
 function getDefaultAllowedRoles(role) {
-    if (role === 'director') return ['admin', 'senior_instructor', 'instructor'];
+    if (role === 'director') return ['admin', 'senior_instructor', 'instructor', 'manager'];
     if (role === 'admin') return ['admin'];
     if (role === 'senior_instructor') return ['senior_instructor'];
+    if (role === 'manager') return ['manager'];
     return ['instructor'];
 }
 
@@ -2230,12 +2256,99 @@ function loadFinances(tab = 'shifts') {
     const tbody = document.getElementById('fin-table-body');
 
     switch (tab) {
-        case 'shifts':
-            thead.innerHTML = '<tr><th>Дата</th><th>Сотрудник</th><th>Начало</th><th>Конец</th><th>Часы</th></tr>';
-            tbody.innerHTML = (fin.shifts || []).map(s => `
-                <tr><td>${s.date}</td><td>${s.employee}</td><td>${s.start}</td><td>${s.end}</td><td>${s.hours}ч</td></tr>
-            `).join('') || '<tr><td colspan="5" class="empty-state">Нет данных</td></tr>';
+        case 'shifts': {
+            // Read actual shifts from DB, group by week (Mon-Sun)
+            const allShifts = DB.get('shifts', []).filter(s => s.endTime && s.earnings).sort((a, b) => b.date.localeCompare(a.date));
+            const rules = DB.get('salaryRules', {});
+            const managerWeeklyRate = rules.manager?.weeklyRate || 2500;
+
+            if (allShifts.length === 0) {
+                thead.innerHTML = '';
+                tbody.innerHTML = '<div class="empty-state" style="padding:40px;text-align:center;">Нет данных о сменах</div>';
+                break;
+            }
+
+            // Group shifts by week (Mon-Sun)
+            function getWeekKey(dateStr) {
+                const d = new Date(dateStr + 'T00:00:00');
+                const day = d.getDay(); // 0=Sun, 1=Mon...
+                const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+                const monday = new Date(d);
+                monday.setDate(d.getDate() + diff);
+                return monday.getFullYear() + '-' + String(monday.getMonth() + 1).padStart(2, '0') + '-' + String(monday.getDate()).padStart(2, '0');
+            }
+            function getWeekLabel(mondayStr) {
+                const mon = new Date(mondayStr + 'T00:00:00');
+                const sun = new Date(mon);
+                sun.setDate(mon.getDate() + 6);
+                const fmt = (d) => `${d.getDate()} ${['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'][d.getMonth()]}`;
+                return `${fmt(mon)} — ${fmt(sun)}`;
+            }
+
+            const weekMap = {};
+            allShifts.forEach(s => {
+                const wk = getWeekKey(s.date);
+                if (!weekMap[wk]) weekMap[wk] = [];
+                weekMap[wk].push(s);
+            });
+
+            thead.innerHTML = '';
+            let html = '';
+            const weekKeys = Object.keys(weekMap).sort((a, b) => b.localeCompare(a));
+
+            weekKeys.forEach(wk => {
+                const shifts = weekMap[wk];
+                let weekTotal = 0;
+
+                // Calculate per-shift earnings
+                const shiftRows = shifts.map(s => {
+                    const role = s.shiftRole || s.employeeRole;
+                    const roleName = getRoleName(role);
+                    const earnTotal = s.earnings ? s.earnings.total : 0;
+                    if (role !== 'manager') weekTotal += earnTotal;
+                    const [sh, sm] = (s.startTime || '0:0').split(':').map(Number);
+                    const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
+                    const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
+                    const dateFormatted = new Date(s.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+                    return `<tr>
+                        <td>${dateFormatted}</td>
+                        <td>${s.employeeName || '—'}</td>
+                        <td><span class="list-item-badge badge-blue">${roleName}</span></td>
+                        <td>${s.startTime} — ${s.endTime}</td>
+                        <td>${hours.toFixed(1)}ч</td>
+                        <td>${role === 'manager' ? '—' : formatMoney(earnTotal)}</td>
+                    </tr>`;
+                }).join('');
+
+                // Manager weekly rate rows
+                const managerShifts = shifts.filter(s => (s.shiftRole || s.employeeRole) === 'manager');
+                const managerEmployees = [...new Set(managerShifts.map(s => s.employeeId))];
+                let managerRows = '';
+                managerEmployees.forEach(empId => {
+                    const empShift = managerShifts.find(s => s.employeeId === empId);
+                    weekTotal += managerWeeklyRate;
+                    managerRows += `<tr class="manager-weekly-row">
+                        <td colspan="4">🏷️ Менеджер: ${empShift?.employeeName || '—'} (нед. ставка)</td>
+                        <td></td>
+                        <td>${formatMoney(managerWeeklyRate)}</td>
+                    </tr>`;
+                });
+
+                html += `<div class="week-group">
+                    <div class="week-header">
+                        <span>Неделя: ${getWeekLabel(wk)}</span>
+                        <span class="week-total">Итого: ${formatMoney(weekTotal)}</span>
+                    </div>
+                    <table class="data-table">
+                        <thead><tr><th>Дата</th><th>Сотрудник</th><th>Роль</th><th>Время</th><th>Часы</th><th>Заработок</th></tr></thead>
+                        <tbody>${shiftRows}${managerRows}</tbody>
+                    </table>
+                </div>`;
+            });
+
+            tbody.innerHTML = html;
             break;
+        }
         case 'receipts': {
             // Show receipt status from completed events (Sigma 8Ф)
             const events = DB.get('events', []).filter(e => e.status === 'completed');
@@ -2552,7 +2665,9 @@ function deleteClient(id) {
 }
 
 // ===== SETTINGS =====
-function initSettings() {
+
+// Загрузка актуальных данных в форму настроек (вызывается при каждом переходе на страницу)
+function loadSettingsData() {
     const rules = DB.get('salaryRules', {
         instructor: { shiftRate: 1500, bonusPercent: 5 },
         senior_instructor: { shiftRate: 2000, bonusPercent: 7 },
@@ -2578,6 +2693,42 @@ function initSettings() {
     document.getElementById('rule-admin-src-services').checked = adminSources.includes('services');
     document.getElementById('rule-admin-src-optionsForGame').checked = adminSources.includes('optionsForGame');
     document.getElementById('rule-admin-src-options').checked = adminSources.includes('options');
+
+    // Manager weekly rate
+    document.getElementById('rule-manager-weekly-rate').value = rules.manager?.weeklyRate ?? 2500;
+
+    // Stock
+    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, grenades: 0, grenadesCritical: 100 });
+    document.getElementById('set-balls').value = stock.balls;
+    document.getElementById('set-balls-critical').value = stock.ballsCritical || 60000;
+    document.getElementById('set-grenades').value = stock.grenades;
+    document.getElementById('set-grenades-critical').value = stock.grenadesCritical || 100;
+
+    // Manager assignment list
+    loadManagerAssignment();
+}
+
+function loadManagerAssignment() {
+    const employees = DB.get('employees', []).filter(e => e.role !== 'director');
+    const container = document.getElementById('manager-assignment-list');
+    if (!container) return;
+    container.innerHTML = employees.map(emp => {
+        const roles = emp.allowedShiftRoles || getDefaultAllowedRoles(emp.role);
+        const isManager = roles.includes('manager');
+        return `<label class="option-checkbox" style="display:block;padding:8px 0;">
+            <input type="checkbox" data-emp-id="${emp.id}" class="manager-checkbox" ${isManager ? 'checked' : ''}>
+            ${emp.firstName} ${emp.lastName} <span style="color:var(--text-secondary);font-size:12px;">(${getRoleName(emp.role)})</span>
+        </label>`;
+    }).join('');
+}
+
+var _settingsInitialized = false;
+function initSettings() {
+    if (_settingsInitialized) return;
+    _settingsInitialized = true;
+
+    // Загрузить данные при инициализации
+    loadSettingsData();
 
     document.getElementById('btn-save-salary-rules').addEventListener('click', () => {
         const instructorSources = [];
@@ -2610,18 +2761,14 @@ function initSettings() {
                 shiftRate: parseFloat(document.getElementById('rule-admin-rate').value) || 0,
                 bonusPercent: parseFloat(document.getElementById('rule-admin-bonus').value) || 0,
                 bonusSources: adminSrc
+            },
+            manager: {
+                weeklyRate: parseFloat(document.getElementById('rule-manager-weekly-rate').value) || 2500
             }
         };
         DB.set('salaryRules', newRules);
         showToast('Правила начисления зарплаты сохранены');
-
     });
-
-    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, grenades: 0, grenadesCritical: 100 });
-    document.getElementById('set-balls').value = stock.balls;
-    document.getElementById('set-balls-critical').value = stock.ballsCritical || 60000;
-    document.getElementById('set-grenades').value = stock.grenades;
-    document.getElementById('set-grenades-critical').value = stock.grenadesCritical || 100;
 
     document.getElementById('btn-save-stock').addEventListener('click', () => {
         const newStock = {
@@ -2633,7 +2780,25 @@ function initSettings() {
         DB.set('stock', newStock);
         loadStock();
         showToast('Данные склада обновлены');
+    });
 
+    // Manager assignment save
+    document.getElementById('btn-save-manager-assignment').addEventListener('click', () => {
+        const employees = DB.get('employees', []);
+        document.querySelectorAll('.manager-checkbox').forEach(cb => {
+            const empId = parseInt(cb.dataset.empId);
+            const emp = employees.find(e => e.id === empId);
+            if (!emp) return;
+            let roles = emp.allowedShiftRoles || getDefaultAllowedRoles(emp.role);
+            if (cb.checked && !roles.includes('manager')) {
+                roles.push('manager');
+            } else if (!cb.checked) {
+                roles = roles.filter(r => r !== 'manager');
+            }
+            emp.allowedShiftRoles = roles;
+        });
+        DB.set('employees', employees);
+        showToast('Назначения менеджера сохранены');
     });
 
     document.querySelectorAll('.color-opt').forEach(btn => {
@@ -2746,7 +2911,7 @@ function formatMoney(n) {
 }
 
 function getRoleName(role) {
-    const names = { director: 'Директор', admin: 'Администратор', senior_instructor: 'Старший инструктор', instructor: 'Инструктор' };
+    const names = { director: 'Директор', admin: 'Администратор', senior_instructor: 'Старший инструктор', instructor: 'Инструктор', manager: 'Менеджер' };
     return names[role] || role;
 }
 

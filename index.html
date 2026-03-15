@@ -13,7 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=5">
+    <link rel="stylesheet" href="css/style.css?v=6">
 </head>
 <body>
 
@@ -191,6 +191,10 @@
                     <button class="btn-shift btn-end" id="emp-btn-finish-work" style="display:none;">
                         <span class="material-icons-round">stop</span>
                         FINISH WORK
+                    </button>
+                    <button class="btn-shift btn-cancel" id="emp-btn-cancel-shift" style="display:none;">
+                        <span class="material-icons-round">cancel</span>
+                        ОТМЕНИТЬ СМЕНУ
                     </button>
                     <button class="btn-shift btn-done" id="emp-btn-shift-done" style="display:none;">
                         <span class="material-icons-round">check_circle</span>
@@ -1151,10 +1155,33 @@
                             </div>
                             <p class="form-hint">Бонус начисляется от выбранных позиций всей выручки за смену</p>
                         </div>
+                        <div class="salary-rule-block">
+                            <div class="salary-rule-header">
+                                <span class="material-icons-round">badge</span>
+                                <h4>Менеджер</h4>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Ставка за неделю (₽)</label>
+                                    <input type="number" id="rule-manager-weekly-rate" placeholder="2500" value="2500">
+                                </div>
+                            </div>
+                            <p class="form-hint">Фиксированная недельная ставка. Начисляется если менеджер вышел хотя бы на одну смену за неделю.</p>
+                        </div>
                     </div>
                     <button class="btn-primary" id="btn-save-salary-rules">
                         <span class="material-icons-round">save</span>
                         Сохранить правила
+                    </button>
+                </div>
+
+                <div class="settings-card">
+                    <h3><span class="material-icons-round">badge</span> Назначение менеджера</h3>
+                    <p class="form-hint" style="margin-bottom: 12px;">Выберите сотрудников, которые работают в должности менеджера. Менеджер получает фиксированную недельную ставку.</p>
+                    <div id="manager-assignment-list"></div>
+                    <button class="btn-primary" id="btn-save-manager-assignment" style="margin-top: 12px;">
+                        <span class="material-icons-round">save</span>
+                        Сохранить
                     </button>
                 </div>
 
@@ -1621,9 +1648,9 @@
 </div>
 
 <script src="js/auth.js?v=3"></script>
-<script src="js/gcal.js?v=7"></script>
+<script src="js/gcal.js?v=8"></script>
 <script src="js/gsheets.js?v=8"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=12"></script>
+<script src="js/app.js?v=13"></script>
 </body>
 </html>

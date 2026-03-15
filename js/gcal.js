@@ -454,12 +454,25 @@ const GCalSync = (() => {
                         events[existingIdx] = { ...events[existingIdx], ...imported, id: events[existingIdx].id };
                         updated++;
                     } else {
-                        // New external event — import it
                         const imported = gcalToCrm(gEv);
-                        imported.id = Date.now() + Math.floor(Math.random() * 1000);
-                        events.push(imported);
-                        map[String(imported.id)] = gEv.id;
-                        added++;
+                        // Fallback dedup: check by title + date + time
+                        const dupIdx = events.findIndex(e =>
+                            e.title === imported.title &&
+                            e.date === imported.date &&
+                            e.time === imported.time
+                        );
+                        if (dupIdx >= 0) {
+                            // Found duplicate — update and link gcalEventId
+                            events[dupIdx] = { ...events[dupIdx], ...imported, id: events[dupIdx].id };
+                            map[String(events[dupIdx].id)] = gEv.id;
+                            updated++;
+                        } else {
+                            // Truly new event — import it
+                            imported.id = Date.now() + Math.floor(Math.random() * 1000);
+                            events.push(imported);
+                            map[String(imported.id)] = gEv.id;
+                            added++;
+                        }
                     }
                 }
             }
@@ -474,6 +487,34 @@ const GCalSync = (() => {
             showToast('Ошибка загрузки из Google Calendar');
             return { added: 0, updated: 0, total: 0 };
         }
+    }
+
+    // --- Cleanup existing duplicate events ---
+    function deduplicateEvents() {
+        const events = DB.get('events', []);
+        const seen = new Map();
+        const unique = [];
+        for (const ev of events) {
+            const key = `${ev.title}|${ev.date}|${ev.time}`;
+            if (!seen.has(key)) {
+                seen.set(key, ev);
+                unique.push(ev);
+            } else {
+                // Keep the one with gcalEventId if possible
+                const existing = seen.get(key);
+                if (ev.gcalEventId && !existing.gcalEventId) {
+                    const idx = unique.indexOf(existing);
+                    unique[idx] = ev;
+                    seen.set(key, ev);
+                }
+            }
+        }
+        if (unique.length < events.length) {
+            DB.set('events', unique);
+            console.log(`GCal dedup: removed ${events.length - unique.length} duplicates`);
+            return events.length - unique.length;
+        }
+        return 0;
     }
 
     // --- Full sync: pull then push all ---
@@ -493,6 +534,9 @@ const GCalSync = (() => {
 
         const pullResult = await pullEvents(from.toISOString(), to.toISOString());
 
+        // Cleanup any existing duplicates
+        const removed = deduplicateEvents();
+
         // Push all CRM events without gcal mapping
         const events = DB.get('events', []);
         const map = getEventMap();
@@ -506,7 +550,8 @@ const GCalSync = (() => {
         }
 
         updateStatus('connected');
-        const msg = `Синхронизация: +${pullResult.added} импорт, ${pullResult.updated} обновл., ${pushed} отправл.`;
+        let msg = `Синхронизация: +${pullResult.added} импорт, ${pullResult.updated} обновл., ${pushed} отправл.`;
+        if (removed > 0) msg += `, ${removed} дубл. удалено`;
         showToast(msg);
 
         return { ...pullResult, pushed };

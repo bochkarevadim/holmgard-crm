@@ -1491,6 +1491,17 @@ body {
     box-shadow: 0 8px 32px rgba(255,82,82,0.3);
     transform: translateY(-2px);
 }
+.btn-cancel {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    font-size: 14px;
+    padding: 12px;
+}
+.btn-cancel:hover {
+    border-color: var(--red);
+    color: var(--red);
+}
 .btn-done {
     background: var(--bg);
     color: var(--green);
@@ -1851,6 +1862,43 @@ body {
 }
 .fin-card-value.green { color: var(--green); }
 .fin-card-value.red { color: var(--red); }
+
+.week-group {
+    margin-bottom: 24px;
+    background: var(--card);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+.week-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: rgba(255, 214, 0, 0.08);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 14px;
+}
+.week-total {
+    color: var(--accent);
+    font-weight: 700;
+}
+.week-group .data-table {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+}
+.week-group .data-table thead th {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+.manager-weekly-row td {
+    background: rgba(255, 214, 0, 0.05);
+    font-style: italic;
+    color: var(--accent);
+}
 
 .fin-tabs, .doc-tabs {
     display: flex;
@@ -2267,6 +2315,140 @@ body {
     }
     .emp-dash-grid {
         grid-template-columns: 1fr;
+    }
+
+    /* --- Tables: horizontal scroll --- */
+    .data-table, .settings-card table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        font-size: 13px;
+    }
+    .data-table th, .data-table td {
+        white-space: nowrap;
+        padding: 8px 10px;
+    }
+
+    /* --- Modal dialogs --- */
+    .modal-content {
+        width: 95vw !important;
+        max-width: 95vw !important;
+        max-height: 88vh;
+        margin: 6vh auto;
+        padding: 16px;
+    }
+    .modal-header h2, .modal-header h3 {
+        font-size: 16px;
+    }
+
+    /* --- PIN screen optimization --- */
+    .pin-pad {
+        gap: 12px;
+    }
+    .pin-btn {
+        width: 70px;
+        height: 70px;
+        font-size: 22px;
+    }
+    .login-screen h1 {
+        font-size: 22px;
+    }
+    .login-screen .logo-icon {
+        width: 70px;
+        height: 70px;
+    }
+
+    /* --- Top bar: hide date on mobile --- */
+    .top-bar-date {
+        display: none;
+    }
+    .top-bar {
+        gap: 8px;
+    }
+    #page-title {
+        font-size: 16px;
+    }
+    .user-info {
+        font-size: 13px;
+    }
+    .user-info .material-icons-round {
+        font-size: 20px;
+    }
+
+    /* --- Calendar compact --- */
+    .calendar-grid {
+        font-size: 12px;
+    }
+    .calendar-grid .day-cell {
+        min-height: 50px;
+        padding: 2px;
+    }
+    .calendar-grid .day-events {
+        font-size: 10px;
+    }
+    .calendar-header {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    /* --- Week groups (finances) --- */
+    .week-header {
+        flex-direction: column;
+        gap: 4px;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    .week-group .data-table {
+        font-size: 12px;
+    }
+
+    /* --- Sidebar backdrop --- */
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 99;
+    }
+    .sidebar.open ~ .sidebar-backdrop {
+        display: block;
+    }
+
+    /* --- Employee shift buttons --- */
+    .btn-shift {
+        padding: 14px;
+        font-size: 14px;
+    }
+
+    /* --- Finance summary cards --- */
+    .finance-summary {
+        gap: 8px;
+    }
+    .fin-card {
+        padding: 12px;
+    }
+    .fin-card-value {
+        font-size: 18px;
+    }
+
+    /* --- Settings card compact --- */
+    .settings-card {
+        padding: 16px;
+    }
+    .salary-rule-block {
+        padding: 12px;
+    }
+
+    /* --- Clients, Documents --- */
+    .list-item {
+        padding: 10px 12px;
+    }
+
+    /* --- Firebase login form --- */
+    .firebase-login-form {
+        width: 90vw;
+        max-width: 340px;
     }
 }
 
