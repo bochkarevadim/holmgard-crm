@@ -3173,9 +3173,12 @@ function showToast(message, type = 'success') {
 
 // ===== CONFIRM DIALOG =====
 let confirmCallback = null;
-function showConfirm(title, message, callback) {
+function showConfirm(title, message, callback, okText) {
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-message').textContent = message;
+    const okBtn = document.getElementById('confirm-ok');
+    okBtn.textContent = okText || 'Удалить';
+    okBtn.className = okText ? 'btn-primary' : 'btn-danger';
     confirmCallback = callback;
     openModal('modal-confirm');
 }
@@ -3284,7 +3287,8 @@ function createFirebaseAccount() {
                         closeModal('modal-fb-account');
                         loadFirebaseAccounts();
                         showToast('Аккаунт ' + email + ' привязан к сотруднику');
-                    }
+                    },
+                    'Привязать'
                 );
             } else {
                 if (errEl) { errEl.textContent = errorMsg; errEl.style.display = 'block'; }
