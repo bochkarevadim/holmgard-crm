@@ -22,7 +22,8 @@ const FIRESTORE_KEYS = new Set([
     'stock', 'salaryRules', 'finances', 'documents',
     'loyaltyPercent', 'accentColor', 'empDashOrder',
     'initialized', 'roles_version_v2', 'multirole_v1',
-    'stock_critical_v1', 'consumables_v1', 'tariffs_version'
+    'stock_critical_v1', 'consumables_v1', 'tariffs_version',
+    'salaryPayments'
 ]);
 
 const DB = {
@@ -420,6 +421,58 @@ let revenueChart = null;
 let servicesChart = null;
 let shiftTimerInterval = null;
 let pendingShiftRole = null;
+let autoCloseInterval = null;
+let empSalaryPeriod = 'month';
+let dirSalaryPeriod = 'month';
+
+// ===== AUTO-CLOSE SHIFTS AT 23:23 =====
+function autoCloseStaleShifts() {
+    // Close any open shifts from previous days (forgotten shifts)
+    const todayStr = todayLocal();
+    const shifts = DB.get('shifts', []);
+    let changed = false;
+    shifts.forEach(s => {
+        if (!s.endTime && s.date < todayStr) {
+            s.endTime = '23:23';
+            s.autoClosedAt = new Date().toISOString();
+            s.earnings = calculateShiftEarnings(s);
+            changed = true;
+            console.log('Auto-closed stale shift from', s.date, 'for', s.employeeName);
+        }
+    });
+    if (changed) DB.set('shifts', shifts);
+    return changed;
+}
+
+function startAutoCloseTimer() {
+    if (autoCloseInterval) clearInterval(autoCloseInterval);
+    autoCloseInterval = setInterval(() => {
+        const now = new Date();
+        if (now.getHours() > 23 || (now.getHours() === 23 && now.getMinutes() >= 23)) {
+            const todayStr = todayLocal();
+            const shifts = DB.get('shifts', []);
+            let changed = false;
+            shifts.forEach(s => {
+                if (s.date === todayStr && !s.endTime) {
+                    s.endTime = '23:23';
+                    s.autoClosedAt = new Date().toISOString();
+                    s.earnings = calculateShiftEarnings(s);
+                    changed = true;
+                    // Clear localStorage backup
+                    try { localStorage.removeItem('hp_active_shift_' + s.employeeId); } catch(e) {}
+                }
+            });
+            if (changed) {
+                DB.set('shifts', shifts);
+                const empScreen = document.getElementById('employee-screen');
+                if (empScreen && empScreen.classList.contains('active')) loadEmployeeDashboard();
+                const finPage = document.getElementById('page-finances');
+                if (finPage && finPage.classList.contains('active')) loadFinances();
+                showToast('Смены автоматически закрыты в 23:23');
+            }
+        }
+    }, 60000);
+}
 
 // ===== INIT =====
 // Called from auth.js after Firestore is ready and user is authenticated
@@ -436,6 +489,12 @@ function onFirestoreReady() {
             console.log('Startup dedup: removed ' + removed + ' duplicate events');
         }
     }
+
+    // Auto-close forgotten shifts from previous days
+    autoCloseStaleShifts();
+
+    // Start timer for auto-closing shifts at 23:23
+    startAutoCloseTimer();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -619,7 +678,25 @@ function loadEmployeeDashboard() {
     if (!currentUser) return;
     const todayStr = todayLocal();
     const shifts = DB.get('shifts', []);
-    const todayShift = shifts.find(s => s.date === todayStr && s.employeeId === currentUser.id);
+    let todayShift = shifts.find(s => s.date === todayStr && s.employeeId === currentUser.id);
+
+    // Recover active shift from localStorage backup if missing in DB
+    if (!todayShift) {
+        try {
+            const backup = localStorage.getItem('hp_active_shift_' + currentUser.id);
+            if (backup) {
+                const saved = JSON.parse(backup);
+                if (saved && saved.date === todayStr && !saved.endTime) {
+                    shifts.push(saved);
+                    DB.set('shifts', shifts);
+                    todayShift = saved;
+                    console.log('Shift restored from localStorage backup');
+                } else {
+                    localStorage.removeItem('hp_active_shift_' + currentUser.id);
+                }
+            }
+        } catch(e) { console.error('Shift recovery error:', e); }
+    }
 
     const btnStart = document.getElementById('emp-btn-start-work');
     const btnFinish = document.getElementById('emp-btn-finish-work');
@@ -654,7 +731,7 @@ function loadEmployeeDashboard() {
             document.getElementById('emp-shift-end-time').textContent = todayShift.endTime;
             btnDone.style.display = 'flex';
             shiftStatus.className = 'shift-status ended';
-            statusText.textContent = 'Смена завершена';
+            statusText.textContent = todayShift.autoClosedAt ? 'Завершена автоматически (23:23)' : 'Смена завершена';
             shiftBadge.style.display = 'none';
 
             if (todayShift.earnings) {
@@ -817,8 +894,9 @@ function initEmployeeScreen() {
             const earnings = calculateShiftEarnings(shifts[idx]);
             shifts[idx].earnings = earnings;
             DB.set('shifts', shifts);
+            // Clear localStorage backup — shift is completed
+            try { localStorage.removeItem('hp_active_shift_' + currentUser.id); } catch(e) {}
             showToast(`Смена завершена! Заработок: ${formatMoney(earnings.total)}`);
-        
         }
         loadEmployeeDashboard();
     });
@@ -833,6 +911,8 @@ function initEmployeeScreen() {
                 shifts.splice(idx, 1);
                 DB.set('shifts', shifts);
             }
+            // Clear localStorage backup — shift is cancelled
+            try { localStorage.removeItem('hp_active_shift_' + currentUser.id); } catch(e) {}
             if (shiftTimerInterval) { clearInterval(shiftTimerInterval); shiftTimerInterval = null; }
             loadEmployeeDashboard();
             showToast('Смена отменена');
@@ -897,6 +977,16 @@ function initEmployeeScreen() {
 
     document.getElementById('btn-complete-payment').addEventListener('click', completeEventPayment);
 
+    // Salary period toggle
+    document.querySelectorAll('#emp-salary-period-toggle .period-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#emp-salary-period-toggle .period-toggle-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            empSalaryPeriod = btn.dataset.period;
+            loadEmployeeSalary();
+        });
+    });
+
     // Draggable dashboard cards
     initDashboardDragDrop();
 }
@@ -955,6 +1045,9 @@ function startShift(selectedEventIds) {
     const shifts = DB.get('shifts', []);
     shifts.push(shift);
     DB.set('shifts', shifts);
+
+    // Backup active shift in localStorage for tab-close resilience
+    try { localStorage.setItem('hp_active_shift_' + currentUser.id, JSON.stringify(shift)); } catch(e) {}
 
     pendingShiftRole = null;
     loadEmployeeDashboard();
@@ -1046,13 +1139,14 @@ function calculateShiftEarnings(shift) {
         const srcNames = sources.map(s => s === 'services' ? 'услуги' : s === 'optionsForGame' ? 'опции к игре' : 'доп. опции').join(', ');
         bonusDetail = `${rule.bonusPercent}% от ${formatMoney(dayRevenue)} (${srcNames})`;
     } else if (role === 'manager') {
-        // Manager: weekly rate, not per-shift. Mark as weekly for payroll view.
-        base = 0;
+        // Manager: daily rate (360₽ per day by default)
+        const mgrRule = rules.manager || { dailyRate: 360 };
+        base = mgrRule.dailyRate || 360;
         bonus = 0;
-        bonusDetail = 'Недельная ставка';
+        bonusDetail = 'Ставка менеджера за день';
     }
 
-    return { base, bonus, total: base + bonus, bonusDetail, isWeekly: role === 'manager' };
+    return { base, bonus, total: base + bonus, bonusDetail };
 }
 
 function getEmployeeMonthEarnings(employeeId) {
@@ -1067,6 +1161,111 @@ function getEmployeeMonthEarnings(employeeId) {
 
     const totalEarned = shifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
     return { shifts, totalEarned, shiftCount: shifts.length };
+}
+
+// ===== SALARY PAYMENT HELPERS =====
+function getPaymentMethodName(method) {
+    const names = { cash: 'Наличные', sberbank: 'Сбербанк', tbank: 'Т-Банк', alfabank: 'Альфа Банк' };
+    return names[method] || method;
+}
+
+function getDateRangeForPeriod(period) {
+    const now = new Date();
+    const todayStr = todayLocal();
+    let startDate;
+    if (period === 'week') {
+        const dayOfWeek = now.getDay() || 7;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - dayOfWeek + 1);
+        startDate = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+    } else if (period === 'month') {
+        startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    } else {
+        startDate = `${now.getFullYear()}-01-01`;
+    }
+    return { startDate, endDate: todayStr };
+}
+
+function getEmployeeEarningsForPeriod(employeeId, period) {
+    const { startDate, endDate } = getDateRangeForPeriod(period);
+    const shifts = DB.get('shifts', []).filter(s =>
+        s.employeeId === employeeId && s.date >= startDate && s.date <= endDate && s.endTime && s.earnings
+    );
+    const totalEarned = shifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
+    return { shifts, totalEarned, shiftCount: shifts.length };
+}
+
+function getEmployeePaymentsForPeriod(employeeId, period) {
+    const { startDate, endDate } = getDateRangeForPeriod(period);
+    const payments = DB.get('salaryPayments', []).filter(p =>
+        p.employeeId === employeeId && p.date >= startDate && p.date <= endDate
+    );
+    const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    return { payments, totalPaid };
+}
+
+function getEmployeeTotalPaid(employeeId) {
+    return DB.get('salaryPayments', [])
+        .filter(p => p.employeeId === employeeId)
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+}
+
+// ===== SALARY PAYMENT MODAL =====
+function openSalaryPaymentModal(preselectedEmployeeId) {
+    const employees = DB.get('employees', []).filter(e => e.role !== 'director');
+    const sel = document.getElementById('salary-pay-employee');
+    sel.innerHTML = '<option value="">— Выберите сотрудника —</option>' +
+        employees.map(e => `<option value="${e.id}">${e.firstName} ${e.lastName}</option>`).join('');
+    if (preselectedEmployeeId) {
+        sel.value = preselectedEmployeeId;
+        updateSalaryPayInfo(preselectedEmployeeId);
+    } else {
+        document.getElementById('salary-pay-info').style.display = 'none';
+    }
+    document.getElementById('salary-pay-amount').value = '';
+    document.getElementById('salary-pay-note').value = '';
+    const cashRadio = document.querySelector('input[name="salary-pay-method"][value="cash"]');
+    if (cashRadio) cashRadio.checked = true;
+    openModal('modal-salary-payment');
+}
+
+function updateSalaryPayInfo(employeeId) {
+    if (!employeeId) { document.getElementById('salary-pay-info').style.display = 'none'; return; }
+    const earned = getEmployeeEarningsForPeriod(parseInt(employeeId), 'month').totalEarned;
+    const paid = getEmployeePaymentsForPeriod(parseInt(employeeId), 'month').totalPaid;
+    const debt = Math.max(0, earned - paid);
+    document.getElementById('salary-pay-earned').textContent = formatMoney(earned);
+    document.getElementById('salary-pay-already-paid').textContent = formatMoney(paid);
+    document.getElementById('salary-pay-debt').textContent = formatMoney(debt);
+    document.getElementById('salary-pay-info').style.display = 'block';
+    document.getElementById('salary-pay-amount').value = debt > 0 ? debt : '';
+}
+
+function confirmSalaryPayment() {
+    const employeeId = parseInt(document.getElementById('salary-pay-employee').value);
+    if (!employeeId) { showToast('Выберите сотрудника'); return; }
+    const amount = parseFloat(document.getElementById('salary-pay-amount').value);
+    if (!amount || amount <= 0) { showToast('Введите сумму'); return; }
+    const method = document.querySelector('input[name="salary-pay-method"]:checked')?.value || 'cash';
+    const note = document.getElementById('salary-pay-note').value.trim();
+    const employees = DB.get('employees', []);
+    const emp = employees.find(e => e.id === employeeId);
+    if (!emp) return;
+    const now = new Date();
+    const payment = {
+        id: Date.now(),
+        date: todayLocal(),
+        time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        employeeId, employeeName: emp.firstName + ' ' + emp.lastName,
+        amount, method, note
+    };
+    const payments = DB.get('salaryPayments', []);
+    payments.push(payment);
+    DB.set('salaryPayments', payments);
+    closeModal('modal-salary-payment');
+    showToast(`Выплата ${formatMoney(amount)} — ${emp.firstName} (${getPaymentMethodName(method)})`);
+    const finPage = document.getElementById('page-finances');
+    if (finPage && finPage.classList.contains('active')) loadFinances(document.querySelector('.fin-tab.active')?.dataset.fin || 'shifts');
 }
 
 // ===== EMPLOYEE NAVIGATION =====
@@ -1275,32 +1474,50 @@ function completeEventPayment() {
 // ===== EMPLOYEE SALARY PAGE =====
 function loadEmployeeSalary() {
     if (!currentUser) return;
-    const monthData = getEmployeeMonthEarnings(currentUser.id);
-    const paid = currentUser.paid || 0;
-    const debt = Math.max(0, monthData.totalEarned - paid);
+    const period = empSalaryPeriod;
+    const earnData = getEmployeeEarningsForPeriod(currentUser.id, period);
+    const payData = getEmployeePaymentsForPeriod(currentUser.id, period);
+    const debt = Math.max(0, earnData.totalEarned - payData.totalPaid);
 
-    document.getElementById('emp-sal-earned').textContent = formatMoney(monthData.totalEarned);
-    document.getElementById('emp-sal-paid').textContent = formatMoney(paid);
+    document.getElementById('emp-sal-earned').textContent = formatMoney(earnData.totalEarned);
+    document.getElementById('emp-sal-paid').textContent = formatMoney(payData.totalPaid);
     document.getElementById('emp-sal-debt').textContent = formatMoney(debt);
 
+    // Shifts table
     const tbody = document.getElementById('emp-salary-table-body');
-    if (monthData.shifts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Нет завершённых смен в этом месяце</td></tr>';
+    if (earnData.shifts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет завершённых смен</td></tr>';
     } else {
-        tbody.innerHTML = monthData.shifts.map(s => {
+        tbody.innerHTML = earnData.shifts.sort((a,b) => b.date.localeCompare(a.date)).map(s => {
             const roleName = getRoleName(s.shiftRole) || s.shiftRole;
-            return `
-                <tr>
-                    <td>${s.date}</td>
-                    <td>${roleName}</td>
-                    <td>${s.startTime}</td>
-                    <td>${s.endTime}</td>
-                    <td>${formatMoney(s.earnings?.base || 0)}</td>
-                    <td style="color:var(--green)">${formatMoney(s.earnings?.bonus || 0)}</td>
-                    <td style="color:var(--accent);font-weight:700">${formatMoney(s.earnings?.total || 0)}</td>
-                </tr>
-            `;
+            const [sh, sm] = (s.startTime || '0:0').split(':').map(Number);
+            const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
+            const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
+            return `<tr>
+                <td>${s.date}</td>
+                <td>${roleName}</td>
+                <td>${hours.toFixed(1)}ч</td>
+                <td>${formatMoney(s.earnings?.base || 0)}</td>
+                <td style="color:var(--green)">${formatMoney(s.earnings?.bonus || 0)}</td>
+                <td style="color:var(--accent);font-weight:700">${formatMoney(s.earnings?.total || 0)}</td>
+            </tr>`;
         }).join('');
+    }
+
+    // Payments table
+    const payTbody = document.getElementById('emp-payments-table-body');
+    if (payTbody) {
+        if (payData.payments.length === 0) {
+            payTbody.innerHTML = '<tr><td colspan="5" class="empty-state">Нет выплат</td></tr>';
+        } else {
+            payTbody.innerHTML = payData.payments.sort((a,b) => b.date.localeCompare(a.date)).map(p => `<tr>
+                <td>${p.date}</td>
+                <td>${p.time}</td>
+                <td style="color:var(--green);font-weight:700">${formatMoney(p.amount)}</td>
+                <td>${getPaymentMethodName(p.method)}</td>
+                <td>${p.note || '—'}</td>
+            </tr>`).join('');
+        }
     }
 }
 
@@ -2251,6 +2468,12 @@ function initFinances() {
             loadFinances(tab.dataset.fin);
         });
     });
+    // Salary payment modal
+    document.getElementById('btn-salary-payout')?.addEventListener('click', () => openSalaryPaymentModal());
+    document.getElementById('modal-salary-payment-close')?.addEventListener('click', () => closeModal('modal-salary-payment'));
+    document.getElementById('btn-cancel-salary-payment')?.addEventListener('click', () => closeModal('modal-salary-payment'));
+    document.getElementById('btn-confirm-salary-payment')?.addEventListener('click', confirmSalaryPayment);
+    document.getElementById('salary-pay-employee')?.addEventListener('change', function() { updateSalaryPayInfo(this.value); });
 }
 
 function loadFinances(tab = 'shifts') {
@@ -2267,8 +2490,6 @@ function loadFinances(tab = 'shifts') {
         case 'shifts': {
             // Read actual shifts from DB, group by week (Mon-Sun)
             const allShifts = DB.get('shifts', []).filter(s => s.endTime && s.earnings).sort((a, b) => b.date.localeCompare(a.date));
-            const rules = DB.get('salaryRules', {});
-            const managerWeeklyRate = rules.manager?.weeklyRate || 2500;
 
             if (allShifts.length === 0) {
                 thead.innerHTML = '';
@@ -2313,34 +2534,24 @@ function loadFinances(tab = 'shifts') {
                     const role = s.shiftRole || s.employeeRole;
                     const roleName = getRoleName(role);
                     const earnTotal = s.earnings ? s.earnings.total : 0;
-                    if (role !== 'manager') weekTotal += earnTotal;
+                    weekTotal += earnTotal;
                     const [sh, sm] = (s.startTime || '0:0').split(':').map(Number);
                     const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
                     const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
                     const dateFormatted = new Date(s.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+                    const isManager = role === 'manager';
+                    const baseRate = s.earnings?.base || 0;
+                    const bonusRate = s.earnings?.bonus || 0;
                     return `<tr>
                         <td>${dateFormatted}</td>
+                        <td>${hours.toFixed(1)}ч</td>
                         <td>${s.employeeName || '—'}</td>
                         <td><span class="list-item-badge badge-blue">${roleName}</span></td>
-                        <td>${s.startTime} — ${s.endTime}</td>
-                        <td>${hours.toFixed(1)}ч</td>
-                        <td>${role === 'manager' ? '—' : formatMoney(earnTotal)}</td>
+                        <td>${isManager ? '—' : formatMoney(baseRate)}</td>
+                        <td style="color:var(--green)">${bonusRate > 0 ? formatMoney(bonusRate) : '—'}</td>
+                        <td>${isManager ? formatMoney(baseRate) : '—'}</td>
                     </tr>`;
                 }).join('');
-
-                // Manager weekly rate rows
-                const managerShifts = shifts.filter(s => (s.shiftRole || s.employeeRole) === 'manager');
-                const managerEmployees = [...new Set(managerShifts.map(s => s.employeeId))];
-                let managerRows = '';
-                managerEmployees.forEach(empId => {
-                    const empShift = managerShifts.find(s => s.employeeId === empId);
-                    weekTotal += managerWeeklyRate;
-                    managerRows += `<tr class="manager-weekly-row">
-                        <td colspan="4">🏷️ Менеджер: ${empShift?.employeeName || '—'} (нед. ставка)</td>
-                        <td></td>
-                        <td>${formatMoney(managerWeeklyRate)}</td>
-                    </tr>`;
-                });
 
                 html += `<div class="week-group">
                     <div class="week-header">
@@ -2348,13 +2559,100 @@ function loadFinances(tab = 'shifts') {
                         <span class="week-total">Итого: ${formatMoney(weekTotal)}</span>
                     </div>
                     <table class="data-table">
-                        <thead><tr><th>Дата</th><th>Сотрудник</th><th>Роль</th><th>Время</th><th>Часы</th><th>Заработок</th></tr></thead>
-                        <tbody>${shiftRows}${managerRows}</tbody>
+                        <thead><tr><th>Дата</th><th>Часы</th><th>Сотрудник</th><th>Роль</th><th>Ставка</th><th>Бонус</th><th>Менеджер</th></tr></thead>
+                        <tbody>${shiftRows}</tbody>
                     </table>
                 </div>`;
             });
 
             tbody.innerHTML = html;
+            break;
+        }
+        case 'salary': {
+            const period = dirSalaryPeriod;
+            const { startDate, endDate } = getDateRangeForPeriod(period);
+            const employees = DB.get('employees', []).filter(e => e.role !== 'director');
+            const allPayments = DB.get('salaryPayments', []).filter(p => p.date >= startDate && p.date <= endDate);
+
+            let totalPayroll = 0;
+            const byMethod = { cash: 0, sberbank: 0, tbank: 0, alfabank: 0 };
+            allPayments.forEach(p => { totalPayroll += p.amount || 0; if (byMethod[p.method] !== undefined) byMethod[p.method] += p.amount || 0; });
+
+            const empBreakdown = employees.map(emp => {
+                const earnData = getEmployeeEarningsForPeriod(emp.id, period);
+                const payData = getEmployeePaymentsForPeriod(emp.id, period);
+                return { id: emp.id, name: emp.firstName + ' ' + emp.lastName, earned: earnData.totalEarned, paid: payData.totalPaid, debt: Math.max(0, earnData.totalEarned - payData.totalPaid), shiftCount: earnData.shiftCount };
+            }).filter(e => e.earned > 0 || e.paid > 0);
+
+            const totalEarned = empBreakdown.reduce((s, e) => s + e.earned, 0);
+            const totalDebt = empBreakdown.reduce((s, e) => s + e.debt, 0);
+            const periodLabels = { week: 'Неделя', month: 'Месяц', year: 'Год' };
+
+            thead.innerHTML = '';
+            let html = '';
+
+            // Period toggle
+            html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+                <div class="period-toggle" id="dir-salary-period-toggle">
+                    ${['week', 'month', 'year'].map(p => `<button class="period-toggle-btn ${p === period ? 'active' : ''}" data-period="${p}">${periodLabels[p]}</button>`).join('')}
+                </div>
+                <button class="btn-primary btn-sm" id="btn-salary-payout-inline" style="margin-left:auto;">
+                    <span class="material-icons-round" style="font-size:16px;">account_balance_wallet</span>
+                    Выплатить зарплату
+                </button>
+            </div>`;
+
+            // Summary cards
+            html += `<div class="salary-summary" style="margin-bottom:16px;">
+                <div class="salary-card"><span class="material-icons-round">payments</span><div><p class="salary-card-label">Начислено</p><p class="salary-card-value">${formatMoney(totalEarned)}</p></div></div>
+                <div class="salary-card"><span class="material-icons-round">check_circle</span><div><p class="salary-card-label">Выплачено</p><p class="salary-card-value green">${formatMoney(totalPayroll)}</p></div></div>
+                <div class="salary-card"><span class="material-icons-round">warning</span><div><p class="salary-card-label">Задолженность</p><p class="salary-card-value red">${formatMoney(totalDebt)}</p></div></div>
+            </div>`;
+
+            // Per-employee table
+            html += `<div class="week-group"><div class="week-header"><span>По сотрудникам</span></div>
+                <table class="data-table"><thead><tr><th>Сотрудник</th><th>Смен</th><th>Начислено</th><th>Выплачено</th><th>Долг</th><th></th></tr></thead><tbody>
+                ${empBreakdown.length ? empBreakdown.map(e => `<tr>
+                    <td><strong>${e.name}</strong></td><td>${e.shiftCount}</td>
+                    <td>${formatMoney(e.earned)}</td><td style="color:var(--green)">${formatMoney(e.paid)}</td>
+                    <td style="color:${e.debt > 0 ? 'var(--red)' : 'var(--green)'};font-weight:700">${formatMoney(e.debt)}</td>
+                    <td>${e.debt > 0 ? `<button class="btn-primary btn-sm btn-pay-emp" data-emp-id="${e.id}">Выплатить</button>` : '—'}</td>
+                </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Нет данных</td></tr>'}
+                </tbody></table></div>`;
+
+            // Payment method breakdown
+            const methodsWithData = Object.entries(byMethod).filter(([_, v]) => v > 0);
+            if (methodsWithData.length > 0) {
+                html += `<div class="week-group"><div class="week-header"><span>По способам оплаты</span></div>
+                    <table class="data-table"><thead><tr><th>Способ</th><th>Сумма</th><th>Кол-во</th></tr></thead><tbody>
+                    ${methodsWithData.map(([method, sum]) => {
+                        const count = allPayments.filter(p => p.method === method).length;
+                        return `<tr><td>${getPaymentMethodName(method)}</td><td>${formatMoney(sum)}</td><td>${count}</td></tr>`;
+                    }).join('')}
+                    </tbody></table></div>`;
+            }
+
+            // Payment history
+            html += `<div class="week-group"><div class="week-header"><span>История выплат</span></div>
+                <table class="data-table"><thead><tr><th>Дата</th><th>Время</th><th>Сотрудник</th><th>Сумма</th><th>Способ</th><th>Примечание</th></tr></thead><tbody>
+                ${allPayments.length ? allPayments.slice().reverse().map(p => `<tr>
+                    <td>${p.date}</td><td>${p.time}</td><td>${p.employeeName}</td>
+                    <td style="color:var(--green);font-weight:700">${formatMoney(p.amount)}</td>
+                    <td>${getPaymentMethodName(p.method)}</td><td>${p.note || '—'}</td>
+                </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Нет выплат</td></tr>'}
+                </tbody></table></div>`;
+
+            tbody.innerHTML = html;
+
+            // Bind period toggle
+            document.querySelectorAll('#dir-salary-period-toggle .period-toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => { dirSalaryPeriod = btn.dataset.period; loadFinances('salary'); });
+            });
+            // Bind pay buttons
+            document.querySelectorAll('.btn-pay-emp').forEach(btn => {
+                btn.addEventListener('click', () => openSalaryPaymentModal(parseInt(btn.dataset.empId)));
+            });
+            document.getElementById('btn-salary-payout-inline')?.addEventListener('click', () => openSalaryPaymentModal());
             break;
         }
         case 'receipts': {
@@ -2703,7 +3001,7 @@ function loadSettingsData() {
     document.getElementById('rule-admin-src-options').checked = adminSources.includes('options');
 
     // Manager weekly rate
-    document.getElementById('rule-manager-weekly-rate').value = rules.manager?.weeklyRate ?? 2500;
+    document.getElementById('rule-manager-daily-rate').value = rules.manager?.dailyRate ?? 360;
 
     // Stock
     const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, grenades: 0, grenadesCritical: 100 });
@@ -2771,7 +3069,7 @@ function initSettings() {
                 bonusSources: adminSrc
             },
             manager: {
-                weeklyRate: parseFloat(document.getElementById('rule-manager-weekly-rate').value) || 2500
+                dailyRate: parseFloat(document.getElementById('rule-manager-daily-rate').value) || 360
             }
         };
         DB.set('salaryRules', newRules);

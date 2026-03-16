@@ -13,7 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=6">
+    <link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
 
@@ -286,13 +286,18 @@
         <div class="page" id="emp-page-salary">
             <div class="section-header">
                 <h2>Зарплата</h2>
+                <div class="period-toggle" id="emp-salary-period-toggle">
+                    <button class="period-toggle-btn" data-period="week">Неделя</button>
+                    <button class="period-toggle-btn active" data-period="month">Месяц</button>
+                    <button class="period-toggle-btn" data-period="year">Год</button>
+                </div>
             </div>
 
             <div class="salary-summary">
                 <div class="salary-card">
                     <span class="material-icons-round">payments</span>
                     <div>
-                        <p class="salary-card-label">Начислено за месяц</p>
+                        <p class="salary-card-label">Начислено</p>
                         <p class="salary-card-value" id="emp-sal-earned">0 ₽</p>
                     </div>
                 </div>
@@ -321,14 +326,31 @@
                         <tr>
                             <th>Дата</th>
                             <th>Роль</th>
-                            <th>Начало</th>
-                            <th>Конец</th>
+                            <th>Часы</th>
                             <th>Ставка</th>
                             <th>Бонус</th>
                             <th>Итого</th>
                         </tr>
                     </thead>
                     <tbody id="emp-salary-table-body"></tbody>
+                </table>
+            </div>
+
+            <div class="section-header" style="margin-top:24px;">
+                <h2>История выплат</h2>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Время</th>
+                            <th>Сумма</th>
+                            <th>Способ</th>
+                            <th>Примечание</th>
+                        </tr>
+                    </thead>
+                    <tbody id="emp-payments-table-body"></tbody>
                 </table>
             </div>
         </div>
@@ -742,6 +764,7 @@
 
             <div class="fin-tabs">
                 <button class="fin-tab active" data-fin="shifts">Смены</button>
+                <button class="fin-tab" data-fin="salary">Зарплаты</button>
                 <button class="fin-tab" data-fin="receipts">Чеки</button>
                 <button class="fin-tab" data-fin="orders">Заказы</button>
                 <button class="fin-tab" data-fin="cashops">Операции с наличностью</button>
@@ -1162,11 +1185,11 @@
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label>Ставка за неделю (₽)</label>
-                                    <input type="number" id="rule-manager-weekly-rate" placeholder="2500" value="2500">
+                                    <label>Ставка за день (₽)</label>
+                                    <input type="number" id="rule-manager-daily-rate" placeholder="360" value="360">
                                 </div>
                             </div>
-                            <p class="form-hint">Фиксированная недельная ставка. Начисляется если менеджер вышел хотя бы на одну смену за неделю.</p>
+                            <p class="form-hint">Фиксированная дневная ставка. Начисляется за каждый день, когда менеджер вышел на смену.</p>
                         </div>
                     </div>
                     <button class="btn-primary" id="btn-save-salary-rules">
@@ -1177,7 +1200,7 @@
 
                 <div class="settings-card">
                     <h3><span class="material-icons-round">badge</span> Назначение менеджера</h3>
-                    <p class="form-hint" style="margin-bottom: 12px;">Выберите сотрудников, которые работают в должности менеджера. Менеджер получает фиксированную недельную ставку.</p>
+                    <p class="form-hint" style="margin-bottom: 12px;">Выберите сотрудников, которые работают в должности менеджера. Менеджер получает фиксированную дневную ставку.</p>
                     <div id="manager-assignment-list"></div>
                     <button class="btn-primary" id="btn-save-manager-assignment" style="margin-top: 12px;">
                         <span class="material-icons-round">save</span>
@@ -1647,10 +1670,73 @@
     </div>
 </div>
 
+<!-- ===== SALARY PAYMENT MODAL ===== -->
+<div class="modal-overlay" id="modal-salary-payment">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h2>Выплата зарплаты</h2>
+            <button class="btn-close" id="modal-salary-payment-close">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Сотрудник</label>
+                <select id="salary-pay-employee"></select>
+            </div>
+            <div class="salary-pay-info" id="salary-pay-info" style="display:none;">
+                <div class="salary-pay-stat"><span>Начислено (месяц):</span><strong id="salary-pay-earned">0 ₽</strong></div>
+                <div class="salary-pay-stat"><span>Выплачено:</span><strong id="salary-pay-already-paid">0 ₽</strong></div>
+                <div class="salary-pay-stat"><span>Задолженность:</span><strong id="salary-pay-debt" style="color:var(--red)">0 ₽</strong></div>
+            </div>
+            <div class="form-group">
+                <label>Сумма (₽)</label>
+                <input type="number" id="salary-pay-amount" placeholder="0" min="0">
+            </div>
+            <div class="form-group">
+                <label>Способ оплаты</label>
+                <div class="payment-method-grid">
+                    <label class="payment-method-option">
+                        <input type="radio" name="salary-pay-method" value="cash" checked>
+                        <span class="material-icons-round">payments</span>
+                        <span>Наличные</span>
+                    </label>
+                    <label class="payment-method-option">
+                        <input type="radio" name="salary-pay-method" value="sberbank">
+                        <span class="material-icons-round">account_balance</span>
+                        <span>Сбербанк</span>
+                    </label>
+                    <label class="payment-method-option">
+                        <input type="radio" name="salary-pay-method" value="tbank">
+                        <span class="material-icons-round">account_balance</span>
+                        <span>Т-Банк</span>
+                    </label>
+                    <label class="payment-method-option">
+                        <input type="radio" name="salary-pay-method" value="alfabank">
+                        <span class="material-icons-round">account_balance</span>
+                        <span>Альфа Банк</span>
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Примечание</label>
+                <input type="text" id="salary-pay-note" placeholder="Необязательно">
+            </div>
+            <div class="form-actions">
+                <button class="btn-secondary" id="btn-cancel-salary-payment">Отмена</button>
+                <button class="btn-primary" id="btn-confirm-salary-payment">
+                    <span class="material-icons-round">send</span>
+                    Выплатить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="js/auth.js?v=3"></script>
 <script src="js/gcal.js?v=9"></script>
 <script src="js/gsheets.js?v=8"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=16"></script>
+<script src="js/app.js?v=17"></script>
 </body>
 </html>

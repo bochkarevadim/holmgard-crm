@@ -1894,11 +1894,75 @@ body {
     text-transform: uppercase;
     color: var(--text-secondary);
 }
-.manager-weekly-row td {
-    background: rgba(255, 214, 0, 0.05);
-    font-style: italic;
-    color: var(--accent);
+/* Period toggle */
+.period-toggle {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-input);
+    border-radius: var(--radius-sm);
+    padding: 3px;
 }
+.period-toggle-btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    font-family: inherit;
+}
+.period-toggle-btn.active {
+    background: var(--accent);
+    color: var(--bg);
+}
+.period-toggle-btn:hover:not(.active) {
+    color: var(--text);
+}
+
+/* Salary payment modal */
+.salary-pay-info {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    margin-bottom: 16px;
+}
+.salary-pay-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 13px;
+}
+.salary-pay-stat span { color: var(--text-secondary); }
+.salary-pay-stat strong { color: var(--text); }
+
+.payment-method-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.payment-method-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.payment-method-option:has(input:checked) {
+    border-color: var(--accent);
+    background: rgba(255, 214, 0, 0.08);
+    color: var(--text);
+}
+.payment-method-option input { display: none; }
+.payment-method-option .material-icons-round { font-size: 18px; color: var(--accent); }
 
 .fin-tabs, .doc-tabs {
     display: flex;
@@ -2450,6 +2514,13 @@ body {
         width: 90vw;
         max-width: 340px;
     }
+    .period-toggle { padding: 2px; }
+    .period-toggle-btn { padding: 5px 10px; font-size: 11px; }
+    .section-header { flex-wrap: wrap; gap: 8px; }
+    .payment-method-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .payment-method-option { padding: 8px 10px; font-size: 12px; }
+    .salary-pay-info { padding: 10px 12px; }
+    .salary-pay-stat { font-size: 12px; }
 }
 
 /* ===== SCROLLBAR ===== */
