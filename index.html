@@ -13,7 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=7">
+    <link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
 
@@ -532,56 +532,23 @@
 
         <!-- ===== EMPLOYEES PAGE ===== -->
         <div class="page" id="page-employees">
-            <div class="salary-summary">
-                <div class="salary-card">
-                    <span class="material-icons-round">payments</span>
-                    <div>
-                        <p class="salary-card-label">Всего к выплате</p>
-                        <p class="salary-card-value" id="salary-total">0 ₽</p>
-                    </div>
-                </div>
-                <div class="salary-card">
-                    <span class="material-icons-round">check_circle</span>
-                    <div>
-                        <p class="salary-card-label">Выплачено</p>
-                        <p class="salary-card-value green" id="salary-paid">0 ₽</p>
-                    </div>
-                </div>
-                <div class="salary-card">
-                    <span class="material-icons-round">warning</span>
-                    <div>
-                        <p class="salary-card-label">Задолженность</p>
-                        <p class="salary-card-value red" id="salary-debt">0 ₽</p>
-                    </div>
-                </div>
-            </div>
-
             <div class="section-header">
-                <h2>Список сотрудников</h2>
+                <h2>Сотрудники</h2>
                 <button class="btn-primary" id="btn-add-employee">
                     <span class="material-icons-round">person_add</span>
                     Добавить
                 </button>
             </div>
 
-            <div class="table-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Имя</th>
-                            <th>Должность</th>
-                            <th>Телефон</th>
-                            <th>ПИН-код</th>
-                            <th>Смен</th>
-                            <th>Начислено</th>
-                            <th>Выплачено</th>
-                            <th>Долг</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody id="employees-table-body"></tbody>
-                </table>
+            <div class="emp-dashboard-controls">
+                <div class="period-toggle" id="emp-dash-period-toggle">
+                    <button class="period-toggle-btn" data-period="week">Неделя</button>
+                    <button class="period-toggle-btn active" data-period="month">Месяц</button>
+                    <button class="period-toggle-btn" data-period="year">Год</button>
+                </div>
             </div>
+
+            <div class="emp-dashboard-cards" id="emp-dashboard-cards"></div>
         </div>
 
         <!-- ===== EMPLOYEE DETAIL MODAL ===== -->
@@ -763,9 +730,7 @@
             </div>
 
             <div class="fin-tabs">
-                <button class="fin-tab active" data-fin="shifts">Смены</button>
-                <button class="fin-tab" data-fin="salary">Зарплаты</button>
-                <button class="fin-tab" data-fin="receipts">Чеки</button>
+                <button class="fin-tab active" data-fin="receipts">Чеки</button>
                 <button class="fin-tab" data-fin="orders">Заказы</button>
                 <button class="fin-tab" data-fin="cashops">Операции с наличностью</button>
             </div>
@@ -1737,6 +1702,6 @@
 <script src="js/gcal.js?v=9"></script>
 <script src="js/gsheets.js?v=8"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=17"></script>
+<script src="js/app.js?v=18"></script>
 </body>
 </html>

@@ -1276,6 +1276,51 @@ body {
 .salary-card-value.green { color: var(--green); }
 .salary-card-value.red { color: var(--red); }
 
+/* Employee Dashboard Cards */
+.emp-dashboard-controls { margin-bottom: 20px; }
+.emp-dashboard-cards { display: flex; flex-direction: column; gap: 16px; }
+
+.emp-dash-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: var(--transition);
+}
+.emp-dash-card:hover { border-color: var(--accent-dim); }
+
+.emp-dash-card-header {
+    display: flex;
+    align-items: center;
+    padding: 20px;
+    cursor: pointer;
+    gap: 20px;
+}
+.emp-dash-card-info { min-width: 160px; }
+.emp-dash-card-info h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+
+.emp-dash-card-stats { display: flex; gap: 24px; flex: 1; }
+.emp-dash-stat { display: flex; flex-direction: column; }
+.emp-dash-stat-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+.emp-dash-stat-value { font-size: 18px; font-weight: 700; }
+.emp-dash-stat-value.green { color: var(--green); }
+.emp-dash-stat-value.red { color: var(--red); }
+
+.emp-dash-chevron { color: var(--text-secondary); transition: var(--transition); margin-left: auto; flex-shrink: 0; }
+
+.emp-dash-card-body { border-top: 1px solid var(--border); padding: 16px 20px; }
+.emp-dash-section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.empty-state-text { color: var(--text-secondary); font-size: 14px; padding: 12px 0; }
+
+.emp-dash-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
 .section-header {
     display: flex;
     align-items: center;
@@ -2517,6 +2562,14 @@ body {
     .period-toggle { padding: 2px; }
     .period-toggle-btn { padding: 5px 10px; font-size: 11px; }
     .section-header { flex-wrap: wrap; gap: 8px; }
+    .emp-dash-card-header { flex-direction: column; align-items: flex-start; padding: 16px; gap: 12px; }
+    .emp-dash-card-info { min-width: auto; }
+    .emp-dash-card-stats { flex-wrap: wrap; gap: 12px; }
+    .emp-dash-stat-value { font-size: 16px; }
+    .emp-dash-chevron { position: absolute; right: 16px; top: 16px; }
+    .emp-dash-card-header { position: relative; }
+    .emp-dash-card-body { padding: 12px; }
+    .emp-dash-card-actions { flex-wrap: wrap; }
     .payment-method-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
     .payment-method-option { padding: 8px 10px; font-size: 12px; }
     .salary-pay-info { padding: 10px 12px; }

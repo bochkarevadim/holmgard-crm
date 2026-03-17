@@ -1264,8 +1264,10 @@ function confirmSalaryPayment() {
     DB.set('salaryPayments', payments);
     closeModal('modal-salary-payment');
     showToast(`Выплата ${formatMoney(amount)} — ${emp.firstName} (${getPaymentMethodName(method)})`);
+    const empPage = document.getElementById('page-employees');
+    if (empPage && empPage.classList.contains('active')) loadEmployees();
     const finPage = document.getElementById('page-finances');
-    if (finPage && finPage.classList.contains('active')) loadFinances(document.querySelector('.fin-tab.active')?.dataset.fin || 'shifts');
+    if (finPage && finPage.classList.contains('active')) loadFinances(document.querySelector('.fin-tab.active')?.dataset.fin || 'receipts');
 }
 
 // ===== EMPLOYEE NAVIGATION =====
@@ -2064,43 +2066,118 @@ function initEmployees() {
     document.getElementById('employee-form').addEventListener('submit', saveEmployee);
 }
 
+let empDashPeriod = 'month';
+
 function loadEmployees() {
-    const employees = DB.get('employees', []);
-    let totalEarned = 0, totalPaid = 0;
-    const empData = employees.map(e => {
-        const monthData = getEmployeeMonthEarnings(e.id);
-        const earned = monthData.totalEarned;
-        const paid = e.paid || 0;
-        totalEarned += earned;
-        totalPaid += paid;
-        return { ...e, earned, shiftCount: monthData.shiftCount, debt: Math.max(0, earned - paid) };
+    const employees = DB.get('employees', []).filter(e => e.role !== 'director');
+    const container = document.getElementById('emp-dashboard-cards');
+    if (!container) return;
+
+    const allShifts = DB.get('shifts', []).filter(s => s.endTime && s.earnings);
+    const allPayments = DB.get('salaryPayments', []);
+    const { startDate, endDate } = getDateRangeForPeriod(empDashPeriod);
+
+    container.innerHTML = employees.map(emp => {
+        const empShifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= startDate && s.date <= endDate).sort((a, b) => b.date.localeCompare(a.date));
+        const empPayments = allPayments.filter(p => p.employeeId === emp.id && p.date >= startDate && p.date <= endDate);
+        const earned = empShifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
+        const paid = empPayments.reduce((s, p) => s + (p.amount || 0), 0);
+        const debt = Math.max(0, earned - paid);
+
+        const shiftRows = empShifts.map(s => {
+            const role = s.shiftRole || s.employeeRole;
+            const [sh, sm] = (s.startTime || '0:0').split(':').map(Number);
+            const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
+            const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
+            const dateF = new Date(s.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const isManager = role === 'manager';
+            const base = s.earnings?.base || 0;
+            const bonus = s.earnings?.bonus || 0;
+            return `<tr>
+                <td>${dateF}</td>
+                <td>${hours.toFixed(1)}ч</td>
+                <td>${s.employeeName || '—'}</td>
+                <td><span class="list-item-badge badge-blue">${getRoleName(role)}</span></td>
+                <td>${isManager ? '—' : formatMoney(base)}</td>
+                <td style="color:var(--green)">${bonus > 0 ? formatMoney(bonus) : '—'}</td>
+                <td>${isManager ? formatMoney(base) : '—'}</td>
+                <td>${formatMoney(s.earnings?.total || 0)}</td>
+            </tr>`;
+        }).join('');
+
+        const paymentRows = empPayments.slice().reverse().map(p => `<tr>
+            <td>${p.date}</td><td>${p.time}</td><td style="color:var(--green);font-weight:700">${formatMoney(p.amount)}</td>
+            <td>${getPaymentMethodName(p.method)}</td><td>${p.note || '—'}</td>
+        </tr>`).join('');
+
+        return `<div class="emp-dash-card" data-emp-id="${emp.id}">
+            <div class="emp-dash-card-header" onclick="toggleEmpCard(${emp.id})">
+                <div class="emp-dash-card-info">
+                    <h3>${emp.firstName} ${emp.lastName}</h3>
+                    <span class="list-item-badge badge-blue">${getRoleName(emp.role)}</span>
+                </div>
+                <div class="emp-dash-card-stats">
+                    <div class="emp-dash-stat">
+                        <span class="emp-dash-stat-label">К выплате</span>
+                        <span class="emp-dash-stat-value">${formatMoney(earned)}</span>
+                    </div>
+                    <div class="emp-dash-stat">
+                        <span class="emp-dash-stat-label">Выплачено</span>
+                        <span class="emp-dash-stat-value green">${formatMoney(paid)}</span>
+                    </div>
+                    <div class="emp-dash-stat">
+                        <span class="emp-dash-stat-label">Задолженность</span>
+                        <span class="emp-dash-stat-value ${debt > 0 ? 'red' : ''}">${formatMoney(debt)}</span>
+                    </div>
+                </div>
+                <span class="material-icons-round emp-dash-chevron">expand_more</span>
+            </div>
+            <div class="emp-dash-card-body" id="emp-card-body-${emp.id}" style="display:none;">
+                <div class="emp-dash-section-title">Смены</div>
+                ${empShifts.length ? `<div class="table-container"><table class="data-table">
+                    <thead><tr><th>Дата</th><th>Часы</th><th>Сотрудник</th><th>Роль</th><th>Ставка</th><th>Бонус</th><th>Менеджер</th><th>Начислено</th></tr></thead>
+                    <tbody>${shiftRows}</tbody>
+                </table></div>` : '<p class="empty-state-text">Нет смен за период</p>'}
+                ${empPayments.length ? `<div class="emp-dash-section-title" style="margin-top:16px;">Выплаты</div>
+                <div class="table-container"><table class="data-table">
+                    <thead><tr><th>Дата</th><th>Время</th><th>Сумма</th><th>Способ</th><th>Примечание</th></tr></thead>
+                    <tbody>${paymentRows}</tbody>
+                </table></div>` : ''}
+                <div class="emp-dash-card-actions">
+                    <button class="btn-primary" onclick="openSalaryPaymentModal(${emp.id})">
+                        <span class="material-icons-round">account_balance_wallet</span>
+                        Выплатить зарплату
+                    </button>
+                    <button class="btn-action" onclick="openEmployeeModal('${emp.id}')" title="Редактировать">
+                        <span class="material-icons-round">edit</span>
+                    </button>
+                    <button class="btn-action danger" onclick="deleteEmployee('${emp.id}')" title="Удалить">
+                        <span class="material-icons-round">delete</span>
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+
+    // Bind period toggle
+    document.querySelectorAll('#emp-dash-period-toggle .period-toggle-btn').forEach(btn => {
+        btn.onclick = () => {
+            empDashPeriod = btn.dataset.period;
+            document.querySelectorAll('#emp-dash-period-toggle .period-toggle-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadEmployees();
+        };
     });
+}
 
-    document.getElementById('salary-total').textContent = formatMoney(totalEarned);
-    document.getElementById('salary-paid').textContent = formatMoney(totalPaid);
-    document.getElementById('salary-debt').textContent = formatMoney(Math.max(0, totalEarned - totalPaid));
-
-    const tbody = document.getElementById('employees-table-body');
-    tbody.innerHTML = empData.map(e => `
-        <tr>
-            <td><strong>${e.firstName} ${e.lastName}</strong></td>
-            <td>${getRoleName(e.role)}</td>
-            <td>${e.phone || '—'}</td>
-            <td><code>${e.pin}</code></td>
-            <td>${e.shiftCount}</td>
-            <td>${formatMoney(e.earned)}</td>
-            <td>${formatMoney(e.paid || 0)}</td>
-            <td><span style="color:${e.debt > 0 ? 'var(--red)' : 'var(--green)'};font-weight:700">${formatMoney(e.debt)}</span></td>
-            <td>
-                <button class="btn-action" onclick="openEmployeeModal('${e.id}')" title="Редактировать">
-                    <span class="material-icons-round">edit</span>
-                </button>
-                <button class="btn-action danger" onclick="deleteEmployee('${e.id}')" title="Удалить">
-                    <span class="material-icons-round">delete</span>
-                </button>
-            </td>
-        </tr>
-    `).join('');
+function toggleEmpCard(empId) {
+    const body = document.getElementById('emp-card-body-' + empId);
+    if (!body) return;
+    const card = body.closest('.emp-dash-card');
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    const chevron = card?.querySelector('.emp-dash-chevron');
+    if (chevron) chevron.textContent = isOpen ? 'expand_more' : 'expand_less';
 }
 
 function setAllowedRolesCheckboxes(allowedRoles) {
@@ -2476,7 +2553,7 @@ function initFinances() {
     document.getElementById('salary-pay-employee')?.addEventListener('change', function() { updateSalaryPayInfo(this.value); });
 }
 
-function loadFinances(tab = 'shifts') {
+function loadFinances(tab = 'receipts') {
     const fin = DB.get('finances', {});
     document.getElementById('fin-income').textContent = formatMoney(fin.income || 0);
     document.getElementById('fin-expense').textContent = formatMoney(fin.expense || 0);
@@ -2487,174 +2564,6 @@ function loadFinances(tab = 'shifts') {
     const tbody = document.getElementById('fin-table-body');
 
     switch (tab) {
-        case 'shifts': {
-            // Read actual shifts from DB, group by week (Mon-Sun)
-            const allShifts = DB.get('shifts', []).filter(s => s.endTime && s.earnings).sort((a, b) => b.date.localeCompare(a.date));
-
-            if (allShifts.length === 0) {
-                thead.innerHTML = '';
-                tbody.innerHTML = '<div class="empty-state" style="padding:40px;text-align:center;">Нет данных о сменах</div>';
-                break;
-            }
-
-            // Group shifts by week (Mon-Sun)
-            function getWeekKey(dateStr) {
-                const d = new Date(dateStr + 'T00:00:00');
-                const day = d.getDay(); // 0=Sun, 1=Mon...
-                const diff = day === 0 ? -6 : 1 - day; // shift to Monday
-                const monday = new Date(d);
-                monday.setDate(d.getDate() + diff);
-                return monday.getFullYear() + '-' + String(monday.getMonth() + 1).padStart(2, '0') + '-' + String(monday.getDate()).padStart(2, '0');
-            }
-            function getWeekLabel(mondayStr) {
-                const mon = new Date(mondayStr + 'T00:00:00');
-                const sun = new Date(mon);
-                sun.setDate(mon.getDate() + 6);
-                const fmt = (d) => `${d.getDate()} ${['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'][d.getMonth()]}`;
-                return `${fmt(mon)} — ${fmt(sun)}`;
-            }
-
-            const weekMap = {};
-            allShifts.forEach(s => {
-                const wk = getWeekKey(s.date);
-                if (!weekMap[wk]) weekMap[wk] = [];
-                weekMap[wk].push(s);
-            });
-
-            thead.innerHTML = '';
-            let html = '';
-            const weekKeys = Object.keys(weekMap).sort((a, b) => b.localeCompare(a));
-
-            weekKeys.forEach(wk => {
-                const shifts = weekMap[wk];
-                let weekTotal = 0;
-
-                // Calculate per-shift earnings
-                const shiftRows = shifts.map(s => {
-                    const role = s.shiftRole || s.employeeRole;
-                    const roleName = getRoleName(role);
-                    const earnTotal = s.earnings ? s.earnings.total : 0;
-                    weekTotal += earnTotal;
-                    const [sh, sm] = (s.startTime || '0:0').split(':').map(Number);
-                    const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
-                    const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
-                    const dateFormatted = new Date(s.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-                    const isManager = role === 'manager';
-                    const baseRate = s.earnings?.base || 0;
-                    const bonusRate = s.earnings?.bonus || 0;
-                    return `<tr>
-                        <td>${dateFormatted}</td>
-                        <td>${hours.toFixed(1)}ч</td>
-                        <td>${s.employeeName || '—'}</td>
-                        <td><span class="list-item-badge badge-blue">${roleName}</span></td>
-                        <td>${isManager ? '—' : formatMoney(baseRate)}</td>
-                        <td style="color:var(--green)">${bonusRate > 0 ? formatMoney(bonusRate) : '—'}</td>
-                        <td>${isManager ? formatMoney(baseRate) : '—'}</td>
-                    </tr>`;
-                }).join('');
-
-                html += `<div class="week-group">
-                    <div class="week-header">
-                        <span>Неделя: ${getWeekLabel(wk)}</span>
-                        <span class="week-total">Итого: ${formatMoney(weekTotal)}</span>
-                    </div>
-                    <table class="data-table">
-                        <thead><tr><th>Дата</th><th>Часы</th><th>Сотрудник</th><th>Роль</th><th>Ставка</th><th>Бонус</th><th>Менеджер</th></tr></thead>
-                        <tbody>${shiftRows}</tbody>
-                    </table>
-                </div>`;
-            });
-
-            tbody.innerHTML = html;
-            break;
-        }
-        case 'salary': {
-            const period = dirSalaryPeriod;
-            const { startDate, endDate } = getDateRangeForPeriod(period);
-            const employees = DB.get('employees', []).filter(e => e.role !== 'director');
-            const allPayments = DB.get('salaryPayments', []).filter(p => p.date >= startDate && p.date <= endDate);
-
-            let totalPayroll = 0;
-            const byMethod = { cash: 0, sberbank: 0, tbank: 0, alfabank: 0 };
-            allPayments.forEach(p => { totalPayroll += p.amount || 0; if (byMethod[p.method] !== undefined) byMethod[p.method] += p.amount || 0; });
-
-            const empBreakdown = employees.map(emp => {
-                const earnData = getEmployeeEarningsForPeriod(emp.id, period);
-                const payData = getEmployeePaymentsForPeriod(emp.id, period);
-                return { id: emp.id, name: emp.firstName + ' ' + emp.lastName, earned: earnData.totalEarned, paid: payData.totalPaid, debt: Math.max(0, earnData.totalEarned - payData.totalPaid), shiftCount: earnData.shiftCount };
-            }).filter(e => e.earned > 0 || e.paid > 0);
-
-            const totalEarned = empBreakdown.reduce((s, e) => s + e.earned, 0);
-            const totalDebt = empBreakdown.reduce((s, e) => s + e.debt, 0);
-            const periodLabels = { week: 'Неделя', month: 'Месяц', year: 'Год' };
-
-            thead.innerHTML = '';
-            let html = '';
-
-            // Period toggle
-            html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-                <div class="period-toggle" id="dir-salary-period-toggle">
-                    ${['week', 'month', 'year'].map(p => `<button class="period-toggle-btn ${p === period ? 'active' : ''}" data-period="${p}">${periodLabels[p]}</button>`).join('')}
-                </div>
-                <button class="btn-primary btn-sm" id="btn-salary-payout-inline" style="margin-left:auto;">
-                    <span class="material-icons-round" style="font-size:16px;">account_balance_wallet</span>
-                    Выплатить зарплату
-                </button>
-            </div>`;
-
-            // Summary cards
-            html += `<div class="salary-summary" style="margin-bottom:16px;">
-                <div class="salary-card"><span class="material-icons-round">payments</span><div><p class="salary-card-label">Начислено</p><p class="salary-card-value">${formatMoney(totalEarned)}</p></div></div>
-                <div class="salary-card"><span class="material-icons-round">check_circle</span><div><p class="salary-card-label">Выплачено</p><p class="salary-card-value green">${formatMoney(totalPayroll)}</p></div></div>
-                <div class="salary-card"><span class="material-icons-round">warning</span><div><p class="salary-card-label">Задолженность</p><p class="salary-card-value red">${formatMoney(totalDebt)}</p></div></div>
-            </div>`;
-
-            // Per-employee table
-            html += `<div class="week-group"><div class="week-header"><span>По сотрудникам</span></div>
-                <table class="data-table"><thead><tr><th>Сотрудник</th><th>Смен</th><th>Начислено</th><th>Выплачено</th><th>Долг</th><th></th></tr></thead><tbody>
-                ${empBreakdown.length ? empBreakdown.map(e => `<tr>
-                    <td><strong>${e.name}</strong></td><td>${e.shiftCount}</td>
-                    <td>${formatMoney(e.earned)}</td><td style="color:var(--green)">${formatMoney(e.paid)}</td>
-                    <td style="color:${e.debt > 0 ? 'var(--red)' : 'var(--green)'};font-weight:700">${formatMoney(e.debt)}</td>
-                    <td>${e.debt > 0 ? `<button class="btn-primary btn-sm btn-pay-emp" data-emp-id="${e.id}">Выплатить</button>` : '—'}</td>
-                </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Нет данных</td></tr>'}
-                </tbody></table></div>`;
-
-            // Payment method breakdown
-            const methodsWithData = Object.entries(byMethod).filter(([_, v]) => v > 0);
-            if (methodsWithData.length > 0) {
-                html += `<div class="week-group"><div class="week-header"><span>По способам оплаты</span></div>
-                    <table class="data-table"><thead><tr><th>Способ</th><th>Сумма</th><th>Кол-во</th></tr></thead><tbody>
-                    ${methodsWithData.map(([method, sum]) => {
-                        const count = allPayments.filter(p => p.method === method).length;
-                        return `<tr><td>${getPaymentMethodName(method)}</td><td>${formatMoney(sum)}</td><td>${count}</td></tr>`;
-                    }).join('')}
-                    </tbody></table></div>`;
-            }
-
-            // Payment history
-            html += `<div class="week-group"><div class="week-header"><span>История выплат</span></div>
-                <table class="data-table"><thead><tr><th>Дата</th><th>Время</th><th>Сотрудник</th><th>Сумма</th><th>Способ</th><th>Примечание</th></tr></thead><tbody>
-                ${allPayments.length ? allPayments.slice().reverse().map(p => `<tr>
-                    <td>${p.date}</td><td>${p.time}</td><td>${p.employeeName}</td>
-                    <td style="color:var(--green);font-weight:700">${formatMoney(p.amount)}</td>
-                    <td>${getPaymentMethodName(p.method)}</td><td>${p.note || '—'}</td>
-                </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Нет выплат</td></tr>'}
-                </tbody></table></div>`;
-
-            tbody.innerHTML = html;
-
-            // Bind period toggle
-            document.querySelectorAll('#dir-salary-period-toggle .period-toggle-btn').forEach(btn => {
-                btn.addEventListener('click', () => { dirSalaryPeriod = btn.dataset.period; loadFinances('salary'); });
-            });
-            // Bind pay buttons
-            document.querySelectorAll('.btn-pay-emp').forEach(btn => {
-                btn.addEventListener('click', () => openSalaryPaymentModal(parseInt(btn.dataset.empId)));
-            });
-            document.getElementById('btn-salary-payout-inline')?.addEventListener('click', () => openSalaryPaymentModal());
-            break;
-        }
         case 'receipts': {
             // Show receipt status from completed events (Sigma 8Ф)
             const events = DB.get('events', []).filter(e => e.status === 'completed');
