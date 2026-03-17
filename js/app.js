@@ -1139,11 +1139,11 @@ function calculateShiftEarnings(shift) {
         const srcNames = sources.map(s => s === 'services' ? 'услуги' : s === 'optionsForGame' ? 'опции к игре' : 'доп. опции').join(', ');
         bonusDetail = `${rule.bonusPercent}% от ${formatMoney(dayRevenue)} (${srcNames})`;
     } else if (role === 'manager') {
-        // Manager: daily rate (360₽ per day by default)
-        const mgrRule = rules.manager || { dailyRate: 360 };
-        base = mgrRule.dailyRate || 360;
+        // Manager daily rate is now auto-accrued via getManagerDailyAccruals()
+        // Shift with manager role earns 0 (rate comes from daily auto-accrual)
+        base = 0;
         bonus = 0;
-        bonusDetail = 'Ставка менеджера за день';
+        bonusDetail = 'Ставка менеджера начисляется автоматически ежедневно';
     }
 
     return { base, bonus, total: base + bonus, bonusDetail };
@@ -1184,6 +1184,40 @@ function getDateRangeForPeriod(period) {
         startDate = `${now.getFullYear()}-01-01`;
     }
     return { startDate, endDate: todayStr };
+}
+
+// Calculate manager daily accruals for a given period
+// Returns array of { date, amount } for each day the employee was a manager
+function getManagerDailyAccruals(emp, startDate, endDate) {
+    const roles = emp.allowedShiftRoles || getDefaultAllowedRoles(emp.role);
+    const isManager = roles.includes('manager');
+    const managerSince = emp.managerSince; // date string YYYY-MM-DD
+    const managerUntil = emp.managerUntil; // date string YYYY-MM-DD or undefined
+
+    if (!isManager && !managerUntil) return [];
+    if (!managerSince && !isManager) return [];
+
+    const rules = DB.get('salaryRules', {});
+    const mgrRule = rules.manager || { dailyRate: 360 };
+    const dailyRate = mgrRule.dailyRate || 360;
+
+    // Determine effective range
+    const effectiveStart = managerSince && managerSince > startDate ? managerSince : startDate;
+    const effectiveEnd = managerUntil && managerUntil < endDate ? managerUntil : endDate;
+
+    if (effectiveStart > effectiveEnd) return [];
+
+    const accruals = [];
+    const today = todayLocal();
+    let d = new Date(effectiveStart + 'T00:00:00');
+    const end = new Date((effectiveEnd > today ? today : effectiveEnd) + 'T00:00:00');
+
+    while (d <= end) {
+        const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        accruals.push({ date: dateStr, amount: dailyRate });
+        d.setDate(d.getDate() + 1);
+    }
+    return accruals;
 }
 
 function getEmployeeEarningsForPeriod(employeeId, period) {
@@ -1231,8 +1265,14 @@ function openSalaryPaymentModal(preselectedEmployeeId) {
 
 function updateSalaryPayInfo(employeeId) {
     if (!employeeId) { document.getElementById('salary-pay-info').style.display = 'none'; return; }
-    const earned = getEmployeeEarningsForPeriod(parseInt(employeeId), 'month').totalEarned;
-    const paid = getEmployeePaymentsForPeriod(parseInt(employeeId), 'month').totalPaid;
+    const empIdNum = parseInt(employeeId);
+    const emp = DB.get('employees', []).find(e => e.id === empIdNum);
+    const { startDate, endDate } = getDateRangeForPeriod('month');
+    const shiftEarned = getEmployeeEarningsForPeriod(empIdNum, 'month').totalEarned;
+    const mgrAccruals = emp ? getManagerDailyAccruals(emp, startDate, endDate) : [];
+    const mgrTotal = mgrAccruals.reduce((s, a) => s + a.amount, 0);
+    const earned = shiftEarned + mgrTotal;
+    const paid = getEmployeePaymentsForPeriod(empIdNum, 'month').totalPaid;
     const debt = Math.max(0, earned - paid);
     document.getElementById('salary-pay-earned').textContent = formatMoney(earned);
     document.getElementById('salary-pay-already-paid').textContent = formatMoney(paid);
@@ -2078,9 +2118,16 @@ function loadEmployees() {
     const { startDate, endDate } = getDateRangeForPeriod(empDashPeriod);
 
     container.innerHTML = employees.map(emp => {
-        const empShifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= startDate && s.date <= endDate).sort((a, b) => b.date.localeCompare(a.date));
+        // Regular shift earnings (exclude manager-role shifts to avoid double counting)
+        const empShifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= startDate && s.date <= endDate && (s.shiftRole || s.employeeRole) !== 'manager').sort((a, b) => b.date.localeCompare(a.date));
         const empPayments = allPayments.filter(p => p.employeeId === emp.id && p.date >= startDate && p.date <= endDate);
-        const earned = empShifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
+
+        // Manager daily accruals (auto-accrued per day)
+        const mgrAccruals = getManagerDailyAccruals(emp, startDate, endDate);
+        const mgrTotal = mgrAccruals.reduce((s, a) => s + a.amount, 0);
+
+        const shiftEarned = empShifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
+        const earned = shiftEarned + mgrTotal;
         const paid = empPayments.reduce((s, p) => s + (p.amount || 0), 0);
         const debt = Math.max(0, earned - paid);
 
@@ -2090,7 +2137,6 @@ function loadEmployees() {
             const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
             const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
             const dateF = new Date(s.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            const isManager = role === 'manager';
             const base = s.earnings?.base || 0;
             const bonus = s.earnings?.bonus || 0;
             return `<tr>
@@ -2098,12 +2144,30 @@ function loadEmployees() {
                 <td>${hours.toFixed(1)}ч</td>
                 <td>${s.employeeName || '—'}</td>
                 <td><span class="list-item-badge badge-blue">${getRoleName(role)}</span></td>
-                <td>${isManager ? '—' : formatMoney(base)}</td>
+                <td>${formatMoney(base)}</td>
                 <td style="color:var(--green)">${bonus > 0 ? formatMoney(bonus) : '—'}</td>
-                <td>${isManager ? formatMoney(base) : '—'}</td>
+                <td>—</td>
                 <td>${formatMoney(s.earnings?.total || 0)}</td>
             </tr>`;
         }).join('');
+
+        // Manager daily accrual rows
+        const mgrRows = mgrAccruals.map(a => {
+            const dateF = new Date(a.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            return `<tr style="background:rgba(var(--accent-rgb),0.04);">
+                <td>${dateF}</td>
+                <td>—</td>
+                <td>${emp.firstName} ${emp.lastName}</td>
+                <td><span class="list-item-badge badge-blue">Менеджер</span></td>
+                <td>—</td>
+                <td>—</td>
+                <td>${formatMoney(a.amount)}</td>
+                <td>${formatMoney(a.amount)}</td>
+            </tr>`;
+        }).join('');
+
+        const allRows = shiftRows + mgrRows;
+        const hasData = empShifts.length > 0 || mgrAccruals.length > 0;
 
         const paymentRows = empPayments.slice().reverse().map(p => `<tr>
             <td>${p.date}</td><td>${p.time}</td><td style="color:var(--green);font-weight:700">${formatMoney(p.amount)}</td>
@@ -2115,6 +2179,7 @@ function loadEmployees() {
                 <div class="emp-dash-card-info">
                     <h3>${emp.firstName} ${emp.lastName}</h3>
                     <span class="list-item-badge badge-blue">${getRoleName(emp.role)}</span>
+                    ${mgrAccruals.length > 0 ? '<span class="list-item-badge" style="background:var(--accent);color:#000;margin-left:4px;">Менеджер</span>' : ''}
                 </div>
                 <div class="emp-dash-card-stats">
                     <div class="emp-dash-stat">
@@ -2133,11 +2198,11 @@ function loadEmployees() {
                 <span class="material-icons-round emp-dash-chevron">expand_more</span>
             </div>
             <div class="emp-dash-card-body" id="emp-card-body-${emp.id}" style="display:none;">
-                <div class="emp-dash-section-title">Смены</div>
-                ${empShifts.length ? `<div class="table-container"><table class="data-table">
+                <div class="emp-dash-section-title">Начисления${mgrTotal > 0 ? ` <span style="font-weight:400;font-size:12px;color:var(--text-secondary);">(менеджер: ${formatMoney(mgrTotal)} за ${mgrAccruals.length} дн.)</span>` : ''}</div>
+                ${hasData ? `<div class="table-container"><table class="data-table">
                     <thead><tr><th>Дата</th><th>Часы</th><th>Сотрудник</th><th>Роль</th><th>Ставка</th><th>Бонус</th><th>Менеджер</th><th>Начислено</th></tr></thead>
-                    <tbody>${shiftRows}</tbody>
-                </table></div>` : '<p class="empty-state-text">Нет смен за период</p>'}
+                    <tbody>${allRows}</tbody>
+                </table></div>` : '<p class="empty-state-text">Нет начислений за период</p>'}
                 ${empPayments.length ? `<div class="emp-dash-section-title" style="margin-top:16px;">Выплаты</div>
                 <div class="table-container"><table class="data-table">
                     <thead><tr><th>Дата</th><th>Время</th><th>Сумма</th><th>Способ</th><th>Примечание</th></tr></thead>
@@ -3000,15 +3065,20 @@ function initSettings() {
     // Manager assignment save
     document.getElementById('btn-save-manager-assignment').addEventListener('click', () => {
         const employees = DB.get('employees', []);
+        const today = todayLocal();
         document.querySelectorAll('.manager-checkbox').forEach(cb => {
             const empId = parseInt(cb.dataset.empId);
             const emp = employees.find(e => e.id === empId);
             if (!emp) return;
             let roles = emp.allowedShiftRoles || getDefaultAllowedRoles(emp.role);
-            if (cb.checked && !roles.includes('manager')) {
+            const wasManager = roles.includes('manager');
+            if (cb.checked && !wasManager) {
                 roles.push('manager');
-            } else if (!cb.checked) {
+                emp.managerSince = today;
+                delete emp.managerUntil;
+            } else if (!cb.checked && wasManager) {
                 roles = roles.filter(r => r !== 'manager');
+                emp.managerUntil = today;
             }
             emp.allowedShiftRoles = roles;
         });
