@@ -826,45 +826,12 @@ function startShiftTimer(startTimeStr) {
 
 // ===== EMPLOYEE SCREEN INIT =====
 function initEmployeeScreen() {
-    // START WORK button
+    // START WORK button — shift always starts in employee's main role
     document.getElementById('emp-btn-start-work').addEventListener('click', () => {
         if (!currentUser) return;
-        const allowed = currentUser.allowedShiftRoles || getDefaultAllowedRoles(currentUser.role);
-        if (allowed.length === 1) {
-            // Only one role — skip modal, go directly to event selection
-            pendingShiftRole = allowed[0];
-            showEventSelectionModal();
-            return;
-        }
-        // Build role cards dynamically
-        const roleCardsContainer = document.querySelector('#modal-role-select .role-cards');
-        const roleIcons = {
-            admin: 'support_agent',
-            senior_instructor: 'military_tech',
-            instructor: 'sports',
-            manager: 'badge'
-        };
-        const roleDescriptions = {
-            admin: 'Бонус от всей выручки за смену',
-            senior_instructor: 'Повышенная ставка + бонус от мероприятий',
-            instructor: 'Ставка + бонус от ваших мероприятий'
-        };
-        roleCardsContainer.innerHTML = allowed.map(role => `
-            <button class="role-card" data-shift-role="${role}">
-                <span class="material-icons-round">${roleIcons[role] || 'person'}</span>
-                <h3>${getRoleName(role).toUpperCase()}</h3>
-                <p>${roleDescriptions[role] || ''}</p>
-            </button>
-        `).join('');
-        // Bind click handlers to newly created cards
-        roleCardsContainer.querySelectorAll('.role-card').forEach(card => {
-            card.addEventListener('click', () => {
-                pendingShiftRole = card.dataset.shiftRole;
-                closeModal('modal-role-select');
-                showEventSelectionModal();
-            });
-        });
-        openModal('modal-role-select');
+        // Main role = employee's position (role field)
+        pendingShiftRole = currentUser.role;
+        showEventSelectionModal();
     });
 
     document.getElementById('modal-role-close').addEventListener('click', () => closeModal('modal-role-select'));
@@ -872,14 +839,17 @@ function initEmployeeScreen() {
     // Event selection modal
     document.getElementById('modal-event-select-close').addEventListener('click', () => closeModal('modal-event-select'));
     document.getElementById('btn-skip-events').addEventListener('click', () => {
-        startShift([]);
+        startShift([], {});
     });
     document.getElementById('btn-confirm-events').addEventListener('click', () => {
         const selected = [];
+        const eventRoles = {};
         document.querySelectorAll('.event-select-item.selected').forEach(item => {
-            selected.push(parseInt(item.dataset.eventId));
+            const eventId = parseInt(item.dataset.eventId);
+            selected.push(eventId);
+            eventRoles[eventId] = item.dataset.eventRole || currentUser.role;
         });
-        startShift(selected);
+        startShift(selected, eventRoles);
     });
 
     // FINISH WORK button
@@ -991,16 +961,27 @@ function initEmployeeScreen() {
     initDashboardDragDrop();
 }
 
+function getAvailableEventRoles() {
+    if (!currentUser) return [];
+    const mainRole = currentUser.role;
+    const additionalRoles = (currentUser.allowedShiftRoles || []).filter(r => r !== mainRole && r !== 'manager');
+    const roles = [mainRole];
+    additionalRoles.forEach(r => { if (!roles.includes(r)) roles.push(r); });
+    return roles.filter(r => r !== 'director');
+}
+
 function showEventSelectionModal() {
     const todayStr = todayLocal();
     const events = DB.get('events', []).filter(e => e.date === todayStr && e.status !== 'cancelled');
     const list = document.getElementById('event-select-list');
+    const availableRoles = getAvailableEventRoles();
+    const hasMultipleRoles = availableRoles.length > 1;
 
     if (events.length === 0) {
         list.innerHTML = '<p class="empty-state">Нет мероприятий на сегодня</p>';
     } else {
         list.innerHTML = events.map(e => `
-            <div class="event-select-item" data-event-id="${e.id}">
+            <div class="event-select-item" data-event-id="${e.id}" data-event-role="${availableRoles[0]}">
                 <div class="event-select-checkbox">
                     <span class="material-icons-round">check</span>
                 </div>
@@ -1008,22 +989,31 @@ function showEventSelectionModal() {
                     <strong>${e.title}</strong>
                     <span>${e.time} · ${e.players || e.participants || 0} чел. · ${getEventTypeName(e.type)}</span>
                 </div>
+                ${hasMultipleRoles ? `<select class="event-role-select" onclick="event.stopPropagation()">
+                    ${availableRoles.map(r => `<option value="${r}">${getRoleName(r)}</option>`).join('')}
+                </select>` : `<span class="event-role-badge"><span class="list-item-badge badge-blue">${getRoleName(availableRoles[0])}</span></span>`}
                 <span class="event-select-price">${formatMoney(e.price)}</span>
             </div>
         `).join('');
 
-        // Toggle selection
+        // Toggle selection + bind role select
         list.querySelectorAll('.event-select-item').forEach(item => {
             item.addEventListener('click', () => {
                 item.classList.toggle('selected');
             });
+            const roleSelect = item.querySelector('.event-role-select');
+            if (roleSelect) {
+                roleSelect.addEventListener('change', (ev) => {
+                    item.dataset.eventRole = ev.target.value;
+                });
+            }
         });
     }
 
     openModal('modal-event-select');
 }
 
-function startShift(selectedEventIds) {
+function startShift(selectedEventIds, eventRoles) {
     closeModal('modal-event-select');
     const todayStr = todayLocal();
     const now = new Date();
@@ -1034,11 +1024,12 @@ function startShift(selectedEventIds) {
         employeeId: currentUser.id,
         employeeName: currentUser.firstName + ' ' + currentUser.lastName,
         employeeRole: currentUser.role,
-        shiftRole: pendingShiftRole,
+        shiftRole: pendingShiftRole, // main role for the shift
         date: todayStr,
         startTime: timeStr,
         endTime: null,
         selectedEvents: selectedEventIds,
+        eventRoles: eventRoles || {}, // role per event (for bonus calculation)
         earnings: null
     };
 

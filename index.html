@@ -13,7 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
 
@@ -589,7 +589,8 @@
                             </div>
                         </div>
                         <div class="form-group" id="emp-allowed-roles-group">
-                            <label>Доступные роли на смене</label>
+                            <label>Дополнительные роли (для мероприятий)</label>
+                            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Основная роль назначается автоматически из должности. Здесь укажите дополнительные роли, в которых сотрудник может проводить мероприятия.</p>
                             <div class="allowed-roles-checkboxes">
                                 <label class="option-checkbox"><input type="checkbox" id="emp-role-admin" value="admin"> Администратор</label>
                                 <label class="option-checkbox"><input type="checkbox" id="emp-role-senior_instructor" value="senior_instructor"> Старший инструктор</label>
@@ -1702,6 +1703,6 @@
 <script src="js/gcal.js?v=9"></script>
 <script src="js/gsheets.js?v=8"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=19"></script>
+<script src="js/app.js?v=20"></script>
 </body>
 </html>
