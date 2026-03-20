@@ -1696,6 +1696,7 @@ function loadTariffs(category = 'services', subcategory = null) {
 
     empTariffSubcategory = subcategory;
     const tariffs = DB.get('tariffs', []).filter(t => {
+        if (t.id === 23) return false; // removed option
         if (category === 'services' && subcategory) return t.category === 'services' && t.sheetCategory === subcategory;
         return t.category === category;
     });
