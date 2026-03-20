@@ -2497,11 +2497,9 @@ function openEventModal(id = null) {
         ? adminEmps.map(a => `<label class="staff-select-item"><input type="checkbox" value="${a.id}" class="evt-admin-cb"> ${a.firstName} ${a.lastName}</label>`).join('')
         : '<span class="empty-state-text">Нет администраторов</span>';
 
-    // Populate tariff select
-    const tariffs = DB.get('tariffs', []).filter(t => t.category === 'services');
-    const tariffSel = document.getElementById('evt-tariff');
-    tariffSel.innerHTML = '<option value="">— Выберите тариф —</option>' +
-        tariffs.map(t => `<option value="${t.id}">${t.name} — ${formatMoney(t.price)}/${t.unit}</option>`).join('');
+    // Populate tariff select (filtered by event type)
+    document.getElementById('evt-type').onchange = updateTariffsByType;
+    updateTariffsByType();
 
     // Populate options with quantity controls
     const allOptions = DB.get('tariffs', []).filter(t => (t.category === 'optionsForGame' || t.category === 'options') && t.id !== 23);
@@ -2560,6 +2558,7 @@ function openEventModal(id = null) {
         document.getElementById('evt-time').value = evt.time;
         document.getElementById('evt-duration').value = evt.duration;
         document.getElementById('evt-type').value = evt.type;
+        updateTariffsByType(); // filter tariffs by selected type
         document.getElementById('evt-occasion').value = evt.occasion || '';
         document.getElementById('evt-player-age').value = evt.playerAge || '';
         document.getElementById('evt-tariff').value = evt.tariffId || '';
@@ -3324,8 +3323,36 @@ function getRoleName(role) {
 }
 
 function getEventTypeName(type) {
-    const names = { paintball: 'Пейнтбол', laser: 'Лазертаг', quest: 'Квест', corporate: 'Корпоратив', birthday: 'День рождения', other: 'Другое' };
+    const names = { paintball: 'Пейнтбол', laser: 'Лазертаг', kidball: 'Кидбол', quest: 'Квесты', sup: 'Сапбординг', atv: 'Квадроциклы', race: 'Гонка с препятствиями', other: 'Другое' };
     return names[type] || type;
+}
+
+// Map event type to tariff sheetCategory for filtering
+const EVENT_TYPE_TARIFF_MAP = {
+    paintball: ['Пейнтбол', 'Тир пейнтбольный'],
+    laser: ['Лазертаг'],
+    kidball: ['Кидбол'],
+    quest: ['Квесты'],
+    sup: ['Водная прогулка на Сап-бордах'],
+    atv: ['Квадроциклы'],
+    race: ['Гонка с препятствиями'],
+};
+
+function updateTariffsByType() {
+    const type = document.getElementById('evt-type').value;
+    const tariffSel = document.getElementById('evt-tariff');
+    const currentVal = tariffSel.value;
+    const allTariffs = DB.get('tariffs', []).filter(t => t.category === 'services');
+    const allowedCategories = EVENT_TYPE_TARIFF_MAP[type];
+    const filtered = allowedCategories
+        ? allTariffs.filter(t => allowedCategories.includes(t.sheetCategory))
+        : allTariffs;
+    tariffSel.innerHTML = '<option value="">— Выберите тариф —</option>' +
+        filtered.map(t => `<option value="${t.id}">${t.name} — ${formatMoney(t.price)}/${t.unit}</option>`).join('');
+    // Restore previous value if still available
+    if (currentVal && [...tariffSel.options].some(o => o.value === currentVal)) {
+        tariffSel.value = currentVal;
+    }
 }
 
 function getStatusName(status) {
