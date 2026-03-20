@@ -780,7 +780,7 @@ function loadEmployeeDashboard() {
                 <span class="material-icons-round">event</span>
                 <div class="list-item-info">
                     <strong>${e.title}</strong>
-                    <span>${e.time} · ${e.players || e.participants || 0} чел.</span>
+                    <span>${e.time} · ${formatParticipants(e)}</span>
                 </div>
             </div>
         `).join('');
@@ -987,7 +987,7 @@ function showEventSelectionModal() {
                 </div>
                 <div class="event-select-info">
                     <strong>${e.title}</strong>
-                    <span>${e.time} · ${e.players || e.participants || 0} чел. · ${getEventTypeName(e.type)}</span>
+                    <span>${e.time} · ${formatParticipants(e)} · ${getEventTypeName(e.type)}</span>
                 </div>
                 ${hasMultipleRoles ? `<select class="event-role-select" onclick="event.stopPropagation()">
                     ${availableRoles.map(r => `<option value="${r}">${getRoleName(r)}</option>`).join('')}
@@ -1070,19 +1070,25 @@ function calculateEventRevenueBySources(event, sources) {
         }
     }
 
-    // Options for game
+    // Options for game (price × qty × participants)
     if (sources.includes('optionsForGame') && event.selectedOptions) {
         event.selectedOptions.forEach(optId => {
             const opt = tariffs.find(t => t.id === optId && t.category === 'optionsForGame');
-            if (opt) total += (opt.price || 0) * (event.participants || 1);
+            if (opt) {
+                const qty = event.optionQuantities?.[optId] || 1;
+                total += (opt.price || 0) * qty * (event.participants || 1);
+            }
         });
     }
 
-    // Additional options
+    // Additional options (price × qty, NOT per participant)
     if (sources.includes('options') && event.selectedOptions) {
         event.selectedOptions.forEach(optId => {
             const opt = tariffs.find(t => t.id === optId && t.category === 'options');
-            if (opt) total += opt.price || 0;
+            if (opt) {
+                const qty = event.optionQuantities?.[optId] || 1;
+                total += (opt.price || 0) * qty;
+            }
         });
     }
 
@@ -1371,7 +1377,7 @@ function loadEmployeeEvents() {
                 <div class="emp-event-time">${e.time}</div>
                 <div class="emp-event-info">
                     <strong>${e.title}</strong>
-                    <span>${e.players || e.participants || 0} чел. · ${formatDuration(e.duration)} · ${instructorName} · ${formatMoney(e.price)}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)} · ${instructorName} · ${formatMoney(e.price)}</span>
                 </div>
                 <span class="emp-event-status ${statusClass}">${statusName}</span>
                 <div class="emp-event-actions">
@@ -1401,7 +1407,7 @@ function openPaymentModal(eventId) {
 
     document.getElementById('payment-event-info').innerHTML = `
         <strong>${evt.title}</strong>
-        <span>${evt.time} · ${evt.players || evt.participants || 0} чел. · ${getEventTypeName(evt.type)}</span>
+        <span>${evt.time} · ${formatParticipants(evt)} · ${getEventTypeName(evt.type)}</span>
         <div class="payment-amount">${formatMoney(evt.price)}</div>
     `;
 
@@ -1457,13 +1463,14 @@ function completeEventPayment() {
         }
     }
 
-    // Options × quantity (grenades, extra balls, smoke)
+    // Options × quantity × participants (grenades, extra balls, smoke)
     if (evt.selectedOptions && evt.selectedOptions.length > 0) {
         evt.selectedOptions.forEach(optId => {
             const opt = tariffs.find(t => t.id === optId);
             if (opt) {
-                totalBalls += (opt.ballsPerPerson || 0) * (evt.participants || 1);
-                totalGrenades += (opt.grenadesPerPerson || 0) * (evt.participants || 1);
+                const qty = evt.optionQuantities?.[optId] || 1;
+                totalBalls += (opt.ballsPerPerson || 0) * qty * (evt.participants || 1);
+                totalGrenades += (opt.grenadesPerPerson || 0) * qty * (evt.participants || 1);
             }
         });
     }
@@ -1616,7 +1623,7 @@ function selectEmpCalDay(dateStr) {
                 <div class="event-time">${e.time}</div>
                 <div class="event-info">
                     <strong>${e.title}</strong>
-                    <span>${e.players || e.participants || 0} чел. · ${formatDuration(e.duration)}${e.instructor ? ' · ' + getInstructorName(e.instructor) : ''}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${e.instructor ? ' · ' + getInstructorName(e.instructor) : ''}</span>
                 </div>
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
             </div>
@@ -1960,7 +1967,7 @@ function loadEventsToday() {
                 <span class="material-icons-round">event</span>
                 <div class="list-item-info">
                     <strong>${e.title}</strong>
-                    <span>${e.time} · ${e.players || e.participants || 0} чел.</span>
+                    <span>${e.time} · ${formatParticipants(e)}</span>
                 </div>
                 <span class="list-item-badge badge-blue">${getEventTypeName(e.type)}</span>
             </div>
@@ -2450,12 +2457,21 @@ function selectCalDay(dateStr) {
                 <div class="event-time">${e.time}</div>
                 <div class="event-info">
                     <strong>${e.title}</strong>
-                    <span>${e.players || e.participants || 0} чел. · ${formatDuration(e.duration)}${e.instructor ? ' · ' + getInstructorName(e.instructor) : ''}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${e.instructor ? ' · ' + getInstructorName(e.instructor) : ''}</span>
                 </div>
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
             </div>
         `).join('');
     }
+}
+
+function changeOptionQty(optId, delta) {
+    const el = document.getElementById('opt-qty-' + optId);
+    if (!el) return;
+    let qty = parseInt(el.textContent) || 0;
+    qty = Math.max(0, qty + delta);
+    el.textContent = qty;
+    el.closest('.option-qty-row').classList.toggle('active', qty > 0);
 }
 
 function openEventModal(id = null) {
@@ -2476,13 +2492,18 @@ function openEventModal(id = null) {
     tariffSel.innerHTML = '<option value="">— Выберите тариф —</option>' +
         tariffs.map(t => `<option value="${t.id}">${t.name} — ${formatMoney(t.price)}/${t.unit}</option>`).join('');
 
-    // Populate options checkboxes
+    // Populate options with quantity controls
     const allOptions = DB.get('tariffs', []).filter(t => t.category === 'optionsForGame' || t.category === 'options');
     document.getElementById('evt-options-list').innerHTML = allOptions.map(o => `
-        <label class="option-checkbox">
-            <input type="checkbox" value="${o.id}">
-            ${o.name} (${formatMoney(o.price)})
-        </label>
+        <div class="option-qty-row" data-option-id="${o.id}">
+            <span class="option-qty-name">${o.name}</span>
+            <span class="option-qty-price">${formatMoney(o.price)}${o.category === 'optionsForGame' ? '/чел' : ''}</span>
+            <div class="option-qty-controls">
+                <button type="button" class="option-qty-btn" onclick="changeOptionQty(${o.id}, -1)">−</button>
+                <span class="option-qty-value" id="opt-qty-${o.id}">0</span>
+                <button type="button" class="option-qty-btn" onclick="changeOptionQty(${o.id}, 1)">+</button>
+            </div>
+        </div>
     `).join('');
 
     if (id) {
@@ -2498,6 +2519,7 @@ function openEventModal(id = null) {
         document.getElementById('evt-occasion').value = evt.occasion || '';
         document.getElementById('evt-player-age').value = evt.playerAge || '';
         document.getElementById('evt-tariff').value = evt.tariffId || '';
+        document.getElementById('evt-participants-min').value = evt.participantsMin || '';
         document.getElementById('evt-participants').value = evt.participants;
         document.getElementById('evt-instructor').value = evt.instructor || '';
         document.getElementById('evt-notes').value = evt.notes || '';
@@ -2507,10 +2529,17 @@ function openEventModal(id = null) {
         document.getElementById('evt-prepayment').value = evt.prepayment || '';
         document.getElementById('evt-prepayment-date').value = evt.prepaymentDate || '';
 
-        // Check selected options
-        if (evt.selectedOptions) {
-            document.querySelectorAll('#evt-options-list input[type="checkbox"]').forEach(cb => {
-                cb.checked = evt.selectedOptions.includes(parseInt(cb.value));
+        // Set option quantities
+        if (evt.optionQuantities) {
+            Object.entries(evt.optionQuantities).forEach(([optId, qty]) => {
+                const el = document.getElementById('opt-qty-' + optId);
+                if (el) { el.textContent = qty; el.closest('.option-qty-row').classList.toggle('active', qty > 0); }
+            });
+        } else if (evt.selectedOptions) {
+            // Legacy: convert old checkbox format to quantities (1 each)
+            evt.selectedOptions.forEach(optId => {
+                const el = document.getElementById('opt-qty-' + optId);
+                if (el) { el.textContent = '1'; el.closest('.option-qty-row').classList.add('active'); }
             });
         }
 
@@ -2529,10 +2558,20 @@ function saveEvent(e) {
     const events = DB.get('events', []);
     const id = document.getElementById('evt-id').value;
 
+    // Collect option quantities
+    const optionQuantities = {};
     const selectedOptions = [];
-    document.querySelectorAll('#evt-options-list input[type="checkbox"]:checked').forEach(cb => {
-        selectedOptions.push(parseInt(cb.value));
+    document.querySelectorAll('#evt-options-list .option-qty-row').forEach(row => {
+        const optId = parseInt(row.dataset.optionId);
+        const qty = parseInt(row.querySelector('.option-qty-value').textContent) || 0;
+        if (qty > 0) {
+            optionQuantities[optId] = qty;
+            selectedOptions.push(optId); // backward compatibility
+        }
     });
+
+    const participantsMax = parseInt(document.getElementById('evt-participants').value) || 0;
+    const participantsMin = parseInt(document.getElementById('evt-participants-min').value) || 0;
 
     const data = {
         title: document.getElementById('evt-title').value.trim(),
@@ -2543,7 +2582,8 @@ function saveEvent(e) {
         occasion: document.getElementById('evt-occasion').value,
         playerAge: document.getElementById('evt-player-age').value.trim(),
         tariffId: parseInt(document.getElementById('evt-tariff').value) || null,
-        participants: parseInt(document.getElementById('evt-participants').value) || 0,
+        participants: participantsMax,
+        participantsMin: participantsMin > 0 ? participantsMin : null,
         instructor: parseInt(document.getElementById('evt-instructor').value) || null,
         notes: document.getElementById('evt-notes').value.trim(),
         price: parseFloat(document.getElementById('evt-price').value) || 0,
@@ -2551,7 +2591,8 @@ function saveEvent(e) {
         status: document.getElementById('evt-status').value || 'pending',
         prepayment: parseFloat(document.getElementById('evt-prepayment').value) || 0,
         prepaymentDate: document.getElementById('evt-prepayment-date').value,
-        selectedOptions: selectedOptions,
+        selectedOptions: selectedOptions, // backward compat: array of IDs
+        optionQuantities: optionQuantities, // new: { optionId: quantity }
     };
 
     if (id) {
@@ -3184,6 +3225,13 @@ function applyAccentColor(color) {
 // ===== HELPERS =====
 function formatMoney(n) {
     return new Intl.NumberFormat('ru-RU').format(n) + ' ₽';
+}
+
+function formatParticipants(evt) {
+    const max = evt.players || evt.participants || 0;
+    const min = evt.participantsMin;
+    if (min && min < max) return `${min}–${max} чел.`;
+    return `${max} чел.`;
 }
 
 function getRoleName(role) {
