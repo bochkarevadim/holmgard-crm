@@ -206,27 +206,27 @@ function initData() {
                 email: '', blocked: false
             },
             {
-                id: 2, firstName: 'Савелий', lastName: 'Данилов', role: 'admin',
-                pin: '2222', phone: '+7 (900) 222-22-22', dob: '1990-05-12',
-                passport: '', bank: '', paid: 60000,
+                id: 2, firstName: 'Савелий', lastName: 'Данилов', role: 'senior_instructor',
+                pin: '0080', phone: '+7 (900) 222-22-22', dob: '1990-05-12',
+                passport: '', bank: '', paid: 0,
                 allowedShiftRoles: ['admin', 'senior_instructor']
             },
             {
                 id: 3, firstName: 'Елена', lastName: 'Бундзен', role: 'admin',
                 pin: '3333', phone: '+7 (900) 333-33-33', dob: '1993-08-25',
-                passport: '', bank: '', paid: 30000,
+                passport: '', bank: '', paid: 0,
                 allowedShiftRoles: ['admin']
             },
             {
-                id: 4, firstName: 'Дмитрий', lastName: 'Князев', role: 'admin',
-                pin: '4444', phone: '+7 (900) 444-44-44', dob: '1995-11-03',
-                passport: '', bank: '', paid: 50000,
+                id: 4, firstName: 'Дмитрий', lastName: 'Князев', role: 'instructor',
+                pin: '4021', phone: '+7 (900) 444-44-44', dob: '1995-11-03',
+                passport: '', bank: '', paid: 0,
                 allowedShiftRoles: ['admin', 'instructor']
             },
             {
                 id: 5, firstName: 'Ольга', lastName: 'Гусакова', role: 'admin',
                 pin: '5555', phone: '+7 (900) 555-55-55', dob: '1997-02-18',
-                passport: '', bank: '', paid: 40000,
+                passport: '', bank: '', paid: 0,
                 allowedShiftRoles: ['admin']
             }
         ]);
@@ -254,9 +254,9 @@ function initData() {
 
         DB.set('shifts', []);
         DB.set('salaryRules', {
-            instructor: { shiftRate: 1500, bonusPercent: 5 },
-            senior_instructor: { shiftRate: 2000, bonusPercent: 7 },
-            admin: { shiftRate: 0, bonusPercent: 5 }
+            instructor: { shiftRate: 1500, bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] },
+            senior_instructor: { shiftRate: 2000, bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] },
+            admin: { shiftRate: 0, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] }
         });
         DB.set('stock', { balls: 4500, ballsCritical: 60000, grenades: 120, grenadesCritical: 100 });
         DB.set('loyaltyPercent', 5);
@@ -415,13 +415,7 @@ function runDataMigrations() {
     });
     if (emailChanged) DB.set('employees', emps);
 
-    // Migration v2: replace old generic tariffs with real spreadsheet data
-    if (DB.get('tariffs_version') !== 'v2') {
-        DB.remove('initialized');
-        DB.remove('tariffs');
-        DB.set('tariffs_version', 'v2');
-        initData();
-    }
+    // Migration v2: skip — superseded by v3
 
     // Migration v3: remove gazebo time option (id:23), update balls & shop inputType
     if (DB.get('tariffs_version') !== 'v3') {
