@@ -200,7 +200,7 @@ const GSheetsSync = (() => {
 
     function tariffsOptionsForGameToRows(tariffs) {
         const opts = tariffs.filter(t => t.category === 'optionsForGame');
-        const header = ['service_id', 'category', 'name', 'base_price', 'quantity', 'unit of measurement', 'included', 'description'];
+        const header = ['service_id', 'category', 'name', 'base_price', 'quantity', 'unit of measurement', 'included', 'description', 'inputType', 'inputPlaceholder'];
         const rows = opts.map(t => [
             t.serviceId || 'opt_' + t.id,
             t.sheetCategory || 'Доп. опции',
@@ -209,14 +209,16 @@ const GSheetsSync = (() => {
             t.quantity || 1,
             t.unit || 'шт',
             t.included || '',
-            t.description || ''
+            t.description || '',
+            t.inputType || '',
+            t.inputPlaceholder || ''
         ]);
         return [header, ...rows];
     }
 
     function tariffsOptionsToRows(tariffs) {
         const opts = tariffs.filter(t => t.category === 'options');
-        const header = ['service_id', 'category', 'name', 'base_price', 'quantity', 'unit of measurement', 'included', 'description'];
+        const header = ['service_id', 'category', 'name', 'base_price', 'quantity', 'unit of measurement', 'included', 'description', 'inputType', 'inputPlaceholder'];
         const rows = opts.map(t => [
             t.serviceId || 'opt_' + t.id,
             t.sheetCategory || 'Дополнительная опция',
@@ -225,7 +227,9 @@ const GSheetsSync = (() => {
             t.quantity || 1,
             t.unit || 'шт',
             t.included || '',
-            t.description || ''
+            t.description || '',
+            t.inputType || '',
+            t.inputPlaceholder || ''
         ]);
         return [header, ...rows];
     }
@@ -269,7 +273,7 @@ const GSheetsSync = (() => {
                     const idx = headers.indexOf(name);
                     return idx >= 0 ? (row[idx] || '') : '';
                 };
-                tariffs.push({
+                const ofgItem = {
                     id: nextId++,
                     category: 'optionsForGame',
                     serviceId: get('service_id'),
@@ -280,7 +284,10 @@ const GSheetsSync = (() => {
                     unit: get('unit of measurement') || 'шт',
                     included: get('included'),
                     description: get('description')
-                });
+                };
+                if (get('inputType')) ofgItem.inputType = get('inputType');
+                if (get('inputPlaceholder')) ofgItem.inputPlaceholder = get('inputPlaceholder');
+                tariffs.push(ofgItem);
             }
         }
 
@@ -293,7 +300,7 @@ const GSheetsSync = (() => {
                     const idx = headers.indexOf(name);
                     return idx >= 0 ? (row[idx] || '') : '';
                 };
-                tariffs.push({
+                const optItem = {
                     id: nextId++,
                     category: 'options',
                     serviceId: get('service_id'),
@@ -304,10 +311,40 @@ const GSheetsSync = (() => {
                     unit: get('unit of measurement') || 'шт',
                     included: get('included'),
                     description: get('description')
-                });
+                };
+                if (get('inputType')) optItem.inputType = get('inputType');
+                if (get('inputPlaceholder')) optItem.inputPlaceholder = get('inputPlaceholder');
+                tariffs.push(optItem);
             }
         }
 
+        return tariffs;
+    }
+
+    // Post-process tariffs after import from Sheets: apply same fixes as migration v3
+    function postProcessTariffs(tariffs) {
+        // Remove "Дополнительное время в беседке"
+        tariffs = tariffs.filter(t => {
+            const name = (t.name || '').toLowerCase();
+            return !name.includes('дополнительное время в беседке');
+        });
+        // Fix balls: ensure inputType=number, clean name
+        const balls = tariffs.find(t => (t.name || '').toLowerCase().includes('дополнительные шары') || (t.serviceId || '').includes('balls'));
+        if (balls) {
+            balls.inputType = 'number';
+            balls.inputPlaceholder = balls.inputPlaceholder || 'Кол-во шаров';
+            balls.name = balls.name.replace(/\s*\(\d+\s*шт\.?\)/i, ''); // remove "(200 шт)" etc
+            balls.unit = 'шт';
+            balls.ballsPerPerson = 1;
+        }
+        // Fix shop: ensure inputType=shop
+        const shop = tariffs.find(t => (t.name || '').toLowerCase().includes('магазин') || (t.serviceId || '').includes('shop') || t.serviceId === 'Shop');
+        if (shop) {
+            shop.inputType = 'shop';
+            shop.inputPlaceholder = shop.inputPlaceholder || 'Сумма ₽';
+            shop.price = 1;
+            shop.unit = 'шт';
+        }
         return tariffs;
     }
 
@@ -683,7 +720,8 @@ const GSheetsSync = (() => {
 
             // Import tariffs
             if (servicesData.length > 1 || optForGameData.length > 1 || optData.length > 1) {
-                const importedTariffs = rowsToTariffs(servicesData, optForGameData, optData);
+                let importedTariffs = rowsToTariffs(servicesData, optForGameData, optData);
+                importedTariffs = postProcessTariffs(importedTariffs);
                 if (importedTariffs.length > 0) {
                     DB.set('tariffs', importedTariffs);
                 }
@@ -738,7 +776,8 @@ const GSheetsSync = (() => {
             ]);
 
             if (servicesData.length > 1 || optForGameData.length > 1 || optData.length > 1) {
-                const importedTariffs = rowsToTariffs(servicesData, optForGameData, optData);
+                let importedTariffs = rowsToTariffs(servicesData, optForGameData, optData);
+                importedTariffs = postProcessTariffs(importedTariffs);
                 if (importedTariffs.length > 0) {
                     DB.set('tariffs', importedTariffs);
                 }
@@ -923,7 +962,8 @@ const GSheetsSync = (() => {
             const optRows = parseCSV(optText);
 
             if (servRows.length > 1 || ofgRows.length > 1 || optRows.length > 1) {
-                const importedTariffs = rowsToTariffs(servRows, ofgRows, optRows);
+                let importedTariffs = rowsToTariffs(servRows, ofgRows, optRows);
+                importedTariffs = postProcessTariffs(importedTariffs);
                 if (importedTariffs.length > 0) {
                     DB.set('tariffs', importedTariffs);
                     updateStatus('connected');
