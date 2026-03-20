@@ -416,6 +416,22 @@ function runDataMigrations() {
         DB.set('tariffs_version', 'v2');
         initData();
     }
+
+    // Migration v3: remove gazebo time option (id:23), update balls & shop inputType
+    if (DB.get('tariffs_version') !== 'v3') {
+        let tariffs = DB.get('tariffs', []);
+        // Remove "Дополнительное время в беседке" (id:23)
+        tariffs = tariffs.filter(t => t.id !== 23);
+        // Update balls (id:20) — inputType number
+        const balls = tariffs.find(t => t.id === 20);
+        if (balls) { balls.inputType = 'number'; balls.inputPlaceholder = 'Кол-во шаров'; balls.name = 'Дополнительные шары'; balls.unit = 'шт'; balls.ballsPerPerson = 1; }
+        // Update shop (id:25) — inputType shop
+        const shop = tariffs.find(t => t.id === 25);
+        if (shop) { shop.inputType = 'shop'; shop.inputPlaceholder = 'Сумма ₽'; shop.price = 1; shop.unit = 'шт'; }
+        DB.set('tariffs', tariffs);
+        DB.set('tariffs_version', 'v3');
+        console.log('Migration v3: removed gazebo time, updated balls & shop');
+    }
 }
 
 // ===== STATE =====
