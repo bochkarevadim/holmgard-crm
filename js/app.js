@@ -116,7 +116,11 @@ const DB = {
                 if (change.type === 'removed') {
                     delete this._cache[key];
                 } else {
-                    this._cache[key] = change.doc.data().value;
+                    let v = change.doc.data().value;
+                    if (typeof v === 'string' && (v[0] === '[' || v[0] === '{')) {
+                        try { v = JSON.parse(v); } catch {}
+                    }
+                    this._cache[key] = v;
                 }
                 changed = true;
             });
