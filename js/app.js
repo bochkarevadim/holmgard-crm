@@ -779,7 +779,7 @@ function loadEmployeeDashboard() {
             <div class="list-item">
                 <span class="material-icons-round">event</span>
                 <div class="list-item-info">
-                    <strong>${e.title}</strong>
+                    <strong>${e.title}</strong>${e.clientName ? `<span style="color:var(--text-secondary);font-size:12px;">${e.clientName}</span>` : ''}
                     <span>${e.time} · ${formatParticipants(e)}</span>
                 </div>
             </div>
@@ -986,7 +986,7 @@ function showEventSelectionModal() {
                     <span class="material-icons-round">check</span>
                 </div>
                 <div class="event-select-info">
-                    <strong>${e.title}</strong>
+                    <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">— ${e.clientName}</span>` : ''}
                     <span>${e.time} · ${formatParticipants(e)} · ${getEventTypeName(e.type)}</span>
                 </div>
                 ${hasMultipleRoles ? `<select class="event-role-select" onclick="event.stopPropagation()">
@@ -1376,7 +1376,7 @@ function loadEmployeeEvents() {
             <div class="emp-event-card">
                 <div class="emp-event-time">${e.time}</div>
                 <div class="emp-event-info">
-                    <strong>${e.title}</strong>
+                    <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
                     <span>${formatParticipants(e)} · ${formatDuration(e.duration)} · ${instructorName} · ${formatMoney(e.price)}</span>
                 </div>
                 <span class="emp-event-status ${statusClass}">${statusName}</span>
@@ -1406,7 +1406,7 @@ function openPaymentModal(eventId) {
     if (!evt) return;
 
     document.getElementById('payment-event-info').innerHTML = `
-        <strong>${evt.title}</strong>
+        <strong>${evt.title}</strong>${evt.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${evt.clientName}</span>` : ''}
         <span>${evt.time} · ${formatParticipants(evt)} · ${getEventTypeName(evt.type)}</span>
         <div class="payment-amount">${formatMoney(evt.price)}</div>
     `;
@@ -1622,7 +1622,7 @@ function selectEmpCalDay(dateStr) {
             <div class="event-card" onclick="openEventModal('${e.id}')">
                 <div class="event-time">${e.time}</div>
                 <div class="event-info">
-                    <strong>${e.title}</strong>
+                    <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
                     <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${e.instructor ? ' · ' + getInstructorName(e.instructor) : ''}</span>
                 </div>
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
@@ -1966,7 +1966,7 @@ function loadEventsToday() {
             <div class="list-item">
                 <span class="material-icons-round">event</span>
                 <div class="list-item-info">
-                    <strong>${e.title}</strong>
+                    <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
                     <span>${e.time} · ${formatParticipants(e)}</span>
                 </div>
                 <span class="list-item-badge badge-blue">${getEventTypeName(e.type)}</span>
@@ -2456,7 +2456,7 @@ function selectCalDay(dateStr) {
             <div class="event-card" onclick="openEventModal('${e.id}')">
                 <div class="event-time">${e.time}</div>
                 <div class="event-info">
-                    <strong>${e.title}</strong>
+                    <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
                     <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${e.instructor ? ' · ' + getInstructorName(e.instructor) : ''}</span>
                 </div>
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
@@ -2512,6 +2512,7 @@ function openEventModal(id = null) {
         document.getElementById('modal-event-title').textContent = 'Редактировать мероприятие';
         document.getElementById('evt-id').value = evt.id;
         document.getElementById('evt-title').value = evt.title;
+        document.getElementById('evt-client-name').value = evt.clientName || '';
         document.getElementById('evt-date').value = evt.date;
         document.getElementById('evt-time').value = evt.time;
         document.getElementById('evt-duration').value = evt.duration;
@@ -2575,6 +2576,7 @@ function saveEvent(e) {
 
     const data = {
         title: document.getElementById('evt-title').value.trim(),
+        clientName: document.getElementById('evt-client-name').value.trim(),
         date: document.getElementById('evt-date').value,
         time: document.getElementById('evt-time').value,
         duration: parseInt(document.getElementById('evt-duration').value) || 60,
