@@ -231,26 +231,8 @@ function initData() {
             }
         ]);
 
-        const today = todayLocal();
-        DB.set('events', [
-            { id: 1, title: 'Корпоратив «Альфа-Банк»', date: today, time: '10:00', duration: 120, type: 'corporate', occasion: 'corporate', playerAge: '25-45', participants: 25, instructor: 3, notes: 'VIP клиент', price: 75000, status: 'confirmed', prepayment: 30000, prepaymentDate: '2026-03-01', selectedOptions: [], discount: 0 },
-            { id: 2, title: 'День рождения Артёма', date: today, time: '14:00', duration: 90, type: 'birthday', occasion: 'birthday', playerAge: '10-14', participants: 12, instructor: 4, notes: 'Заказан торт', price: 24000, status: 'confirmed', prepayment: 10000, prepaymentDate: '2026-03-03', selectedOptions: [5, 7], discount: 0 },
-            { id: 3, title: 'Пейнтбол для друзей', date: today, time: '17:00', duration: 60, type: 'paintball', occasion: 'friends', playerAge: '18-30', participants: 8, instructor: 3, notes: '', price: 16000, status: 'pending', prepayment: 0, prepaymentDate: '', selectedOptions: [5], discount: 10 }
-        ]);
-
-        DB.set('clients', [
-            { id: 1, firstName: 'Алексей', lastName: 'Петров', phone: '+7 (916) 555-12-34', email: 'petrov@mail.ru', dob: '1990-04-12', notes: 'Постоянный клиент', groldiks: 1250, totalSpent: 45000, visits: [
-                { date: '2026-02-15', game: 'Пейнтбол', amount: 3500 },
-                { date: '2026-01-20', game: 'Лазертаг', amount: 2800 }
-            ]},
-            { id: 2, firstName: 'Мария', lastName: 'Иванова', phone: '+7 (926) 777-88-99', email: '', dob: '', notes: '', groldiks: 480, totalSpent: 12000, visits: [
-                { date: '2026-03-01', game: 'Квест', amount: 4000 }
-            ]},
-            { id: 3, firstName: 'Сергей', lastName: 'Николаев', phone: '+7 (905) 123-45-67', email: 'serg@gmail.com', dob: '1988-11-30', notes: 'Приводит друзей', groldiks: 3200, totalSpent: 87000, visits: [
-                { date: '2026-03-03', game: 'Корпоратив', amount: 15000 },
-                { date: '2026-02-10', game: 'Пейнтбол', amount: 5000 }
-            ]}
-        ]);
+        DB.set('events', []);
+        DB.set('clients', []);
 
         DB.set('shifts', []);
         DB.set('salaryRules', {
@@ -260,31 +242,8 @@ function initData() {
         });
         DB.set('stock', { balls: 4500, ballsCritical: 60000, grenades: 120, grenadesCritical: 100 });
         DB.set('loyaltyPercent', 5);
-        DB.set('finances', {
-            income: 847000, expense: 312000, cash: 125000,
-            shifts: [
-                { date: '2026-03-05', employee: 'Анна Смирнова', start: '09:00', end: '18:00', hours: 9 },
-                { date: '2026-03-04', employee: 'Максим Волков', start: '10:00', end: '19:00', hours: 9 },
-            ],
-            receipts: [
-                { id: 'R-001', date: '2026-03-05', time: '10:45', amount: 75000, type: 'Корпоратив', status: 'Оплачен' },
-                { id: 'R-002', date: '2026-03-05', time: '14:30', amount: 24000, type: 'День рождения', status: 'Оплачен' },
-                { id: 'R-003', date: '2026-03-04', time: '16:00', amount: 16000, type: 'Пейнтбол', status: 'Возврат' },
-            ],
-            orders: [
-                { id: 'O-001', date: '2026-03-05', client: 'Алексей Петров', service: 'Пейнтбол', amount: 3500, status: 'Завершён' },
-                { id: 'O-002', date: '2026-03-05', client: 'ООО Альфа-Банк', service: 'Корпоратив', amount: 75000, status: 'В процессе' },
-            ],
-            cashOps: [
-                { date: '2026-03-05', time: '09:00', type: 'Внесение', amount: 50000, note: 'Размен' },
-                { date: '2026-03-05', time: '18:00', type: 'Изъятие', amount: 30000, note: 'Инкассация' },
-            ]
-        });
-        DB.set('documents', [
-            { id: 1, type: 'incoming', date: '2026-03-03', item: 'Пейнтбольные шары', qty: 5000, amount: 25000, comment: 'Поставщик: ПейнтПро' },
-            { id: 2, type: 'writeoff', date: '2026-03-04', item: 'Гранаты дымовые', qty: 20, amount: 4000, comment: 'Бракованная партия' },
-            { id: 3, type: 'inventory', date: '2026-03-01', item: 'Общая инвентаризация', qty: 0, amount: 0, comment: 'Результаты совпали с учётом' },
-        ]);
+        DB.set('finances', { income: 0, expense: 0, cash: 0, receipts: [], orders: [], cashOps: [], shifts: [] });
+        DB.set('documents', []);
 
         DB.set('tariffs', [
             // === Услуги (services) — из Google Таблицы ===
@@ -431,6 +390,40 @@ function runDataMigrations() {
         DB.set('tariffs', tariffs);
         DB.set('tariffs_version', 'v3');
         console.log('Migration v3: removed gazebo time, updated balls & shop');
+    }
+
+    // Migration v4: remove demo events, demo clients, demo finances
+    if (!DB.get('clean_demo_v4')) {
+        // Remove demo events (ids 1-3)
+        let events = DB.get('events', []);
+        const demoEventIds = [1, 2, 3];
+        const beforeCount = events.length;
+        events = events.filter(e => !demoEventIds.includes(e.id));
+        if (events.length < beforeCount) DB.set('events', events);
+
+        // Remove demo clients (ids 1-3)
+        let clients = DB.get('clients', []);
+        const demoClientIds = [1, 2, 3];
+        const beforeClients = clients.length;
+        clients = clients.filter(c => !demoClientIds.includes(c.id));
+        if (clients.length < beforeClients) DB.set('clients', clients);
+
+        // Clean demo finance data
+        const fin = DB.get('finances', {});
+        if (fin.income === 847000 || fin.expense === 312000) {
+            DB.set('finances', { income: 0, expense: 0, cash: 0, receipts: [], orders: [], cashOps: [], shifts: [] });
+        }
+
+        // Clean demo documents
+        let docs = DB.get('documents', []);
+        const demoDocs = docs.filter(d => d.comment === 'Поставщик: ПейнтПро' || d.comment === 'Бракованная партия' || d.comment === 'Результаты совпали с учётом');
+        if (demoDocs.length > 0) {
+            docs = docs.filter(d => !demoDocs.includes(d));
+            DB.set('documents', docs);
+        }
+
+        DB.set('clean_demo_v4', true);
+        console.log('Migration v4: removed demo events, clients, finances, documents');
     }
 }
 
