@@ -146,7 +146,7 @@ const GCalSync = (() => {
         try {
             const now = new Date();
             const from = new Date(now); from.setDate(from.getDate() - 7);
-            const to = new Date(now); to.setDate(to.getDate() + 30);
+            const to = new Date(now); to.setDate(to.getDate() + 180);
             const result = await pullEvents(from.toISOString(), to.toISOString());
             if (result.added > 0) {
                 showToast(`Google Calendar: +${result.added} новых мероприятий`);
