@@ -48,7 +48,11 @@ const DB = {
 
     get(key, fallback = null) {
         if (FIRESTORE_KEYS.has(key)) {
-            const val = this._cache[key];
+            let val = this._cache[key];
+            // Safety: unwrap double-stringified values
+            if (typeof val === 'string' && (val[0] === '[' || val[0] === '{')) {
+                try { val = JSON.parse(val); this._cache[key] = val; } catch {}
+            }
             return val !== undefined ? val : fallback;
         }
         try {
