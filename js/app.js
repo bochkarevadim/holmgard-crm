@@ -3113,11 +3113,37 @@ function loadManagerAssignment() {
     container.innerHTML = employees.map(emp => {
         const roles = emp.allowedShiftRoles || getDefaultAllowedRoles(emp.role);
         const isManager = roles.includes('manager');
-        return `<label class="option-checkbox" style="display:block;padding:8px 0;">
-            <input type="checkbox" data-emp-id="${emp.id}" class="manager-checkbox" ${isManager ? 'checked' : ''}>
-            ${emp.firstName} ${emp.lastName} <span style="color:var(--text-secondary);font-size:12px;">(${getRoleName(emp.role)})</span>
-        </label>`;
+        const sinceDate = emp.managerSince || '';
+        return `<div class="manager-assign-row" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-color);">
+            <label class="option-checkbox" style="flex-shrink:0;margin:0;">
+                <input type="checkbox" data-emp-id="${emp.id}" class="manager-checkbox" ${isManager ? 'checked' : ''}>
+                <span>${emp.firstName} ${emp.lastName}</span>
+                <span style="color:var(--text-secondary);font-size:12px;">(${getRoleName(emp.role)})</span>
+            </label>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:6px;${isManager ? '' : 'opacity:0.4;pointer-events:none;'}">
+                <span style="font-size:12px;color:var(--text-secondary);">с</span>
+                <input type="date" class="manager-since-date" data-emp-id="${emp.id}" value="${sinceDate}"
+                    style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);border-radius:8px;padding:6px 10px;font-size:13px;">
+            </div>
+        </div>`;
     }).join('');
+
+    // Toggle date input when checkbox changes
+    container.querySelectorAll('.manager-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const row = cb.closest('.manager-assign-row');
+            const dateWrap = row.querySelector('div[style*="margin-left"]');
+            if (cb.checked) {
+                dateWrap.style.opacity = '1';
+                dateWrap.style.pointerEvents = '';
+                const dateInput = row.querySelector('.manager-since-date');
+                if (!dateInput.value) dateInput.value = todayLocal();
+            } else {
+                dateWrap.style.opacity = '0.4';
+                dateWrap.style.pointerEvents = 'none';
+            }
+        });
+    });
 }
 
 var _settingsInitialized = false;
@@ -3190,10 +3216,15 @@ function initSettings() {
             if (!emp) return;
             let roles = emp.allowedShiftRoles || getDefaultAllowedRoles(emp.role);
             const wasManager = roles.includes('manager');
+            const dateInput = document.querySelector(`.manager-since-date[data-emp-id="${empId}"]`);
+            const sinceDate = dateInput ? dateInput.value : today;
             if (cb.checked && !wasManager) {
                 roles.push('manager');
-                emp.managerSince = today;
+                emp.managerSince = sinceDate || today;
                 delete emp.managerUntil;
+            } else if (cb.checked && wasManager) {
+                // Update date if changed
+                if (sinceDate) emp.managerSince = sinceDate;
             } else if (!cb.checked && wasManager) {
                 roles = roles.filter(r => r !== 'manager');
                 emp.managerUntil = today;
