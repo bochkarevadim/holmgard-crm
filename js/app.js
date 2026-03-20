@@ -69,9 +69,7 @@ const DB = {
         } else {
             localStorage.setItem('hp_' + key, JSON.stringify(val));
         }
-        if (!this._skipSync && typeof GSheetsSync !== 'undefined') {
-            GSheetsSync.autoSyncKey(key);
-        }
+        // Google Sheets sync disabled — Firestore is the single source of truth
     },
 
     remove(key) {
@@ -536,10 +534,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateDate();
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     GCalSync.init();
-    await GSheetsSync.init();
+    // GSheetsSync disabled — Firestore is the single source of truth
     initDirectorTariffs();
-
-    // Google Sheets sync is manual only (via "Синхронизировать" button)
     // Firestore is the single source of truth
 
     // Real-time UI updates from other devices via Firestore
@@ -3436,19 +3432,7 @@ function initDirectorTariffs() {
         });
     });
 
-    // Sync button
-    const syncBtn = document.getElementById('btn-sync-gsheets-tariffs');
-    if (syncBtn) syncBtn.addEventListener('click', async () => {
-        if (GCalSync.isConnected() && GSheetsSync.getSpreadsheetId()) {
-            await GSheetsSync.fullSync();
-        } else if (GSheetsSync.getSpreadsheetId()) {
-            await GSheetsSync.importFromPublicCSV();
-        } else {
-            showToast('Введите Spreadsheet ID в Настройках');
-            return;
-        }
-        loadDirectorTariffs();
-    });
+    // Google Sheets sync button disabled
 }
 
 let dirTariffSubcategory = null;
