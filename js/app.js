@@ -539,20 +539,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     await GSheetsSync.init();
     initDirectorTariffs();
 
-    // Auto-pull from Google Sheets on startup if connected
-    if (GSheetsSync.isConnected()) {
-        try {
-            DB._skipSync = true;
-            const pulled = await GSheetsSync.pullAllData();
-            DB._skipSync = false;
-            if (pulled) {
-                console.log('CRM: synced data from Google Sheets on startup');
-            }
-        } catch (err) {
-            DB._skipSync = false;
-            console.error('CRM: startup sync error', err);
-        }
-    }
+    // Google Sheets sync is manual only (via "Синхронизировать" button)
+    // Firestore is the single source of truth
 
     // Real-time UI updates from other devices via Firestore
     DB.onChange(() => {
