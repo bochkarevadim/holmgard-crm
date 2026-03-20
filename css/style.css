@@ -1011,6 +1011,34 @@ body {
 .option-shop-controls { display: flex; gap: 8px; align-items: center; margin-left: auto; }
 .option-shop-count { width: 70px; }
 
+/* Staff select (instructors/admins) */
+.staff-select-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.staff-select-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    transition: var(--transition);
+}
+.staff-select-item:hover { border-color: var(--accent); }
+.staff-select-item input[type="checkbox"] { display: none; }
+.staff-select-item:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+.staff-role-hint { font-size: 11px; opacity: 0.6; }
+
 /* Participants range */
 .participants-range {
     display: flex;

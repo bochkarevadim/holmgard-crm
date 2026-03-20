@@ -13,7 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=11">
+    <link rel="stylesheet" href="css/style.css?v=12">
 </head>
 <body>
 
@@ -1327,9 +1327,15 @@
                     <label>Название</label>
                     <input type="text" id="evt-title" placeholder="Название мероприятия" required>
                 </div>
-                <div class="form-group">
-                    <label>Фамилия и имя клиента</label>
-                    <input type="text" id="evt-client-name" placeholder="Иванов Иван">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Фамилия и имя клиента</label>
+                        <input type="text" id="evt-client-name" placeholder="Иванов Иван">
+                    </div>
+                    <div class="form-group">
+                        <label>Телефон клиента</label>
+                        <input type="tel" id="evt-client-phone" placeholder="+7 (999) 123-45-67">
+                    </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -1396,15 +1402,17 @@
                     <label>Дополнительные опции</label>
                     <div class="options-qty-list" id="evt-options-list"></div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Инструктор</label>
-                        <select id="evt-instructor"></select>
-                    </div>
-                    <div class="form-group">
-                        <label>Скидка (%)</label>
-                        <input type="number" id="evt-discount" placeholder="0" min="0" max="100">
-                    </div>
+                <div class="form-group">
+                    <label>Кто проводит — Инструкторы</label>
+                    <div class="staff-select-list" id="evt-instructors-list"></div>
+                </div>
+                <div class="form-group">
+                    <label>Кто проводит — Администраторы</label>
+                    <div class="staff-select-list" id="evt-admins-list"></div>
+                </div>
+                <div class="form-group">
+                    <label>Скидка (%)</label>
+                    <input type="number" id="evt-discount" placeholder="0" min="0" max="100">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -1711,6 +1719,6 @@
 <script src="js/gcal.js?v=9"></script>
 <script src="js/gsheets.js?v=8"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=23"></script>
+<script src="js/app.js?v=24"></script>
 </body>
 </html>

@@ -3,9 +3,18 @@
    ============================ */
 
 // ===== HELPERS =====
+// All times are in Moscow timezone (UTC+3)
+function moscowNow() {
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+}
+
 function todayLocal() {
-    const d = new Date();
+    const d = moscowNow();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function moscowTimeStr() {
+    return moscowNow().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDuration(min) {
@@ -412,8 +421,8 @@ function runDataMigrations() {
 // ===== STATE =====
 let currentUser = null;
 let currentPin = '';
-let calendarDate = new Date();
-let empCalendarDate = new Date();
+let calendarDate = moscowNow();
+let empCalendarDate = moscowNow();
 let selectedCalDay = null;
 let empSelectedCalDay = null;
 let revenueChart = null;
@@ -446,7 +455,7 @@ function autoCloseStaleShifts() {
 function startAutoCloseTimer() {
     if (autoCloseInterval) clearInterval(autoCloseInterval);
     autoCloseInterval = setInterval(() => {
-        const now = new Date();
+        const now = moscowNow();
         if (now.getHours() > 23 || (now.getHours() === 23 && now.getMinutes() >= 23)) {
             const todayStr = todayLocal();
             const shifts = DB.get('shifts', []);
@@ -666,7 +675,7 @@ function setupEmployeeScreen(user) {
     document.getElementById('emp-dash-name').textContent = user.firstName + ' ' + user.lastName;
     const empDate = document.getElementById('emp-top-bar-date');
     if (empDate) {
-        empDate.textContent = new Date().toLocaleDateString('ru-RU', {
+        empDate.textContent = moscowNow().toLocaleDateString('ru-RU', {
             weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
         });
     }
@@ -805,7 +814,7 @@ function loadEmployeeDashboard() {
 function startShiftTimer(startTimeStr) {
     if (shiftTimerInterval) clearInterval(shiftTimerInterval);
     const updateTimer = () => {
-        const now = new Date();
+        const now = moscowNow();
         const [h, m] = startTimeStr.split(':').map(Number);
         const start = new Date(now);
         start.setHours(h, m, 0, 0);
@@ -854,8 +863,7 @@ function initEmployeeScreen() {
     // FINISH WORK button
     document.getElementById('emp-btn-finish-work').addEventListener('click', () => {
         const todayStr = todayLocal();
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const timeStr = moscowTimeStr();
         const shifts = DB.get('shifts', []);
         const idx = shifts.findIndex(s => s.date === todayStr && s.employeeId === currentUser.id && !s.endTime);
         if (idx >= 0) {
@@ -1015,8 +1023,7 @@ function showEventSelectionModal() {
 function startShift(selectedEventIds, eventRoles) {
     closeModal('modal-event-select');
     const todayStr = todayLocal();
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const timeStr = moscowTimeStr();
 
     const shift = {
         id: Date.now(),
@@ -1146,7 +1153,7 @@ function calculateShiftEarnings(shift) {
 }
 
 function getEmployeeMonthEarnings(employeeId) {
-    const now = new Date();
+    const now = moscowNow();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const shifts = DB.get('shifts', []).filter(s =>
         s.employeeId === employeeId &&
@@ -1166,7 +1173,7 @@ function getPaymentMethodName(method) {
 }
 
 function getDateRangeForPeriod(period) {
-    const now = new Date();
+    const now = moscowNow();
     const todayStr = todayLocal();
     let startDate;
     if (period === 'week') {
@@ -1287,11 +1294,10 @@ function confirmSalaryPayment() {
     const employees = DB.get('employees', []);
     const emp = employees.find(e => e.id === employeeId);
     if (!emp) return;
-    const now = new Date();
     const payment = {
         id: Date.now(),
         date: todayLocal(),
-        time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        time: moscowTimeStr(),
         employeeId, employeeName: emp.firstName + ' ' + emp.lastName,
         amount, method, note
     };
@@ -1365,8 +1371,7 @@ function loadEmployeeEvents() {
     }
 
     list.innerHTML = events.map(e => {
-        const instructor = employees.find(emp => emp.id === e.instructor);
-        const instructorName = instructor ? instructor.firstName + ' ' + instructor.lastName : '—';
+        const staffNames = getStaffNames(e) || '—';
         const statusClass = 'status-' + (e.status || 'pending');
         const statusName = getStatusName(e.status);
         const isCompleted = e.status === 'completed';
@@ -1376,7 +1381,7 @@ function loadEmployeeEvents() {
                 <div class="emp-event-time">${e.time}</div>
                 <div class="emp-event-info">
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
-                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)} · ${instructorName} · ${formatMoney(e.price)}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)} · ${staffNames} · ${formatMoney(e.price)}</span>
                 </div>
                 <span class="emp-event-status ${statusClass}">${statusName}</span>
                 <div class="emp-event-actions">
@@ -1622,7 +1627,7 @@ function selectEmpCalDay(dateStr) {
                 <div class="event-time">${e.time}</div>
                 <div class="event-info">
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
-                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${e.instructor ? ' · ' + getInstructorName(e.instructor) : ''}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}</span>
                 </div>
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
             </div>
@@ -1832,7 +1837,7 @@ function loadDashboard() {
 
 function calculateRevenue(period) {
     const events = DB.get('events', []);
-    const now = new Date();
+    const now = moscowNow();
     const todayStr = todayLocal();
     let startDate, endDate, prevStartDate, prevEndDate;
 
@@ -1921,7 +1926,7 @@ function loadRevenue() {
 
     const months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-    const thisYear = new Date().getFullYear();
+    const thisYear = moscowNow().getFullYear();
     const thisYearData = getMonthlyRevenueData(thisYear);
     const lastYearData = getMonthlyRevenueData(thisYear - 1);
 
@@ -2456,7 +2461,7 @@ function selectCalDay(dateStr) {
                 <div class="event-time">${e.time}</div>
                 <div class="event-info">
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
-                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${e.instructor ? ' · ' + getInstructorName(e.instructor) : ''}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}</span>
                 </div>
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
             </div>
@@ -2479,11 +2484,18 @@ function openEventModal(id = null) {
     document.getElementById('evt-id').value = '';
     document.getElementById('btn-delete-event').style.display = 'none';
 
-    // Populate instructor select
-    const instructors = DB.get('employees', []).filter(e => e.role === 'instructor' || e.role === 'admin');
-    const sel = document.getElementById('evt-instructor');
-    sel.innerHTML = '<option value="">— Выберите —</option>' +
-        instructors.map(i => `<option value="${i.id}">${i.firstName} ${i.lastName}</option>`).join('');
+    // Populate instructor checkboxes (instructor + senior_instructor only)
+    const allEmps = DB.get('employees', []);
+    const instructorEmps = allEmps.filter(e => e.role === 'instructor' || e.role === 'senior_instructor');
+    document.getElementById('evt-instructors-list').innerHTML = instructorEmps.length
+        ? instructorEmps.map(i => `<label class="staff-select-item"><input type="checkbox" value="${i.id}" class="evt-instr-cb"> ${i.firstName} ${i.lastName} <span class="staff-role-hint">${getRoleName(i.role)}</span></label>`).join('')
+        : '<span class="empty-state-text">Нет инструкторов</span>';
+
+    // Populate admin checkboxes (admin only)
+    const adminEmps = allEmps.filter(e => e.role === 'admin');
+    document.getElementById('evt-admins-list').innerHTML = adminEmps.length
+        ? adminEmps.map(a => `<label class="staff-select-item"><input type="checkbox" value="${a.id}" class="evt-admin-cb"> ${a.firstName} ${a.lastName}</label>`).join('')
+        : '<span class="empty-state-text">Нет администраторов</span>';
 
     // Populate tariff select
     const tariffs = DB.get('tariffs', []).filter(t => t.category === 'services');
@@ -2543,6 +2555,7 @@ function openEventModal(id = null) {
         document.getElementById('evt-id').value = evt.id;
         document.getElementById('evt-title').value = evt.title;
         document.getElementById('evt-client-name').value = evt.clientName || '';
+        document.getElementById('evt-client-phone').value = evt.clientPhone || '';
         document.getElementById('evt-date').value = evt.date;
         document.getElementById('evt-time').value = evt.time;
         document.getElementById('evt-duration').value = evt.duration;
@@ -2552,7 +2565,16 @@ function openEventModal(id = null) {
         document.getElementById('evt-tariff').value = evt.tariffId || '';
         document.getElementById('evt-participants-min').value = evt.participantsMin || '';
         document.getElementById('evt-participants').value = evt.participants;
-        document.getElementById('evt-instructor').value = evt.instructor || '';
+        // Check instructors
+        const instrIds = evt.instructors || (evt.instructor ? [evt.instructor] : []);
+        document.querySelectorAll('.evt-instr-cb').forEach(cb => {
+            cb.checked = instrIds.includes(parseInt(cb.value));
+        });
+        // Check admins
+        const adminIds = evt.admins || [];
+        document.querySelectorAll('.evt-admin-cb').forEach(cb => {
+            cb.checked = adminIds.includes(parseInt(cb.value));
+        });
         document.getElementById('evt-notes').value = evt.notes || '';
         document.getElementById('evt-price').value = evt.price || '';
         document.getElementById('evt-discount').value = evt.discount || '';
@@ -2633,6 +2655,7 @@ function saveEvent(e) {
     const data = {
         title: document.getElementById('evt-title').value.trim(),
         clientName: document.getElementById('evt-client-name').value.trim(),
+        clientPhone: document.getElementById('evt-client-phone').value.trim(),
         date: document.getElementById('evt-date').value,
         time: document.getElementById('evt-time').value,
         duration: parseInt(document.getElementById('evt-duration').value) || 60,
@@ -2642,7 +2665,9 @@ function saveEvent(e) {
         tariffId: parseInt(document.getElementById('evt-tariff').value) || null,
         participants: participantsMax,
         participantsMin: participantsMin > 0 ? participantsMin : null,
-        instructor: parseInt(document.getElementById('evt-instructor').value) || null,
+        instructors: [...document.querySelectorAll('.evt-instr-cb:checked')].map(cb => parseInt(cb.value)),
+        admins: [...document.querySelectorAll('.evt-admin-cb:checked')].map(cb => parseInt(cb.value)),
+        instructor: [...document.querySelectorAll('.evt-instr-cb:checked')].map(cb => parseInt(cb.value))[0] || null, // backward compat
         notes: document.getElementById('evt-notes').value.trim(),
         price: parseFloat(document.getElementById('evt-price').value) || 0,
         discount: parseFloat(document.getElementById('evt-discount').value) || 0,
@@ -3313,8 +3338,23 @@ function getInstructorName(id) {
     return emp ? emp.firstName + ' ' + emp.lastName : '—';
 }
 
+function getStaffNames(evt) {
+    const emps = DB.get('employees', []);
+    const names = [];
+    const instrIds = evt.instructors || (evt.instructor ? [evt.instructor] : []);
+    instrIds.forEach(id => {
+        const emp = emps.find(e => e.id === id);
+        if (emp) names.push(emp.firstName);
+    });
+    (evt.admins || []).forEach(id => {
+        const emp = emps.find(e => e.id === id);
+        if (emp) names.push(emp.firstName);
+    });
+    return names.length > 0 ? names.join(', ') : '';
+}
+
 function updateDate() {
-    const now = new Date();
+    const now = moscowNow();
     const dateStr = now.toLocaleDateString('ru-RU', {
         weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
     });
