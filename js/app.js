@@ -293,13 +293,12 @@ function initData() {
             { id: 18, category: 'services', serviceId: 'Tir_500', sheetCategory: 'Тир пейнтбольный', name: 'ТИР500', price: 1000, unit: 'чел', duration: 20, minPeople: 1, age: '0', included: 'Пейнтбольный тир 500 выстрелов', description: '', ballsPerPerson: 500, grenadesPerPerson: 0 },
             // === Опции к игре (optionsForGame) ===
             { id: 19, category: 'optionsForGame', serviceId: 'opt_pb_grenade', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Граната', price: 300, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 1 },
-            { id: 20, category: 'optionsForGame', serviceId: 'opt_pb_balls', sheetCategory: 'Доп. опции Пейнтбол/Кидбол', name: 'Дополнительные шары (200 шт)', price: 2, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 200, grenadesPerPerson: 0 },
+            { id: 20, category: 'optionsForGame', serviceId: 'opt_pb_balls', sheetCategory: 'Доп. опции Пейнтбол/Кидбол', name: 'Дополнительные шары', price: 2, quantity: 1, unit: 'шт', inputType: 'number', inputPlaceholder: 'Кол-во шаров', included: '', description: '', ballsPerPerson: 1, grenadesPerPerson: 0 },
             { id: 21, category: 'optionsForGame', serviceId: 'opt_pb_smoke', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дымовая шашка', price: 300, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 1 },
             { id: 22, category: 'optionsForGame', serviceId: 'opt_pb_barrel', sheetCategory: 'Доп. опции Пейнтбол', name: 'Удлинённый ствол', price: 200, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
-            { id: 23, category: 'optionsForGame', serviceId: 'opt_pb_gazebo', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дополнительное время в беседке (1 час)', price: 0, quantity: 1, unit: 'час', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
             // === Дополнительные опции (options) ===
             { id: 24, category: 'options', serviceId: 'Coffee', sheetCategory: 'Кофе', name: 'Кофе', price: 150, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
-            { id: 25, category: 'options', serviceId: 'Shop', sheetCategory: 'Магазин', name: 'Магазин', price: 0, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
+            { id: 25, category: 'options', serviceId: 'Shop', sheetCategory: 'Магазин', name: 'Магазин', price: 1, quantity: 1, unit: 'шт', inputType: 'shop', inputPlaceholder: 'Сумма ₽', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
             { id: 26, category: 'options', serviceId: 'opt_gazebo_small', sheetCategory: 'Аренда беседки', name: 'Малая беседка', price: 1000, quantity: 1, unit: 'час', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
             { id: 27, category: 'options', serviceId: 'opt_gazebo_big', sheetCategory: 'Аренда беседки', name: 'Большая беседка', price: 2000, quantity: 1, unit: 'час', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
             { id: 28, category: 'options', serviceId: 'opt_tent', sheetCategory: 'Аренда беседки', name: 'Шатёр', price: 1000, quantity: 1, unit: 'час', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
@@ -2493,18 +2492,49 @@ function openEventModal(id = null) {
         tariffs.map(t => `<option value="${t.id}">${t.name} — ${formatMoney(t.price)}/${t.unit}</option>`).join('');
 
     // Populate options with quantity controls
-    const allOptions = DB.get('tariffs', []).filter(t => t.category === 'optionsForGame' || t.category === 'options');
-    document.getElementById('evt-options-list').innerHTML = allOptions.map(o => `
-        <div class="option-qty-row" data-option-id="${o.id}">
-            <span class="option-qty-name">${o.name}</span>
-            <span class="option-qty-price">${formatMoney(o.price)}${o.category === 'optionsForGame' ? '/чел' : ''}</span>
-            <div class="option-qty-controls">
-                <button type="button" class="option-qty-btn" onclick="changeOptionQty(${o.id}, -1)">−</button>
-                <span class="option-qty-value" id="opt-qty-${o.id}">0</span>
-                <button type="button" class="option-qty-btn" onclick="changeOptionQty(${o.id}, 1)">+</button>
-            </div>
-        </div>
-    `).join('');
+    const allOptions = DB.get('tariffs', []).filter(t => (t.category === 'optionsForGame' || t.category === 'options') && t.id !== 23);
+    document.getElementById('evt-options-list').innerHTML = allOptions.map(o => {
+        if (o.inputType === 'number') {
+            // Number input (e.g. balls)
+            return `<div class="option-qty-row" data-option-id="${o.id}" data-input-type="number">
+                <span class="option-qty-name">${o.name}</span>
+                <span class="option-qty-price">${formatMoney(o.price)}/${o.unit}</span>
+                <div class="option-qty-controls">
+                    <input type="number" class="option-number-input" id="opt-qty-${o.id}" placeholder="${o.inputPlaceholder || 'Кол-во'}" min="0" value="">
+                </div>
+            </div>`;
+        } else if (o.inputType === 'shop') {
+            // Shop: sum + quantity inputs
+            return `<div class="option-qty-row" data-option-id="${o.id}" data-input-type="shop">
+                <span class="option-qty-name">${o.name}</span>
+                <div class="option-shop-controls">
+                    <input type="number" class="option-number-input" id="opt-qty-${o.id}" placeholder="Сумма ₽" min="0" value="">
+                    <input type="number" class="option-number-input option-shop-count" id="opt-shop-count-${o.id}" placeholder="Кол-во" min="0" value="">
+                </div>
+            </div>`;
+        } else {
+            // Standard +/- buttons
+            const priceLabel = o.category === 'optionsForGame' ? '/чел' : (o.unit === 'час' ? '/час' : '/шт');
+            return `<div class="option-qty-row" data-option-id="${o.id}">
+                <span class="option-qty-name">${o.name}</span>
+                <span class="option-qty-price">${formatMoney(o.price)}${priceLabel}</span>
+                <div class="option-qty-controls">
+                    <button type="button" class="option-qty-btn" onclick="changeOptionQty(${o.id}, -1)">−</button>
+                    <span class="option-qty-value" id="opt-qty-${o.id}">0</span>
+                    <button type="button" class="option-qty-btn" onclick="changeOptionQty(${o.id}, 1)">+</button>
+                </div>
+            </div>`;
+        }
+    }).join('');
+
+    // Bind input events for number/shop fields to toggle active class
+    document.querySelectorAll('#evt-options-list .option-number-input').forEach(input => {
+        input.addEventListener('input', () => {
+            const row = input.closest('.option-qty-row');
+            const val = parseInt(input.value) || 0;
+            row?.classList.toggle('active', val > 0);
+        });
+    });
 
     if (id) {
         const evt = DB.get('events', []).find(e => String(e.id) === String(id));
@@ -2534,13 +2564,29 @@ function openEventModal(id = null) {
         if (evt.optionQuantities) {
             Object.entries(evt.optionQuantities).forEach(([optId, qty]) => {
                 const el = document.getElementById('opt-qty-' + optId);
-                if (el) { el.textContent = qty; el.closest('.option-qty-row').classList.toggle('active', qty > 0); }
+                const row = el?.closest('.option-qty-row');
+                if (!el) return;
+                const inputType = row?.dataset.inputType;
+                if (inputType === 'number' || inputType === 'shop') {
+                    el.value = qty || '';
+                    if (inputType === 'shop' && evt.shopCount) {
+                        const countEl = document.getElementById('opt-shop-count-' + optId);
+                        if (countEl) countEl.value = evt.shopCount || '';
+                    }
+                } else {
+                    el.textContent = qty;
+                }
+                row?.classList.toggle('active', qty > 0);
             });
         } else if (evt.selectedOptions) {
             // Legacy: convert old checkbox format to quantities (1 each)
             evt.selectedOptions.forEach(optId => {
                 const el = document.getElementById('opt-qty-' + optId);
-                if (el) { el.textContent = '1'; el.closest('.option-qty-row').classList.add('active'); }
+                if (el) {
+                    if (el.tagName === 'INPUT') el.value = '1';
+                    else el.textContent = '1';
+                    el.closest('.option-qty-row')?.classList.add('active');
+                }
             });
         }
 
@@ -2562,12 +2608,22 @@ function saveEvent(e) {
     // Collect option quantities
     const optionQuantities = {};
     const selectedOptions = [];
+    let shopCount = null;
     document.querySelectorAll('#evt-options-list .option-qty-row').forEach(row => {
         const optId = parseInt(row.dataset.optionId);
-        const qty = parseInt(row.querySelector('.option-qty-value').textContent) || 0;
+        const inputType = row.dataset.inputType;
+        let qty = 0;
+        if (inputType === 'number' || inputType === 'shop') {
+            qty = parseInt(document.getElementById('opt-qty-' + optId)?.value) || 0;
+            if (inputType === 'shop') {
+                shopCount = parseInt(document.getElementById('opt-shop-count-' + optId)?.value) || 0;
+            }
+        } else {
+            qty = parseInt(row.querySelector('.option-qty-value')?.textContent) || 0;
+        }
         if (qty > 0) {
             optionQuantities[optId] = qty;
-            selectedOptions.push(optId); // backward compatibility
+            selectedOptions.push(optId);
         }
     });
 
@@ -2595,6 +2651,7 @@ function saveEvent(e) {
         prepaymentDate: document.getElementById('evt-prepayment-date').value,
         selectedOptions: selectedOptions, // backward compat: array of IDs
         optionQuantities: optionQuantities, // new: { optionId: quantity }
+        shopCount: shopCount, // quantity of shop items (if any)
     };
 
     if (id) {

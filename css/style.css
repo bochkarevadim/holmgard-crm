@@ -995,6 +995,22 @@ body {
 .option-qty-value { font-size: 14px; font-weight: 700; min-width: 20px; text-align: center; }
 .option-qty-row.active .option-qty-value { color: var(--accent); }
 
+.option-number-input {
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 6px 10px;
+    font-size: 13px;
+    width: 100px;
+    text-align: center;
+}
+.option-number-input:focus { border-color: var(--accent); outline: none; }
+.option-number-input::placeholder { color: var(--text-secondary); font-size: 11px; }
+
+.option-shop-controls { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.option-shop-count { width: 70px; }
+
 /* Participants range */
 .participants-range {
     display: flex;
