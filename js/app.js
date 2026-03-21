@@ -393,7 +393,7 @@ function runDataMigrations() {
     }
 
     // Migration v4: remove demo events, demo clients, demo finances
-    if (!DB.get('clean_demo_v4')) {
+    if (!DB.get('clean_demo_v5')) {
         // Remove demo events (ids 1-3)
         let events = DB.get('events', []);
         const demoEventIds = [1, 2, 3];
@@ -408,11 +408,8 @@ function runDataMigrations() {
         clients = clients.filter(c => !demoClientIds.includes(c.id));
         if (clients.length < beforeClients) DB.set('clients', clients);
 
-        // Clean demo finance data
-        const fin = DB.get('finances', {});
-        if (fin.income === 847000 || fin.expense === 312000) {
-            DB.set('finances', { income: 0, expense: 0, cash: 0, receipts: [], orders: [], cashOps: [], shifts: [] });
-        }
+        // Clean all finance data (reset to zero)
+        DB.set('finances', { income: 0, expense: 0, cash: 0, receipts: [], orders: [], cashOps: [], shifts: [] });
 
         // Clean demo documents
         let docs = DB.get('documents', []);
@@ -422,8 +419,8 @@ function runDataMigrations() {
             DB.set('documents', docs);
         }
 
-        DB.set('clean_demo_v4', true);
-        console.log('Migration v4: removed demo events, clients, finances, documents');
+        DB.set('clean_demo_v5', true);
+        console.log('Migration v5: removed all demo data');
     }
 }
 
