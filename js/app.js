@@ -588,6 +588,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             else if (pid === 'page-documents') loadDocuments();
             else if (pid === 'page-clients') loadClients();
             else if (pid === 'page-tariffs') loadDirectorTariffs();
+            else if (pid === 'page-settings') { loadSettingsData(); loadManagerAssignment(); }
         }
         // Re-render employee screen if active
         const empScreen = document.getElementById('employee-screen');
@@ -3155,7 +3156,7 @@ function loadManagerAssignment() {
                 <span>${emp.firstName} ${emp.lastName}</span>
                 <span style="color:var(--text-secondary);font-size:12px;">(${getRoleName(emp.role)})</span>
             </label>
-            <div style="margin-left:auto;display:flex;align-items:center;gap:6px;${isManager ? '' : 'opacity:0.4;pointer-events:none;'}">
+            <div class="manager-date-wrap" data-emp-id="${emp.id}" style="margin-left:auto;display:flex;align-items:center;gap:6px;${isManager ? '' : 'opacity:0.4;pointer-events:none;'}">
                 <span style="font-size:12px;color:var(--text-secondary);">с</span>
                 <input type="date" class="manager-since-date" data-emp-id="${emp.id}" value="${sinceDate}"
                     style="background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);border-radius:8px;padding:6px 10px;font-size:13px;">
@@ -3166,12 +3167,12 @@ function loadManagerAssignment() {
     // Toggle date input when checkbox changes
     container.querySelectorAll('.manager-checkbox').forEach(cb => {
         cb.addEventListener('change', () => {
-            const row = cb.closest('.manager-assign-row');
-            const dateWrap = row.querySelector('div[style*="margin-left"]');
+            const empId = cb.dataset.empId;
+            const dateWrap = container.querySelector(`.manager-date-wrap[data-emp-id="${empId}"]`);
             if (cb.checked) {
                 dateWrap.style.opacity = '1';
                 dateWrap.style.pointerEvents = '';
-                const dateInput = row.querySelector('.manager-since-date');
+                const dateInput = dateWrap.querySelector('.manager-since-date');
                 if (!dateInput.value) dateInput.value = todayLocal();
             } else {
                 dateWrap.style.opacity = '0.4';
