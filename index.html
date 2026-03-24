@@ -1556,6 +1556,27 @@
                         <span class="material-icons-round">account_balance</span>
                         <span>Перевод</span>
                     </label>
+                </div>
+                <div id="transfer-bank-select" style="display:none;margin-top:12px;">
+                    <p class="form-hint" style="margin-bottom:8px;">Выберите банк:</p>
+                    <div class="payment-methods">
+                        <label class="payment-method">
+                            <input type="radio" name="transfer-bank" value="sberbank" checked>
+                            <span>Сбербанк</span>
+                        </label>
+                        <label class="payment-method">
+                            <input type="radio" name="transfer-bank" value="tbank">
+                            <span>Т-Банк</span>
+                        </label>
+                        <label class="payment-method">
+                            <input type="radio" name="transfer-bank" value="alfabank">
+                            <span>Альфа-Банк</span>
+                        </label>
+                        <label class="payment-method">
+                            <input type="radio" name="transfer-bank" value="raiffeisen">
+                            <span>Райффайзен</span>
+                        </label>
+                    </div>
                     <label class="payment-method">
                         <input type="radio" name="payment-method" value="qr">
                         <span class="material-icons-round">qr_code_2</span>
@@ -1739,7 +1760,7 @@
 <script src="js/gcal.js?v=11"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=43"></script>
+<script src="js/app.js?v=44"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {

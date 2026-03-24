@@ -911,11 +911,13 @@ function initEmployeeScreen() {
     document.getElementById('modal-payment-close').addEventListener('click', () => closeModal('modal-payment'));
     document.getElementById('btn-cancel-payment').addEventListener('click', () => closeModal('modal-payment'));
 
-    // Combo payment toggle
+    // Payment method toggle (combo + transfer bank)
     document.querySelectorAll('input[name="payment-method"]').forEach(radio => {
         radio.addEventListener('change', () => {
             document.getElementById('combo-payment-fields').style.display =
                 radio.value === 'combo' && radio.checked ? 'block' : 'none';
+            document.getElementById('transfer-bank-select').style.display =
+                radio.value === 'transfer' && radio.checked ? 'block' : 'none';
         });
     });
 
@@ -1385,10 +1387,13 @@ function openPaymentModal(eventId) {
     // Reset payment form
     document.querySelector('input[name="payment-method"][value="cash"]').checked = true;
     document.getElementById('combo-payment-fields').style.display = 'none';
+    document.getElementById('transfer-bank-select').style.display = 'none';
     document.getElementById('combo-cash').value = '';
     document.getElementById('combo-card').value = '';
     document.getElementById('combo-transfer').value = '';
     document.getElementById('combo-qr').value = '';
+    const defaultBank = document.querySelector('input[name="transfer-bank"][value="sberbank"]');
+    if (defaultBank) defaultBank.checked = true;
 
     // Reset receipt checkbox
     const receiptCheckbox = document.getElementById('payment-receipt-printed');
@@ -1413,6 +1418,11 @@ function completeEventPayment() {
             transfer: parseFloat(document.getElementById('combo-transfer').value) || 0,
             qr: parseFloat(document.getElementById('combo-qr').value) || 0,
         };
+    }
+
+    if (paymentMethod === 'transfer') {
+        const bankRadio = document.querySelector('input[name="transfer-bank"]:checked');
+        paymentDetails.bank = bankRadio ? bankRadio.value : 'sberbank';
     }
 
     events[idx].status = 'completed';
