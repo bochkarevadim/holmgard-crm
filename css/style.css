@@ -2823,6 +2823,26 @@ body {
     padding: 8px 0;
 }
 
+/* Star rating */
+.star-rating {
+    display: flex;
+    gap: 4px;
+}
+.star-rating .star {
+    font-size: 32px;
+    color: var(--border);
+    cursor: pointer;
+    transition: color 0.15s;
+    user-select: none;
+}
+.star-rating .star.active {
+    color: var(--accent);
+}
+.star-rating .star:hover,
+.star-rating .star:hover ~ .star { color: var(--border); }
+.star-rating:hover .star { color: var(--accent); }
+.star-rating .star:hover ~ .star { color: var(--border); }
+
 .rating-period-toggle {
     display: flex;
     gap: 4px;

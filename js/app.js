@@ -1383,6 +1383,23 @@ function openPaymentModal(eventId) {
     const receiptCheckbox = document.getElementById('payment-receipt-printed');
     if (receiptCheckbox) receiptCheckbox.checked = false;
 
+    // Instructor rating section — show if instructors assigned
+    const hasInstructors = (evt.instructors && evt.instructors.length > 0) || (evt.assignedInstructors && evt.assignedInstructors.length > 0);
+    const ratingSection = document.getElementById('instructor-rating-section');
+    ratingSection.style.display = hasInstructors ? 'block' : 'none';
+    // Reset stars
+    document.querySelectorAll('#instructor-star-rating .star').forEach(s => s.classList.remove('active'));
+    document.getElementById('instructor-rating-comment').value = '';
+    // Star click handlers
+    document.querySelectorAll('#instructor-star-rating .star').forEach(star => {
+        star.onclick = () => {
+            const val = parseInt(star.dataset.value);
+            document.querySelectorAll('#instructor-star-rating .star').forEach(s => {
+                s.classList.toggle('active', parseInt(s.dataset.value) <= val);
+            });
+        };
+    });
+
     openModal('modal-payment');
 }
 
@@ -1413,6 +1430,15 @@ function completeEventPayment() {
     events[idx].paymentDetails = paymentDetails;
     events[idx].completedAt = new Date().toISOString();
     events[idx].completedBy = currentUser ? currentUser.id : null;
+
+    // Save instructor rating
+    const activeStars = document.querySelectorAll('#instructor-star-rating .star.active');
+    const rating = activeStars.length > 0 ? activeStars.length : null;
+    const ratingComment = document.getElementById('instructor-rating-comment').value.trim();
+    if (rating) {
+        events[idx].instructorRating = rating;
+        events[idx].ratingComment = ratingComment || '';
+    }
 
     // === DISTRIBUTE BONUSES TO ASSIGNED STAFF ===
     // Read from event data (saved in event form when completing)
@@ -2087,32 +2113,40 @@ function loadEmployeeRating() {
         startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
     }
 
-    const allShifts = DB.get('shifts', []);
-    const ratings = employees.map(e => {
-        const shifts = allShifts.filter(s =>
-            s.employeeId === e.id && s.date >= startDate && s.endTime && s.earnings
-        );
-        const totalEarned = shifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
+    const allEvents = DB.get('events', []).filter(e =>
+        e.status === 'completed' && e.instructorRating && e.date >= startDate
+    );
 
-        // Add manager accruals
-        const endDate = todayLocal();
-        const mgrAccruals = getManagerDailyAccruals(e, startDate, endDate);
-        const mgrTotal = mgrAccruals.reduce((s, a) => s + a.amount, 0);
+    const ratings = employees.map(e => {
+        // Find completed events where this employee was an instructor
+        const empEvents = allEvents.filter(ev =>
+            (ev.instructors || []).includes(e.id) || (ev.assignedInstructors || []).includes(e.id)
+        );
+        const totalRating = empEvents.reduce((sum, ev) => sum + (ev.instructorRating || 0), 0);
+        const avgRating = empEvents.length > 0 ? (totalRating / empEvents.length) : 0;
 
         return {
             name: e.firstName + ' ' + e.lastName,
-            shifts: shifts.length,
-            earned: totalEarned + mgrTotal
+            eventsCount: empEvents.length,
+            avgRating: avgRating
         };
-    }).sort((a, b) => b.earned - a.earned);
+    }).filter(r => r.eventsCount > 0).sort((a, b) => b.avgRating - a.avgRating);
+
+    const renderStars = (rating) => {
+        let stars = '';
+        for (let i = 1; i <= 5; i++) {
+            stars += `<span style="color:${i <= Math.round(rating) ? 'var(--accent)' : 'var(--border)'};font-size:14px;">&#9733;</span>`;
+        }
+        return stars;
+    };
 
     list.innerHTML = ratings.length === 0
-        ? '<p class="empty-state">Нет данных</p>'
+        ? '<p class="empty-state">Нет оценок за период</p>'
         : ratings.map((r, i) => `
         <div class="rating-item">
             <div class="rating-pos">${i + 1}</div>
             <div class="rating-name">${r.name}</div>
-            <div class="rating-score">${r.shifts} смен · ${formatMoney(r.earned)}</div>
+            <div class="rating-score">${renderStars(r.avgRating)} ${r.avgRating.toFixed(1)} · ${r.eventsCount} мероприятий</div>
         </div>
     `).join('');
 }
