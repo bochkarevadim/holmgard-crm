@@ -2493,7 +2493,7 @@ function openEventModal(id = null, completing = false) {
             </div>`;
         } else {
             // Standard +/- buttons
-            const priceLabel = o.category === 'optionsForGame' ? '/чел' : (o.unit === 'час' ? '/час' : '/шт');
+            const priceLabel = o.unit === 'час' ? '/час' : (o.unit === 'штука' ? '/шт' : '/шт');
             return `<div class="option-qty-row" data-option-id="${o.id}">
                 <span class="option-qty-name">${o.name}</span>
                 <span class="option-qty-price">${formatMoney(o.price)}${priceLabel}</span>
@@ -2639,9 +2639,7 @@ function recalcEventTotal() {
         }
         if (qty <= 0) return;
         if (inputType === 'shop') {
-            optionsCost += qty; // shop: value is already the sum
-        } else if (opt.category === 'optionsForGame') {
-            optionsCost += opt.price * qty * participants;
+            optionsCost += qty; // shop: value is already the sum in rubles
         } else {
             optionsCost += opt.price * qty;
         }
