@@ -1934,16 +1934,19 @@ function loadEventsToday() {
     const list = document.getElementById('events-today-list');
     list.innerHTML = events.length === 0
         ? '<p class="empty-state">Нет мероприятий</p>'
-        : events.map(e => `
-            <div class="list-item">
+        : events.map(e => {
+            const isCompleted = e.status === 'completed';
+            return `
+            <div class="list-item" style="cursor:pointer;" onclick="navigateTo('schedule')">
                 <span class="material-icons-round">event</span>
-                <div class="list-item-info">
+                <div class="list-item-info" style="flex:1;">
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
-                    <span>${e.time} · ${formatParticipants(e)}</span>
+                    <span>${e.time} · ${formatParticipants(e)}${e.price ? ' · ' + formatMoney(e.price) : ''}</span>
                 </div>
+                ${!isCompleted ? `<button class="btn-primary btn-sm" onclick="event.stopPropagation();openEventModal('${e.id}', true)" style="font-size:11px;padding:4px 8px;">Выполнить</button>` : '<span class="list-item-badge" style="background:#4CAF50;color:#fff;">Выполнен</span>'}
                 <span class="list-item-badge badge-blue">${getEventTypeName(e.type)}</span>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
 }
 
 function loadOnShift() {
@@ -2474,16 +2477,24 @@ function selectCalDay(dateStr) {
     if (events.length === 0) {
         list.innerHTML = '<p class="empty-state">Нет мероприятий в этот день</p>';
     } else {
-        list.innerHTML = events.map(e => `
-            <div class="event-card" onclick="openEventModal('${e.id}')">
+        list.innerHTML = events.map(e => {
+            const isCompleted = e.status === 'completed';
+            const statusClass = 'status-' + (e.status || 'pending');
+            const statusName = getStatusName(e.status);
+            return `
+            <div class="event-card" style="flex-wrap:wrap;gap:8px;">
                 <div class="event-time">${e.time}</div>
-                <div class="event-info">
+                <div class="event-info" onclick="openEventModal('${e.id}')" style="cursor:pointer;flex:1;min-width:200px;">
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
-                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}${e.price ? ' · ' + formatMoney(e.price) : ''}</span>
                 </div>
+                <span class="emp-event-status ${statusClass}">${statusName}</span>
+                ${!isCompleted ? `<button class="btn-primary btn-sm" onclick="openEventModal('${e.id}', true)" style="flex-shrink:0;">
+                    <span class="material-icons-round" style="font-size:16px">done_all</span> Выполнить
+                </button>` : ''}
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
     }
 }
 
