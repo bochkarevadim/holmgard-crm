@@ -1974,11 +1974,21 @@ function loadOnShift() {
     }).join('');
 }
 
+let svcRatingPeriod = 'month';
+
 function loadServiceRating() {
     const ctx = document.getElementById('servicesChart');
     if (servicesChart) servicesChart.destroy();
 
-    const events = DB.get('events', []).filter(e => e.status === 'completed');
+    const now = moscowNow();
+    let startDate;
+    if (svcRatingPeriod === 'year') {
+        startDate = `${now.getFullYear()}-01-01`;
+    } else {
+        startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+
+    const events = DB.get('events', []).filter(e => e.status === 'completed' && e.date >= startDate);
     const typeCounts = {};
     events.forEach(e => {
         const typeName = getEventTypeName(e.type) || e.type || 'Другое';
@@ -2096,6 +2106,15 @@ document.querySelectorAll('.rating-period-btn').forEach(btn => {
         btn.classList.add('active');
         empRatingPeriod = btn.dataset.ratingPeriod;
         loadEmployeeRating();
+    });
+});
+
+document.querySelectorAll('.svc-rating-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.svc-rating-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        svcRatingPeriod = btn.dataset.svcPeriod;
+        loadServiceRating();
     });
 });
 

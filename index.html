@@ -487,6 +487,10 @@
                 <div class="dash-card">
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">star</span> Рейтинг услуг</h3>
+                        <div class="rating-period-toggle">
+                            <button class="svc-rating-btn active" data-svc-period="month">Месяц</button>
+                            <button class="svc-rating-btn" data-svc-period="year">Год</button>
+                        </div>
                     </div>
                     <div class="chart-container chart-sm">
                         <canvas id="servicesChart"></canvas>
@@ -1727,6 +1731,6 @@
 <script src="js/gcal.js?v=11"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=41"></script>
+<script src="js/app.js?v=42"></script>
 </body>
 </html>
