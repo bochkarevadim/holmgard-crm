@@ -1844,11 +1844,11 @@ function calculateRevenue(period) {
     }
 
     const currentRevenue = events
-        .filter(e => e.date >= startDate && e.date <= endDate && (e.price || 0) > 0)
+        .filter(e => e.date >= startDate && e.date <= endDate && e.status === 'completed' && (e.price || 0) > 0)
         .reduce((sum, e) => sum + (e.price || 0), 0);
 
     const prevRevenue = events
-        .filter(e => e.date >= prevStartDate && e.date <= prevEndDate && (e.price || 0) > 0)
+        .filter(e => e.date >= prevStartDate && e.date <= prevEndDate && e.status === 'completed' && (e.price || 0) > 0)
         .reduce((sum, e) => sum + (e.price || 0), 0);
 
     const change = prevRevenue > 0 ? Math.round((currentRevenue / prevRevenue - 1) * 100) : (currentRevenue > 0 ? 100 : 0);
@@ -1860,7 +1860,7 @@ function getMonthlyRevenueData(year) {
     const events = DB.get('events', []);
     const monthly = new Array(12).fill(0);
     events.forEach(e => {
-        if (!e.date || !e.price) return;
+        if (!e.date || !e.price || e.status !== 'completed') return;
         const parts = e.date.split('-');
         if (parseInt(parts[0]) === year) {
             const monthIdx = parseInt(parts[1]) - 1;
@@ -1978,7 +1978,7 @@ function loadServiceRating() {
     const ctx = document.getElementById('servicesChart');
     if (servicesChart) servicesChart.destroy();
 
-    const events = DB.get('events', []);
+    const events = DB.get('events', []).filter(e => e.status === 'completed');
     const typeCounts = {};
     events.forEach(e => {
         const typeName = getEventTypeName(e.type) || e.type || 'Другое';
