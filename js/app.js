@@ -32,7 +32,7 @@ const FIRESTORE_KEYS = new Set([
     'loyaltyPercent', 'accentColor', 'empDashOrder',
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'consumables_v1', 'tariffs_version',
-    'salaryPayments', 'clean_demo_v5', 'fix_roles_v6'
+    'salaryPayments'
 ]);
 
 const DB = {
@@ -392,81 +392,6 @@ function runDataMigrations() {
         console.log('Migration v3: removed gazebo time, updated balls & shop');
     }
 
-    // Migration v5: remove demo data (one-time, flag stored in Firestore)
-    if (!DB.get('clean_demo_v5')) {
-        // Remove demo events (ids 1-3) only if they still have demo titles
-        let events = DB.get('events', []);
-        const demoTitles = ['Корпоратив «Альфа-Банк»', 'День рождения Артёма', 'Пейнтбол для друзей'];
-        const beforeCount = events.length;
-        events = events.filter(e => !demoTitles.includes(e.title));
-        if (events.length < beforeCount) DB.set('events', events);
-
-        // Remove demo clients only if they still have demo names
-        let clients = DB.get('clients', []);
-        const demoNames = ['Петров', 'Иванова', 'Николаев'];
-        const beforeClients = clients.length;
-        clients = clients.filter(c => !demoNames.includes(c.lastName));
-        if (clients.length < beforeClients) DB.set('clients', clients);
-
-        // Clean demo finance data only if it has demo values
-        const fin = DB.get('finances', {});
-        if (fin.income === 847000 && fin.expense === 312000) {
-            DB.set('finances', { income: 0, expense: 0, cash: 0, receipts: [], orders: [], cashOps: [], shifts: [] });
-        }
-
-        // Clean demo documents by demo comments
-        let docs = DB.get('documents', []);
-        const beforeDocs = docs.length;
-        docs = docs.filter(d => d.comment !== 'Поставщик: ПейнтПро' && d.comment !== 'Бракованная партия' && d.comment !== 'Результаты совпали с учётом');
-        if (docs.length < beforeDocs) DB.set('documents', docs);
-
-        DB.set('clean_demo_v5', true);
-        console.log('Migration v5: cleaned demo data');
-    }
-
-    // Migration v6: fix employee roles and salary payments (one-time fix)
-    if (!DB.get('fix_roles_v6')) {
-        const emps = DB.get('employees', []);
-        const roleMap = {
-            2: { role: 'senior_instructor', allowedShiftRoles: ['senior_instructor', 'admin'] },  // Савелий
-            3: { role: 'admin', allowedShiftRoles: ['admin'] },  // Елена
-            4: { role: 'instructor', allowedShiftRoles: ['instructor', 'admin'] },  // Дмитрий
-            5: { role: 'admin', allowedShiftRoles: ['admin'] },  // Ольга
-        };
-        let changed = false;
-        emps.forEach(emp => {
-            const fix = roleMap[emp.id];
-            if (fix && emp.role !== fix.role) {
-                emp.role = fix.role;
-                emp.allowedShiftRoles = fix.allowedShiftRoles;
-                changed = true;
-            }
-        });
-        if (changed) DB.set('employees', emps);
-
-        // Fix salary payment: 19920 should be for Савелий (id:2), not Ольга (id:5)
-        const payments = DB.get('salaryPayments', []);
-        let payChanged = false;
-        payments.forEach(p => {
-            if (p.amount === 19920 && p.employeeId === 5) {
-                p.employeeId = 2;
-                p.employeeName = 'Савелий Данилов';
-                payChanged = true;
-            }
-        });
-        if (payChanged) DB.set('salaryPayments', payments);
-
-        // Fix salary rules
-        DB.set('salaryRules', {
-            instructor: { shiftRate: 1500, bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] },
-            senior_instructor: { shiftRate: 2000, bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] },
-            admin: { shiftRate: 0, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] },
-            manager: { dailyRate: 360 }
-        });
-
-        DB.set('fix_roles_v6', true);
-        console.log('Migration v6: fixed employee roles, salary payment, salary rules');
-    }
 }
 
 // ===== STATE =====
