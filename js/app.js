@@ -1359,10 +1359,13 @@ function openPaymentModal(eventId) {
     const evt = events.find(e => String(e.id) === String(eventId));
     if (!evt) return;
 
+    const prepay = evt.prepayment || 0;
+    const amountToPay = prepay > 0 ? (evt.toPay || Math.max(0, (evt.price || 0) - prepay)) : (evt.price || 0);
     document.getElementById('payment-event-info').innerHTML = `
         <strong>${evt.title}</strong>${evt.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${evt.clientName}</span>` : ''}
         <span>${evt.time} · ${formatParticipants(evt)} · ${getEventTypeName(evt.type)}</span>
-        <div class="payment-amount">${formatMoney(evt.price)}</div>
+        ${prepay > 0 ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">Итого: ${formatMoney(evt.price)} · Предоплата: −${formatMoney(prepay)}</div>` : ''}
+        <div class="payment-amount">К оплате: ${formatMoney(amountToPay)}</div>
     `;
 
     // Reset payment form
@@ -2773,8 +2776,9 @@ function recalcEventTotal() {
         `;
     }
 
-    // Also update price field
+    // Update price field (full price for records, toPay shown in payment modal)
     document.getElementById('evt-price').value = total;
+    document.getElementById('evt-price').dataset.toPay = toPay;
 }
 
 function completeEventFromModal() {
@@ -2836,6 +2840,8 @@ function saveEvent(e) {
         instructor: [...document.querySelectorAll('.evt-instr-cb:checked')].map(cb => parseInt(cb.value))[0] || null, // backward compat
         notes: document.getElementById('evt-notes').value.trim(),
         price: parseFloat(document.getElementById('evt-price').value) || 0,
+        totalPrice: parseFloat(document.getElementById('evt-price').value) || 0,
+        toPay: parseFloat(document.getElementById('evt-price').dataset.toPay) || 0,
         discount: parseFloat(document.getElementById('evt-discount').value) || 0,
         status: document.getElementById('evt-status').value || 'pending',
         prepayment: parseFloat(document.getElementById('evt-prepayment').value) || 0,
