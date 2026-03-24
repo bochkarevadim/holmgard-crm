@@ -1467,12 +1467,16 @@ function completeEventPayment() {
     // Credit bonuses to employee shifts
     const shifts = DB.get('shifts', []);
     const todayStr2 = todayLocal();
+    const eventDate = events[idx].date || todayStr2;
     const evtTitle = events[idx].title || 'Мероприятие';
 
     const creditBonus = (empId, amount) => {
         if (amount <= 0) return;
-        // Find today's shift (active or ended)
-        const shiftIdx = shifts.findIndex(s => s.date === todayStr2 && s.employeeId === empId);
+        // Find shift: first by event date, then by today (if completing next day)
+        let shiftIdx = shifts.findIndex(s => s.date === eventDate && s.employeeId === empId);
+        if (shiftIdx < 0 && eventDate !== todayStr2) {
+            shiftIdx = shifts.findIndex(s => s.date === todayStr2 && s.employeeId === empId);
+        }
         if (shiftIdx >= 0) {
             if (!shifts[shiftIdx].eventBonuses) shifts[shiftIdx].eventBonuses = [];
             shifts[shiftIdx].eventBonuses.push({ eventId: events[idx].id, eventTitle: evtTitle, amount });
