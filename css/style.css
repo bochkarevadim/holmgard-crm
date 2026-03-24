@@ -2774,6 +2774,55 @@ body {
 }
 
 /* ===== RATING PERIOD TOGGLE ===== */
+/* Staff chips for payment modal */
+.staff-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+.staff-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 14px;
+    user-select: none;
+}
+.staff-chip:hover { border-color: var(--accent); }
+.staff-chip.selected {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+}
+.staff-chip .chip-check {
+    width: 20px; height: 20px;
+    border-radius: 6px;
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 14px;
+    transition: var(--transition);
+}
+.staff-chip.selected .chip-check {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+}
+.staff-chip .chip-role {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.staff-chip-empty {
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 8px 0;
+}
+
 .rating-period-toggle {
     display: flex;
     gap: 4px;

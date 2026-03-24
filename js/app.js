@@ -728,14 +728,12 @@ function loadEmployeeDashboard() {
             document.getElementById('emp-shift-badge-text').textContent = shiftRoleName;
             startShiftTimer(todayShift.startTime);
 
-            // Show selected events
-            if (todayShift.selectedEvents && todayShift.selectedEvents.length > 0) {
+            // Show event bonuses earned during shift
+            if (todayShift.eventBonuses && todayShift.eventBonuses.length > 0) {
                 selectedEventsDiv.style.display = 'block';
-                const events = DB.get('events', []);
-                document.getElementById('emp-selected-events-list').innerHTML = todayShift.selectedEvents.map(eid => {
-                    const evt = events.find(e => String(e.id) === String(eid));
-                    return evt ? `<span class="emp-selected-event-chip">${evt.time} — ${evt.title}</span>` : '';
-                }).join('');
+                document.getElementById('emp-selected-events-list').innerHTML = todayShift.eventBonuses.map(b =>
+                    `<span class="emp-selected-event-chip">${b.eventTitle || 'Мероприятие'}: +${formatMoney(b.amount)}</span>`
+                ).join('');
             }
         }
     } else {
@@ -804,9 +802,8 @@ function initEmployeeScreen() {
     // START WORK button — shift always starts in employee's main role
     document.getElementById('emp-btn-start-work').addEventListener('click', () => {
         if (!currentUser) return;
-        // Main role = employee's position (role field)
         pendingShiftRole = currentUser.role;
-        showEventSelectionModal();
+        startShift();
     });
 
     document.getElementById('modal-role-close').addEventListener('click', () => closeModal('modal-role-select'));
@@ -989,8 +986,7 @@ function showEventSelectionModal() {
     openModal('modal-event-select');
 }
 
-function startShift(selectedEventIds, eventRoles) {
-    closeModal('modal-event-select');
+function startShift() {
     const todayStr = todayLocal();
     const timeStr = moscowTimeStr();
 
@@ -999,12 +995,11 @@ function startShift(selectedEventIds, eventRoles) {
         employeeId: currentUser.id,
         employeeName: currentUser.firstName + ' ' + currentUser.lastName,
         employeeRole: currentUser.role,
-        shiftRole: pendingShiftRole, // main role for the shift
+        shiftRole: pendingShiftRole,
         date: todayStr,
         startTime: timeStr,
         endTime: null,
-        selectedEvents: selectedEventIds,
-        eventRoles: eventRoles || {}, // role per event (for bonus calculation)
+        eventBonuses: [],
         earnings: null
     };
 
@@ -1077,45 +1072,29 @@ function calculateEventRevenueBySources(event, sources) {
 
 function calculateShiftEarnings(shift) {
     const rules = DB.get('salaryRules', {
-        instructor: { shiftRate: 1500, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] },
-        admin: { shiftRate: 0, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] }
+        instructor: { shiftRate: 1500, bonusPercent: 5 },
+        admin: { shiftRate: 0, bonusPercent: 5 }
     });
 
     const role = shift.shiftRole || shift.employeeRole;
     let base = 0;
-    let bonus = 0;
     let bonusDetail = '';
 
     if (role === 'instructor' || role === 'senior_instructor') {
-        const rule = rules[role] || rules.instructor || { shiftRate: 1500, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
+        const rule = rules[role] || rules.instructor || { shiftRate: 1500 };
         base = rule.shiftRate || 0;
-        const sources = rule.bonusSources || ['services', 'optionsForGame', 'options'];
-
-        // Bonus from selected events
-        const events = DB.get('events', []);
-        const selectedEvents = (shift.selectedEvents || []).map(id => events.find(e => String(e.id) === String(id))).filter(Boolean);
-        const eventsRevenue = selectedEvents.reduce((sum, e) => sum + calculateEventRevenueBySources(e, sources), 0);
-        bonus = Math.round(eventsRevenue * (rule.bonusPercent || 0) / 100);
-        const srcNames = sources.map(s => s === 'services' ? 'услуги' : s === 'optionsForGame' ? 'опции к игре' : 'доп. опции').join(', ');
-        bonusDetail = `${rule.bonusPercent}% от ${formatMoney(eventsRevenue)} (${srcNames})`;
-
     } else if (role === 'admin') {
-        const rule = rules.admin || { shiftRate: 0, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
+        const rule = rules.admin || { shiftRate: 0 };
         base = rule.shiftRate || 0;
-        const sources = rule.bonusSources || ['services', 'optionsForGame', 'options'];
-
-        // Bonus from ALL revenue on this date
-        const events = DB.get('events', []).filter(e => e.date === shift.date);
-        const dayRevenue = events.reduce((sum, e) => sum + calculateEventRevenueBySources(e, sources), 0);
-        bonus = Math.round(dayRevenue * (rule.bonusPercent || 0) / 100);
-        const srcNames = sources.map(s => s === 'services' ? 'услуги' : s === 'optionsForGame' ? 'опции к игре' : 'доп. опции').join(', ');
-        bonusDetail = `${rule.bonusPercent}% от ${formatMoney(dayRevenue)} (${srcNames})`;
     } else if (role === 'manager') {
-        // Manager daily rate is now auto-accrued via getManagerDailyAccruals()
-        // Shift with manager role earns 0 (rate comes from daily auto-accrual)
         base = 0;
-        bonus = 0;
         bonusDetail = 'Ставка менеджера начисляется автоматически ежедневно';
+    }
+
+    // Bonus comes from completed events (stored in eventBonuses)
+    const bonus = (shift.eventBonuses || []).reduce((sum, b) => sum + (b.amount || 0), 0);
+    if (bonus > 0) {
+        bonusDetail = `Бонус за ${(shift.eventBonuses || []).length} мероприятий`;
     }
 
     return { base, bonus, total: base + bonus, bonusDetail };
@@ -1245,12 +1224,14 @@ function updateSalaryPayInfo(employeeId) {
     const mgrTotal = mgrAccruals.reduce((s, a) => s + a.amount, 0);
     const earned = shiftEarned + mgrTotal;
     const paid = getEmployeePaymentsForPeriod(empIdNum, 'month').totalPaid;
-    const debt = Math.max(0, earned - paid);
+    const balance = earned - paid;
     document.getElementById('salary-pay-earned').textContent = formatMoney(earned);
     document.getElementById('salary-pay-already-paid').textContent = formatMoney(paid);
-    document.getElementById('salary-pay-debt').textContent = formatMoney(debt);
+    const debtEl = document.getElementById('salary-pay-debt');
+    debtEl.textContent = (balance < 0 ? 'Переплата ' : '') + formatMoney(Math.abs(balance));
+    debtEl.style.color = balance > 0 ? 'var(--red)' : balance < 0 ? 'var(--green)' : '';
     document.getElementById('salary-pay-info').style.display = 'block';
-    document.getElementById('salary-pay-amount').value = debt > 0 ? debt : '';
+    document.getElementById('salary-pay-amount').value = balance > 0 ? balance : '';
 }
 
 function confirmSalaryPayment() {
@@ -1399,7 +1380,53 @@ function openPaymentModal(eventId) {
     const receiptCheckbox = document.getElementById('payment-receipt-printed');
     if (receiptCheckbox) receiptCheckbox.checked = false;
 
+    // Populate instructor/admin staff lists
+    populatePaymentStaffLists(evt);
+
     openModal('modal-payment');
+}
+
+function populatePaymentStaffLists(evt) {
+    const employees = DB.get('employees', []).filter(e => e.role !== 'director');
+    const todayStr = todayLocal();
+    const shifts = DB.get('shifts', []).filter(s => s.date === todayStr);
+    const onShiftIds = new Set(shifts.map(s => s.employeeId));
+
+    // Instructors: employees with instructor/senior_instructor in allowedShiftRoles
+    const instructors = employees.filter(e => {
+        const roles = e.allowedShiftRoles || getDefaultAllowedRoles(e.role);
+        return roles.includes('instructor') || roles.includes('senior_instructor');
+    });
+
+    // Admins: employees with admin in allowedShiftRoles
+    const admins = employees.filter(e => {
+        const roles = e.allowedShiftRoles || getDefaultAllowedRoles(e.role);
+        return roles.includes('admin');
+    });
+
+    const renderChips = (list, emps) => {
+        if (emps.length === 0) {
+            list.innerHTML = '<span class="staff-chip-empty">Нет сотрудников</span>';
+            return;
+        }
+        list.innerHTML = emps.map(e => {
+            const onShift = onShiftIds.has(e.id);
+            return `<div class="staff-chip${onShift ? ' selected' : ''}" data-employee-id="${e.id}">
+                <span class="chip-check"><span class="material-icons-round" style="font-size:14px">check</span></span>
+                <div>
+                    <div>${e.firstName} ${e.lastName}</div>
+                    <div class="chip-role">${getRoleName(e.role)}${onShift ? ' · на смене' : ''}</div>
+                </div>
+            </div>`;
+        }).join('');
+
+        list.querySelectorAll('.staff-chip').forEach(chip => {
+            chip.addEventListener('click', () => chip.classList.toggle('selected'));
+        });
+    };
+
+    renderChips(document.getElementById('payment-instructor-list'), instructors);
+    renderChips(document.getElementById('payment-admin-list'), admins);
 }
 
 function completeEventPayment() {
@@ -1429,6 +1456,54 @@ function completeEventPayment() {
     events[idx].paymentDetails = paymentDetails;
     events[idx].completedAt = new Date().toISOString();
     events[idx].completedBy = currentUser ? currentUser.id : null;
+
+    // === DISTRIBUTE BONUSES TO ASSIGNED STAFF ===
+    const selectedInstructors = [...document.querySelectorAll('#payment-instructor-list .staff-chip.selected')]
+        .map(el => parseInt(el.dataset.employeeId));
+    const selectedAdmins = [...document.querySelectorAll('#payment-admin-list .staff-chip.selected')]
+        .map(el => parseInt(el.dataset.employeeId));
+
+    const salaryRules = DB.get('salaryRules', {});
+    const instrRule = salaryRules.instructor || salaryRules.senior_instructor || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
+    const adminRule = salaryRules.admin || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
+
+    const instrRevenue = calculateEventRevenueBySources(events[idx], instrRule.bonusSources || ['services', 'optionsForGame', 'options']);
+    const adminRevenue = calculateEventRevenueBySources(events[idx], adminRule.bonusSources || ['services', 'optionsForGame', 'options']);
+
+    const instrBonusTotal = Math.round(instrRevenue * (instrRule.bonusPercent || 5) / 100);
+    const adminBonusTotal = Math.round(adminRevenue * (adminRule.bonusPercent || 5) / 100);
+    const perInstructor = selectedInstructors.length > 0 ? Math.round(instrBonusTotal / selectedInstructors.length) : 0;
+    const perAdmin = selectedAdmins.length > 0 ? Math.round(adminBonusTotal / selectedAdmins.length) : 0;
+
+    events[idx].assignedInstructors = selectedInstructors;
+    events[idx].assignedAdmins = selectedAdmins;
+    events[idx].bonuses = {
+        instructorTotal: instrBonusTotal, adminTotal: adminBonusTotal,
+        perInstructor, perAdmin
+    };
+
+    // Credit bonuses to employee shifts
+    const shifts = DB.get('shifts', []);
+    const todayStr2 = todayLocal();
+    const evtTitle = events[idx].title || 'Мероприятие';
+
+    const creditBonus = (empId, amount) => {
+        if (amount <= 0) return;
+        // Find today's shift (active or ended)
+        const shiftIdx = shifts.findIndex(s => s.date === todayStr2 && s.employeeId === empId);
+        if (shiftIdx >= 0) {
+            if (!shifts[shiftIdx].eventBonuses) shifts[shiftIdx].eventBonuses = [];
+            shifts[shiftIdx].eventBonuses.push({ eventId: events[idx].id, eventTitle: evtTitle, amount });
+            // Recalculate earnings if shift already ended
+            if (shifts[shiftIdx].endTime) {
+                shifts[shiftIdx].earnings = calculateShiftEarnings(shifts[shiftIdx]);
+            }
+        }
+    };
+
+    selectedInstructors.forEach(id => creditBonus(id, perInstructor));
+    selectedAdmins.forEach(id => creditBonus(id, perAdmin));
+    DB.set('shifts', shifts);
 
     // === AUTO-DEDUCT CONSUMABLES FROM STOCK ===
     const tariffs = DB.get('tariffs', []);
@@ -1498,11 +1573,15 @@ function loadEmployeeSalary() {
     const period = empSalaryPeriod;
     const earnData = getEmployeeEarningsForPeriod(currentUser.id, period);
     const payData = getEmployeePaymentsForPeriod(currentUser.id, period);
-    const debt = Math.max(0, earnData.totalEarned - payData.totalPaid);
+    const balance = earnData.totalEarned - payData.totalPaid;
 
     document.getElementById('emp-sal-earned').textContent = formatMoney(earnData.totalEarned);
     document.getElementById('emp-sal-paid').textContent = formatMoney(payData.totalPaid);
-    document.getElementById('emp-sal-debt').textContent = formatMoney(debt);
+    const debtEl = document.getElementById('emp-sal-debt');
+    debtEl.textContent = formatMoney(Math.abs(balance));
+    debtEl.className = 'salary-card-value ' + (balance > 0 ? 'red' : balance < 0 ? 'green' : '');
+    const debtLabel = debtEl.closest('.salary-card')?.querySelector('.salary-card-label');
+    if (debtLabel) debtLabel.textContent = balance >= 0 ? 'Задолженность' : 'Переплата';
 
     // Shifts table
     const tbody = document.getElementById('emp-salary-table-body');
@@ -2162,7 +2241,7 @@ function loadEmployees() {
         const shiftEarned = empShifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
         const earned = shiftEarned + mgrTotal;
         const paid = empPayments.reduce((s, p) => s + (p.amount || 0), 0);
-        const debt = Math.max(0, earned - paid);
+        const balance = earned - paid; // positive = debt to employee, negative = overpaid
 
         const shiftRows = empShifts.map(s => {
             const role = s.shiftRole || s.employeeRole;
@@ -2224,8 +2303,8 @@ function loadEmployees() {
                         <span class="emp-dash-stat-value green">${formatMoney(paid)}</span>
                     </div>
                     <div class="emp-dash-stat">
-                        <span class="emp-dash-stat-label">Задолженность</span>
-                        <span class="emp-dash-stat-value ${debt > 0 ? 'red' : ''}">${formatMoney(debt)}</span>
+                        <span class="emp-dash-stat-label">${balance >= 0 ? 'Задолженность' : 'Переплата'}</span>
+                        <span class="emp-dash-stat-value ${balance > 0 ? 'red' : balance < 0 ? 'green' : ''}">${formatMoney(Math.abs(balance))}</span>
                     </div>
                 </div>
                 <span class="material-icons-round emp-dash-chevron">expand_more</span>

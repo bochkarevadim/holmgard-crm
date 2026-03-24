@@ -21,7 +21,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=14">
+    <link rel="stylesheet" href="css/style.css?v=15">
 </head>
 <body>
 
@@ -1538,6 +1538,14 @@
         </div>
         <div class="modal-body">
             <div class="payment-event-info" id="payment-event-info"></div>
+
+            <div class="form-group" id="payment-staff-section">
+                <label>Инструкторы на мероприятии</label>
+                <div class="staff-chip-list" id="payment-instructor-list"></div>
+                <label style="margin-top:12px;">Администраторы на мероприятии</label>
+                <div class="staff-chip-list" id="payment-admin-list"></div>
+            </div>
+
             <div class="form-group">
                 <label>Способ оплаты</label>
                 <div class="payment-methods">
@@ -1577,6 +1585,8 @@
                             <span>Райффайзен</span>
                         </label>
                     </div>
+                </div>
+                <div class="payment-methods" style="margin-top:8px;">
                     <label class="payment-method">
                         <input type="radio" name="payment-method" value="qr">
                         <span class="material-icons-round">qr_code_2</span>
@@ -1760,7 +1770,7 @@
 <script src="js/gcal.js?v=11"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=44"></script>
+<script src="js/app.js?v=45"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
