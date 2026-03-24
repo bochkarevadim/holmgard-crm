@@ -2983,11 +2983,11 @@ document.getElementById('btn-delete-event').addEventListener('click', () => {
 
 // ===== FINANCES =====
 function initFinances() {
-    document.querySelectorAll('.fin-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.fin-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            loadFinances(tab.dataset.fin);
+    document.querySelectorAll('.fin-period-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.fin-period-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadFinances(btn.dataset.finPeriod);
         });
     });
     // Salary payment modal
@@ -2998,54 +2998,149 @@ function initFinances() {
     document.getElementById('salary-pay-employee')?.addEventListener('change', function() { updateSalaryPayInfo(this.value); });
 }
 
-function loadFinances(tab = 'receipts') {
-    const fin = DB.get('finances', {});
-    document.getElementById('fin-income').textContent = formatMoney(fin.income || 0);
-    document.getElementById('fin-expense').textContent = formatMoney(fin.expense || 0);
-    document.getElementById('fin-balance').textContent = formatMoney((fin.income || 0) - (fin.expense || 0));
-    document.getElementById('fin-cash').textContent = formatMoney(fin.cash || 0);
+function loadFinances(period) {
+    if (!period) {
+        const activeBtn = document.querySelector('.fin-period-btn.active');
+        period = activeBtn ? activeBtn.dataset.finPeriod : 'week';
+    }
+    const { startDate, endDate } = getDateRangeForPeriod(period);
 
-    const thead = document.getElementById('fin-table-head');
-    const tbody = document.getElementById('fin-table-body');
+    // === 1. INCOME: completed events in period ===
+    const allEvents = DB.get('events', []);
+    const completedEvents = allEvents.filter(e =>
+        e.status === 'completed' && e.date >= startDate && e.date <= endDate
+    );
+    const totalIncome = completedEvents.reduce((sum, e) => sum + (e.price || e.totalPrice || 0), 0);
 
-    switch (tab) {
-        case 'receipts': {
-            // Show receipt status from completed events (Sigma 8Ф)
-            const events = DB.get('events', []).filter(e => e.status === 'completed');
-            thead.innerHTML = '<tr><th>Дата</th><th>Клиент</th><th>Услуга</th><th>Сумма</th><th>Чек</th></tr>';
-            if (events.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Нет выполненных заказов</td></tr>';
-            } else {
-                tbody.innerHTML = events.slice().reverse().map(ev => {
-                    const receiptOk = ev.receiptPrinted;
-                    const statusClass = receiptOk ? 'done' : 'fail';
-                    const statusText = receiptOk ? '✓ Пробит' : '✗ Не пробит';
-                    return `<tr>
-                        <td>${ev.completedAt ? new Date(ev.completedAt).toLocaleDateString('ru-RU') : ev.date || '—'}</td>
-                        <td>${ev.clientName || '—'}</td>
-                        <td>${getEventTypeName(ev.type)}</td>
-                        <td>${formatMoney(ev.totalPrice || 0)}</td>
-                        <td><span class="receipt-status ${statusClass}">${statusText}</span></td>
-                    </tr>`;
-                }).join('');
-            }
-            break;
+    // === 2. CONSUMABLES: cost of balls/grenades used ===
+    const consumablePrices = DB.get('consumablePrices', { ball: 1.5, grenade: 50, smoke: 50 });
+    let totalConsumablesCost = 0;
+    const consumableRows = [];
+    completedEvents.forEach(ev => {
+        const used = ev.consumablesUsed || {};
+        const balls = used.balls || 0;
+        const grenades = used.grenades || 0;
+        const cost = Math.round(balls * (consumablePrices.ball || 1.5) + grenades * (consumablePrices.grenade || 50));
+        if (balls > 0 || grenades > 0) {
+            totalConsumablesCost += cost;
+            consumableRows.push({ date: ev.date, title: ev.title || ev.clientName || 'Мероприятие', balls, grenades, cost });
         }
-        case 'orders':
-            thead.innerHTML = '<tr><th>№</th><th>Дата</th><th>Клиент</th><th>Услуга</th><th>Сумма</th><th>Статус</th></tr>';
-            tbody.innerHTML = (fin.orders || []).map(o => `
-                <tr><td>${o.id}</td><td>${o.date}</td><td>${o.client}</td><td>${o.service}</td><td>${formatMoney(o.amount)}</td>
-                <td><span class="list-item-badge ${o.status === 'Завершён' ? 'badge-green' : 'badge-blue'}">${o.status}</span></td></tr>
-            `).join('') || '<tr><td colspan="6" class="empty-state">Нет данных</td></tr>';
-            break;
-        case 'cashops':
-            thead.innerHTML = '<tr><th>Дата</th><th>Время</th><th>Тип</th><th>Сумма</th><th>Примечание</th></tr>';
-            tbody.innerHTML = (fin.cashOps || []).map(c => `
-                <tr><td>${c.date}</td><td>${c.time}</td>
-                <td><span class="list-item-badge ${c.type === 'Внесение' ? 'badge-green' : 'badge-orange'}">${c.type}</span></td>
-                <td>${formatMoney(c.amount)}</td><td>${c.note}</td></tr>
-            `).join('') || '<tr><td colspan="5" class="empty-state">Нет данных</td></tr>';
-            break;
+    });
+
+    // Also include incoming documents (purchases) as consumable expenses
+    const docs = DB.get('documents', []).filter(d =>
+        d.type === 'incoming' && d.date >= startDate && d.date <= endDate
+    );
+    const totalDocExpenses = docs.reduce((sum, d) => sum + (d.amount || 0), 0);
+    totalConsumablesCost += totalDocExpenses;
+
+    // === 3. SALARIES: earned + paid in period ===
+    const employees = DB.get('employees', []).filter(e => e.role !== 'director');
+    let totalSalariesEarned = 0;
+    let totalSalariesPaid = 0;
+    const salaryRows = [];
+    employees.forEach(emp => {
+        const earned = getEmployeeEarningsForPeriod(emp.id, period);
+        const mgrAccruals = getManagerDailyAccruals(emp, startDate, endDate);
+        const mgrTotal = mgrAccruals.reduce((s, a) => s + a.amount, 0);
+        const empEarned = earned.totalEarned + mgrTotal;
+        const paid = getEmployeePaymentsForPeriod(emp.id, period);
+        totalSalariesEarned += empEarned;
+        totalSalariesPaid += paid.totalPaid;
+        if (empEarned > 0 || paid.totalPaid > 0) {
+            const balance = empEarned - paid.totalPaid;
+            salaryRows.push({
+                name: emp.firstName + ' ' + emp.lastName,
+                earned: empEarned,
+                paid: paid.totalPaid,
+                balance
+            });
+        }
+    });
+
+    const totalExpenses = totalConsumablesCost + totalSalariesPaid;
+    const totalBalance = totalIncome - totalExpenses;
+
+    // === UPDATE CARDS ===
+    document.getElementById('fin-income').textContent = formatMoney(totalIncome);
+    document.getElementById('fin-consumables').textContent = formatMoney(totalConsumablesCost);
+    document.getElementById('fin-salaries').textContent = formatMoney(totalSalariesPaid);
+
+    const balEl = document.getElementById('fin-balance');
+    balEl.textContent = (totalBalance >= 0 ? '+' : '') + formatMoney(totalBalance);
+    balEl.className = 'fin-card-value ' + (totalBalance > 0 ? 'green' : totalBalance < 0 ? 'red' : '');
+
+    // === EVENTS TABLE ===
+    const evtBody = document.getElementById('fin-events-body');
+    if (completedEvents.length === 0) {
+        evtBody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет мероприятий за период</td></tr>';
+    } else {
+        evtBody.innerHTML = completedEvents.slice().sort((a, b) => b.date.localeCompare(a.date)).map(ev => {
+            const methodName = ev.paymentDetails ? getPaymentMethodName(ev.paymentDetails.method) : '—';
+            return `<tr>
+                <td>${ev.date}</td>
+                <td>${ev.clientName || '—'}</td>
+                <td>${ev.title || getEventTypeName(ev.type)}</td>
+                <td>${ev.participants || '—'}</td>
+                <td style="color:var(--green);font-weight:600">${formatMoney(ev.price || ev.totalPrice || 0)}</td>
+                <td>${methodName}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // === CONSUMABLES TABLE ===
+    const consBody = document.getElementById('fin-consumables-body');
+    if (consumableRows.length === 0 && docs.length === 0) {
+        consBody.innerHTML = '<tr><td colspan="5" class="empty-state">Нет расхода расходников за период</td></tr>';
+    } else {
+        let html = consumableRows.map(r => `<tr>
+            <td>${r.date}</td>
+            <td>${r.title}</td>
+            <td>${r.balls > 0 ? r.balls + ' шт.' : '—'}</td>
+            <td>${r.grenades > 0 ? r.grenades + ' шт.' : '—'}</td>
+            <td style="color:var(--red);font-weight:600">${formatMoney(r.cost)}</td>
+        </tr>`).join('');
+        // Add document purchases
+        docs.forEach(d => {
+            html += `<tr>
+                <td>${d.date}</td>
+                <td>Закупка: ${d.item || '—'}</td>
+                <td colspan="2">${d.qty || '—'} шт.</td>
+                <td style="color:var(--red);font-weight:600">${formatMoney(d.amount || 0)}</td>
+            </tr>`;
+        });
+        // Total row
+        html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
+            <td colspan="4" style="text-align:right;">Итого расходники:</td>
+            <td style="color:var(--red);">${formatMoney(totalConsumablesCost)}</td>
+        </tr>`;
+        consBody.innerHTML = html;
+    }
+
+    // === SALARIES TABLE ===
+    const salBody = document.getElementById('fin-salaries-body');
+    if (salaryRows.length === 0) {
+        salBody.innerHTML = '<tr><td colspan="4" class="empty-state">Нет данных по зарплатам за период</td></tr>';
+    } else {
+        let html = salaryRows.map(r => {
+            const balClass = r.balance > 0 ? 'color:var(--red)' : r.balance < 0 ? 'color:var(--green)' : '';
+            const balLabel = r.balance >= 0 ? formatMoney(r.balance) : 'Переплата ' + formatMoney(Math.abs(r.balance));
+            return `<tr>
+                <td>${r.name}</td>
+                <td>${formatMoney(r.earned)}</td>
+                <td style="color:var(--green)">${formatMoney(r.paid)}</td>
+                <td style="${balClass};font-weight:600">${balLabel}</td>
+            </tr>`;
+        }).join('');
+        // Total row
+        const salBalance = totalSalariesEarned - totalSalariesPaid;
+        html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
+            <td style="text-align:right;">Итого:</td>
+            <td>${formatMoney(totalSalariesEarned)}</td>
+            <td style="color:var(--green)">${formatMoney(totalSalariesPaid)}</td>
+            <td style="color:${salBalance > 0 ? 'var(--red)' : salBalance < 0 ? 'var(--green)' : 'inherit'}">${formatMoney(Math.abs(salBalance))}</td>
+        </tr>`;
+        salBody.innerHTML = html;
     }
 }
 

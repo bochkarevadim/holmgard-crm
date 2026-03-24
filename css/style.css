@@ -2109,6 +2109,57 @@ body {
 .payment-method-option input { display: none; }
 .payment-method-option .material-icons-round { font-size: 18px; color: var(--accent); }
 
+.fin-period-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+}
+.fin-period-btn {
+    padding: 10px 24px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    font-family: inherit;
+}
+.fin-period-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+.fin-period-btn.active {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+}
+.fin-breakdown {
+    margin-top: 28px;
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 20px;
+}
+.fin-breakdown h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+.fin-breakdown h3 .material-icons-round {
+    font-size: 20px;
+    color: var(--accent);
+}
+.fin-breakdown .table-container {
+    margin: 0;
+}
+
 .fin-tabs, .doc-tabs {
     display: flex;
     gap: 4px;

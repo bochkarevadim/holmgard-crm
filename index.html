@@ -21,7 +21,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=15">
+    <link rel="stylesheet" href="css/style.css?v=16">
 </head>
 <body>
 
@@ -707,27 +707,34 @@
         <div class="page" id="page-finances">
             <div class="section-header">
                 <h2>Финансы</h2>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <div class="badge-sigma" id="badge-atol-status" style="color:#22c55e;">
-                        <span class="material-icons-round">point_of_sale</span>
-                        Sigma 8Ф
-                    </div>
-                </div>
+            </div>
+
+            <div class="fin-period-tabs">
+                <button class="fin-period-btn active" data-fin-period="week">Неделя</button>
+                <button class="fin-period-btn" data-fin-period="month">Месяц</button>
+                <button class="fin-period-btn" data-fin-period="year">Год</button>
             </div>
 
             <div class="finance-summary">
                 <div class="fin-card">
                     <span class="material-icons-round">arrow_upward</span>
                     <div>
-                        <p class="fin-card-label">Доход</p>
+                        <p class="fin-card-label">Доход с мероприятий</p>
                         <p class="fin-card-value green" id="fin-income">0 ₽</p>
                     </div>
                 </div>
                 <div class="fin-card">
-                    <span class="material-icons-round">arrow_downward</span>
+                    <span class="material-icons-round">sports_baseball</span>
                     <div>
-                        <p class="fin-card-label">Расход</p>
-                        <p class="fin-card-value red" id="fin-expense">0 ₽</p>
+                        <p class="fin-card-label">Расходники</p>
+                        <p class="fin-card-value red" id="fin-consumables">0 ₽</p>
+                    </div>
+                </div>
+                <div class="fin-card">
+                    <span class="material-icons-round">badge</span>
+                    <div>
+                        <p class="fin-card-label">Зарплаты</p>
+                        <p class="fin-card-value red" id="fin-salaries">0 ₽</p>
                     </div>
                 </div>
                 <div class="fin-card">
@@ -737,26 +744,37 @@
                         <p class="fin-card-value" id="fin-balance">0 ₽</p>
                     </div>
                 </div>
-                <div class="fin-card">
-                    <span class="material-icons-round">point_of_sale</span>
-                    <div>
-                        <p class="fin-card-label">Наличные в кассе</p>
-                        <p class="fin-card-value" id="fin-cash">0 ₽</p>
-                    </div>
+            </div>
+
+            <!-- Breakdown sections -->
+            <div class="fin-breakdown" id="fin-breakdown-income">
+                <h3><span class="material-icons-round">event</span> Мероприятия</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead><tr><th>Дата</th><th>Клиент</th><th>Услуга</th><th>Участники</th><th>Сумма</th><th>Оплата</th></tr></thead>
+                        <tbody id="fin-events-body"></tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="fin-tabs">
-                <button class="fin-tab active" data-fin="receipts">Чеки</button>
-                <button class="fin-tab" data-fin="orders">Заказы</button>
-                <button class="fin-tab" data-fin="cashops">Операции с наличностью</button>
+            <div class="fin-breakdown" id="fin-breakdown-consumables">
+                <h3><span class="material-icons-round">sports_baseball</span> Расход расходников</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead><tr><th>Дата</th><th>Мероприятие</th><th>Шары</th><th>Гранаты/дым</th><th>Стоимость</th></tr></thead>
+                        <tbody id="fin-consumables-body"></tbody>
+                    </table>
+                </div>
             </div>
 
-            <div class="table-container">
-                <table class="data-table">
-                    <thead id="fin-table-head"></thead>
-                    <tbody id="fin-table-body"></tbody>
-                </table>
+            <div class="fin-breakdown" id="fin-breakdown-salaries">
+                <h3><span class="material-icons-round">badge</span> Зарплаты</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead><tr><th>Сотрудник</th><th>Начислено</th><th>Выплачено</th><th>Задолженность</th></tr></thead>
+                        <tbody id="fin-salaries-body"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -1773,7 +1791,7 @@
 <script src="js/gcal.js?v=11"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=46"></script>
+<script src="js/app.js?v=47"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
