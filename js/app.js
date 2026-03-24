@@ -3034,37 +3034,52 @@ function loadFinances(period) {
     const totalDocExpenses = docs.reduce((sum, d) => sum + (d.amount || 0), 0);
     totalConsumablesCost += totalDocExpenses;
 
-    // === 3. SALARIES: earned + paid in period ===
+    // === 3. SALARIES: all-time earned vs all-time paid (true balance) ===
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
     let totalSalariesEarned = 0;
     let totalSalariesPaid = 0;
     const salaryRows = [];
+    // Period paid — for the top card (cash outflow this period)
+    let periodSalariesPaid = 0;
     employees.forEach(emp => {
-        const earned = getEmployeeEarningsForPeriod(emp.id, period);
-        const mgrAccruals = getManagerDailyAccruals(emp, startDate, endDate);
-        const mgrTotal = mgrAccruals.reduce((s, a) => s + a.amount, 0);
-        const empEarned = earned.totalEarned + mgrTotal;
-        const paid = getEmployeePaymentsForPeriod(emp.id, period);
+        // All-time earnings
+        const allShifts = DB.get('shifts', []).filter(s =>
+            s.employeeId === emp.id && s.endTime && s.earnings
+        );
+        const allShiftEarned = allShifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
+        const allMgrAccruals = getManagerDailyAccruals(emp, '2020-01-01', endDate);
+        const allMgrTotal = allMgrAccruals.reduce((s, a) => s + a.amount, 0);
+        const empEarned = allShiftEarned + allMgrTotal;
+
+        // All-time paid
+        const allPaid = DB.get('salaryPayments', [])
+            .filter(p => p.employeeId === emp.id)
+            .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+        // Period paid (for card)
+        const periodPaid = getEmployeePaymentsForPeriod(emp.id, period).totalPaid;
+        periodSalariesPaid += periodPaid;
+
         totalSalariesEarned += empEarned;
-        totalSalariesPaid += paid.totalPaid;
-        if (empEarned > 0 || paid.totalPaid > 0) {
-            const balance = empEarned - paid.totalPaid;
+        totalSalariesPaid += allPaid;
+        if (empEarned > 0 || allPaid > 0) {
+            const balance = empEarned - allPaid;
             salaryRows.push({
                 name: emp.firstName + ' ' + emp.lastName,
                 earned: empEarned,
-                paid: paid.totalPaid,
+                paid: allPaid,
                 balance
             });
         }
     });
 
-    const totalExpenses = totalConsumablesCost + totalSalariesPaid;
+    const totalExpenses = totalConsumablesCost + periodSalariesPaid;
     const totalBalance = totalIncome - totalExpenses;
 
     // === UPDATE CARDS ===
     document.getElementById('fin-income').textContent = formatMoney(totalIncome);
     document.getElementById('fin-consumables').textContent = formatMoney(totalConsumablesCost);
-    document.getElementById('fin-salaries').textContent = formatMoney(totalSalariesPaid);
+    document.getElementById('fin-salaries').textContent = formatMoney(periodSalariesPaid);
 
     const balEl = document.getElementById('fin-balance');
     balEl.textContent = (totalBalance >= 0 ? '+' : '') + formatMoney(totalBalance);
