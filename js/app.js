@@ -1380,53 +1380,7 @@ function openPaymentModal(eventId) {
     const receiptCheckbox = document.getElementById('payment-receipt-printed');
     if (receiptCheckbox) receiptCheckbox.checked = false;
 
-    // Populate instructor/admin staff lists
-    populatePaymentStaffLists(evt);
-
     openModal('modal-payment');
-}
-
-function populatePaymentStaffLists(evt) {
-    const employees = DB.get('employees', []).filter(e => e.role !== 'director');
-    const todayStr = todayLocal();
-    const shifts = DB.get('shifts', []).filter(s => s.date === todayStr);
-    const onShiftIds = new Set(shifts.map(s => s.employeeId));
-
-    // Instructors: employees with instructor/senior_instructor in allowedShiftRoles
-    const instructors = employees.filter(e => {
-        const roles = e.allowedShiftRoles || getDefaultAllowedRoles(e.role);
-        return roles.includes('instructor') || roles.includes('senior_instructor');
-    });
-
-    // Admins: employees with admin in allowedShiftRoles
-    const admins = employees.filter(e => {
-        const roles = e.allowedShiftRoles || getDefaultAllowedRoles(e.role);
-        return roles.includes('admin');
-    });
-
-    const renderChips = (list, emps) => {
-        if (emps.length === 0) {
-            list.innerHTML = '<span class="staff-chip-empty">Нет сотрудников</span>';
-            return;
-        }
-        list.innerHTML = emps.map(e => {
-            const onShift = onShiftIds.has(e.id);
-            return `<div class="staff-chip${onShift ? ' selected' : ''}" data-employee-id="${e.id}">
-                <span class="chip-check"><span class="material-icons-round" style="font-size:14px">check</span></span>
-                <div>
-                    <div>${e.firstName} ${e.lastName}</div>
-                    <div class="chip-role">${getRoleName(e.role)}${onShift ? ' · на смене' : ''}</div>
-                </div>
-            </div>`;
-        }).join('');
-
-        list.querySelectorAll('.staff-chip').forEach(chip => {
-            chip.addEventListener('click', () => chip.classList.toggle('selected'));
-        });
-    };
-
-    renderChips(document.getElementById('payment-instructor-list'), instructors);
-    renderChips(document.getElementById('payment-admin-list'), admins);
 }
 
 function completeEventPayment() {
@@ -1458,10 +1412,9 @@ function completeEventPayment() {
     events[idx].completedBy = currentUser ? currentUser.id : null;
 
     // === DISTRIBUTE BONUSES TO ASSIGNED STAFF ===
-    const selectedInstructors = [...document.querySelectorAll('#payment-instructor-list .staff-chip.selected')]
-        .map(el => parseInt(el.dataset.employeeId));
-    const selectedAdmins = [...document.querySelectorAll('#payment-admin-list .staff-chip.selected')]
-        .map(el => parseInt(el.dataset.employeeId));
+    // Read from event data (saved in event form when completing)
+    const selectedInstructors = events[idx].instructors || events[idx].assignedInstructors || [];
+    const selectedAdmins = events[idx].admins || events[idx].assignedAdmins || [];
 
     const salaryRules = DB.get('salaryRules', {});
     const instrRule = salaryRules.instructor || salaryRules.senior_instructor || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
@@ -2603,17 +2556,23 @@ function openEventModal(id = null, completing = false) {
     document.getElementById('evt-id').value = '';
     document.getElementById('btn-delete-event').style.display = 'none';
 
-    // Populate instructor checkboxes (instructor + senior_instructor only)
-    const allEmps = DB.get('employees', []);
-    const instructorEmps = allEmps.filter(e => e.role === 'instructor' || e.role === 'senior_instructor');
+    // Populate instructor checkboxes (employees with instructor/senior_instructor in allowedShiftRoles)
+    const allEmps = DB.get('employees', []).filter(e => e.role !== 'director');
+    const instructorEmps = allEmps.filter(e => {
+        const roles = e.allowedShiftRoles || getDefaultAllowedRoles(e.role);
+        return roles.includes('instructor') || roles.includes('senior_instructor');
+    });
     document.getElementById('evt-instructors-list').innerHTML = instructorEmps.length
         ? instructorEmps.map(i => `<label class="staff-select-item"><input type="checkbox" value="${i.id}" class="evt-instr-cb"> ${i.firstName} ${i.lastName} <span class="staff-role-hint">${getRoleName(i.role)}</span></label>`).join('')
         : '<span class="empty-state-text">Нет инструкторов</span>';
 
-    // Populate admin checkboxes (admin only)
-    const adminEmps = allEmps.filter(e => e.role === 'admin');
+    // Populate admin checkboxes (employees with admin in allowedShiftRoles)
+    const adminEmps = allEmps.filter(e => {
+        const roles = e.allowedShiftRoles || getDefaultAllowedRoles(e.role);
+        return roles.includes('admin');
+    });
     document.getElementById('evt-admins-list').innerHTML = adminEmps.length
-        ? adminEmps.map(a => `<label class="staff-select-item"><input type="checkbox" value="${a.id}" class="evt-admin-cb"> ${a.firstName} ${a.lastName}</label>`).join('')
+        ? adminEmps.map(a => `<label class="staff-select-item"><input type="checkbox" value="${a.id}" class="evt-admin-cb"> ${a.firstName} ${a.lastName} <span class="staff-role-hint">${getRoleName(a.role)}</span></label>`).join('')
         : '<span class="empty-state-text">Нет администраторов</span>';
 
     // Populate tariff select (filtered by event type)
