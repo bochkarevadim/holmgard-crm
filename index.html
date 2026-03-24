@@ -13,7 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=12">
+    <link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
 
@@ -1443,10 +1443,14 @@
                     <label>Комментарий</label>
                     <textarea id="evt-notes" placeholder="Дополнительная информация" rows="2"></textarea>
                 </div>
+                <div id="evt-total-block" style="display:none;"></div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="btn-cancel-event">Отмена</button>
                     <button type="button" class="btn-danger" id="btn-delete-event" style="display:none;">Удалить</button>
                     <button type="submit" class="btn-primary">Сохранить</button>
+                    <button type="button" class="btn-primary" id="btn-complete-event" style="display:none;background:#4CAF50;" onclick="completeEventFromModal()">
+                        <span class="material-icons-round" style="font-size:18px">done_all</span> Завершить и оплатить
+                    </button>
                 </div>
             </form>
         </div>
@@ -1716,9 +1720,9 @@
 </div>
 
 <script src="js/auth.js?v=3"></script>
-<script src="js/gcal.js?v=10"></script>
+<script src="js/gcal.js?v=11"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=37"></script>
+<script src="js/app.js?v=38"></script>
 </body>
 </html>

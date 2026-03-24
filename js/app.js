@@ -32,7 +32,7 @@ const FIRESTORE_KEYS = new Set([
     'loyaltyPercent', 'accentColor', 'empDashOrder',
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'consumables_v1', 'tariffs_version',
-    'salaryPayments'
+    'salaryPayments', 'gcal_token'
 ]);
 
 const DB = {
@@ -593,9 +593,13 @@ function attemptLogin() {
             setupEmployeeScreen(user);
             empNavigateTo('emp-dashboard');
         }
-        // Auto-sync Google Calendar after login
-        if (typeof GCalSync !== 'undefined' && GCalSync.isConnected()) {
-            setTimeout(() => GCalSync.autoSync(), 1500);
+        // Auto-sync Google Calendar after login (for all users)
+        if (typeof GCalSync !== 'undefined') {
+            setTimeout(async () => {
+                // Re-init GCal in case Firestore token was loaded after initial init
+                if (!GCalSync.isConnected()) await GCalSync.init();
+                if (GCalSync.isConnected()) GCalSync.autoSync();
+            }, 2000);
         }
     } else {
         document.querySelectorAll('.pin-dot').forEach(d => d.classList.add('error'));
@@ -872,7 +876,7 @@ function initEmployeeScreen() {
     const empSyncGcal = document.getElementById('emp-btn-sync-gcal');
     if (empSyncGcal) empSyncGcal.addEventListener('click', async () => {
         if (!GCalSync.isConnected()) {
-            showToast('Google Calendar не подключён. Настройте в Настройках директора.');
+            showToast('Google Calendar не подключён. Директор должен подключить в Настройках.');
             return;
         }
         const result = await GCalSync.fullSync();
@@ -1353,7 +1357,7 @@ function loadEmployeeEvents() {
                         Подробнее
                     </button>
                     ${!isCompleted ? `
-                    <button class="btn-primary btn-sm" onclick="openPaymentModal('${e.id}')">
+                    <button class="btn-primary btn-sm" onclick="openEventModal('${e.id}', true)">
                         <span class="material-icons-round" style="font-size:16px">done_all</span>
                         Выполнить
                     </button>` : ''}
@@ -2440,9 +2444,10 @@ function changeOptionQty(optId, delta) {
     qty = Math.max(0, qty + delta);
     el.textContent = qty;
     el.closest('.option-qty-row').classList.toggle('active', qty > 0);
+    recalcEventTotal();
 }
 
-function openEventModal(id = null) {
+function openEventModal(id = null, completing = false) {
     const form = document.getElementById('event-form');
     form.reset();
     document.getElementById('evt-id').value = '';
@@ -2501,13 +2506,21 @@ function openEventModal(id = null) {
         }
     }).join('');
 
-    // Bind input events for number/shop fields to toggle active class
+    // Bind input events for number/shop fields to toggle active class + recalc total
     document.querySelectorAll('#evt-options-list .option-number-input').forEach(input => {
         input.addEventListener('input', () => {
             const row = input.closest('.option-qty-row');
             const val = parseInt(input.value) || 0;
             row?.classList.toggle('active', val > 0);
+            recalcEventTotal();
         });
+    });
+
+    // Recalc total when key fields change
+    ['evt-tariff', 'evt-participants', 'evt-discount', 'evt-prepayment'].forEach(fid => {
+        const el = document.getElementById(fid);
+        if (el) el.addEventListener('input', recalcEventTotal);
+        if (el) el.addEventListener('change', recalcEventTotal);
     });
 
     if (id) {
@@ -2582,7 +2595,90 @@ function openEventModal(id = null) {
         else if (empSelectedCalDay) document.getElementById('evt-date').value = empSelectedCalDay;
     }
 
+    // Show/hide complete button and total summary
+    const completeBtn = document.getElementById('btn-complete-event');
+    const totalBlock = document.getElementById('evt-total-block');
+    if (completing && id) {
+        document.getElementById('modal-event-title').textContent = 'Выполнить заказ';
+        if (completeBtn) completeBtn.style.display = 'inline-flex';
+        if (totalBlock) totalBlock.style.display = 'block';
+        recalcEventTotal();
+    } else {
+        if (completeBtn) completeBtn.style.display = 'none';
+        if (totalBlock) totalBlock.style.display = 'none';
+    }
+
+    // Store completing flag for save handler
+    document.getElementById('event-form').dataset.completing = completing ? '1' : '';
+
     openModal('modal-event');
+}
+
+function recalcEventTotal() {
+    const tariffs = DB.get('tariffs', []);
+    const tariffId = parseInt(document.getElementById('evt-tariff').value);
+    const participants = parseInt(document.getElementById('evt-participants').value) || 0;
+    const discount = parseFloat(document.getElementById('evt-discount').value) || 0;
+    const prepayment = parseFloat(document.getElementById('evt-prepayment').value) || 0;
+
+    let serviceCost = 0;
+    const tariff = tariffs.find(t => t.id === tariffId);
+    if (tariff) serviceCost = tariff.price * participants;
+
+    let optionsCost = 0;
+    document.querySelectorAll('#evt-options-list .option-qty-row').forEach(row => {
+        const optId = parseInt(row.dataset.optionId);
+        const opt = tariffs.find(t => t.id === optId);
+        if (!opt) return;
+        const inputType = row.dataset.inputType;
+        let qty = 0;
+        if (inputType === 'number' || inputType === 'shop') {
+            qty = parseInt(document.getElementById('opt-qty-' + optId)?.value) || 0;
+        } else {
+            qty = parseInt(document.getElementById('opt-qty-' + optId)?.textContent) || 0;
+        }
+        if (qty <= 0) return;
+        if (inputType === 'shop') {
+            optionsCost += qty; // shop: value is already the sum
+        } else if (opt.category === 'optionsForGame') {
+            optionsCost += opt.price * qty * participants;
+        } else {
+            optionsCost += opt.price * qty;
+        }
+    });
+
+    const subtotal = serviceCost + optionsCost;
+    const discountAmount = subtotal * discount / 100;
+    const total = subtotal - discountAmount;
+    const toPay = total - prepayment;
+
+    const block = document.getElementById('evt-total-block');
+    if (block) {
+        block.innerHTML = `
+            <div class="evt-total-summary">
+                <div class="evt-total-row"><span>Услуга:</span><span>${formatMoney(serviceCost)}</span></div>
+                <div class="evt-total-row"><span>Доп. опции:</span><span>${formatMoney(optionsCost)}</span></div>
+                ${discount > 0 ? `<div class="evt-total-row"><span>Скидка ${discount}%:</span><span>−${formatMoney(discountAmount)}</span></div>` : ''}
+                <div class="evt-total-row evt-total-main"><span>Итого:</span><span>${formatMoney(total)}</span></div>
+                ${prepayment > 0 ? `<div class="evt-total-row"><span>Предоплата:</span><span>−${formatMoney(prepayment)}</span></div>
+                <div class="evt-total-row evt-total-main"><span>К оплате:</span><span>${formatMoney(toPay)}</span></div>` : ''}
+            </div>
+        `;
+    }
+
+    // Also update price field
+    document.getElementById('evt-price').value = total;
+}
+
+function completeEventFromModal() {
+    // Save event first
+    const form = document.getElementById('event-form');
+    form.requestSubmit();
+    // Then open payment modal
+    const id = document.getElementById('evt-id').value;
+    if (id) {
+        setTimeout(() => openPaymentModal(id), 300);
+    }
 }
 
 function saveEvent(e) {

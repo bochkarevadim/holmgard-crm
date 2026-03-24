@@ -2773,6 +2773,30 @@ body {
     margin: 4px 0;
 }
 
+/* ===== EVENT TOTAL SUMMARY ===== */
+.evt-total-summary {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 16px;
+}
+.evt-total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+.evt-total-row.evt-total-main {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--text-primary);
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    padding-top: 8px;
+}
+
 /* ===== GOOGLE SHEETS SETTINGS ===== */
 .gsheets-settings .form-group input {
     font-size: 13px;

@@ -15,6 +15,13 @@ const GCalSync = (() => {
     function setEventMap(map) { localStorage.setItem('hp_gcal_event_map', JSON.stringify(map)); }
 
     function restoreToken() {
+        // Try Firestore shared token first (set by director, available to all)
+        const shared = typeof DB !== 'undefined' ? DB.get('gcal_token', null) : null;
+        if (shared && shared.token && Date.now() < shared.expiry) {
+            accessToken = shared.token;
+            return true;
+        }
+        // Fallback to localStorage
         const t = localStorage.getItem('hp_gcal_token');
         const exp = parseInt(localStorage.getItem('hp_gcal_token_expiry') || '0');
         if (t && Date.now() < exp) { accessToken = t; return true; }
@@ -24,14 +31,22 @@ const GCalSync = (() => {
 
     function storeToken(token, expiresIn) {
         accessToken = token;
+        const expiry = Date.now() + expiresIn * 1000;
         localStorage.setItem('hp_gcal_token', token);
-        localStorage.setItem('hp_gcal_token_expiry', String(Date.now() + expiresIn * 1000));
+        localStorage.setItem('hp_gcal_token_expiry', String(expiry));
+        // Share token via Firestore so all devices/employees can use it
+        if (typeof DB !== 'undefined') {
+            DB.set('gcal_token', { token, expiry });
+        }
     }
 
     function clearToken() {
         accessToken = null;
         localStorage.removeItem('hp_gcal_token');
         localStorage.removeItem('hp_gcal_token_expiry');
+        if (typeof DB !== 'undefined') {
+            DB.set('gcal_token', null);
+        }
     }
 
     // --- Silent token refresh via hidden iframe ---
