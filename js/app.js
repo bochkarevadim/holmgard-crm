@@ -1525,6 +1525,60 @@ function completeEventPayment() {
 
     DB.set('events', events);
 
+    // === AUTO-ADD CLIENT TO CLIENTS DATABASE ===
+    const evtCompleted = events[idx];
+    if (evtCompleted.clientName) {
+        const clients = DB.get('clients', []);
+        const nameParts = evtCompleted.clientName.trim().split(/\s+/);
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        const phone = evtCompleted.clientPhone || '';
+
+        // Find existing client by phone or exact name
+        let existingClient = null;
+        if (phone) {
+            existingClient = clients.find(c => c.phone && c.phone === phone);
+        }
+        if (!existingClient) {
+            existingClient = clients.find(c =>
+                c.firstName.toLowerCase() === firstName.toLowerCase() &&
+                (c.lastName || '').toLowerCase() === lastName.toLowerCase()
+            );
+        }
+
+        const visit = {
+            date: evtCompleted.date,
+            game: evtCompleted.title || 'Мероприятие',
+            amount: evtCompleted.price || 0
+        };
+
+        if (existingClient) {
+            const ci = clients.indexOf(existingClient);
+            if (!clients[ci].visits) clients[ci].visits = [];
+            clients[ci].visits.unshift(visit);
+            clients[ci].totalSpent = (clients[ci].totalSpent || 0) + (visit.amount || 0);
+            // Award loyalty groldiks
+            const loyaltyPct = DB.get('loyaltyPercent', 5);
+            clients[ci].groldiks = (clients[ci].groldiks || 0) + Math.round((visit.amount || 0) * loyaltyPct / 100);
+            if (phone && !clients[ci].phone) clients[ci].phone = phone;
+        } else {
+            const loyaltyPct = DB.get('loyaltyPercent', 5);
+            clients.push({
+                id: Date.now(),
+                firstName,
+                lastName,
+                phone,
+                email: '',
+                dob: '',
+                notes: '',
+                groldiks: Math.round((visit.amount || 0) * loyaltyPct / 100),
+                totalSpent: visit.amount || 0,
+                visits: [visit]
+            });
+        }
+        DB.set('clients', clients);
+    }
+
     closeModal('modal-payment');
     currentPaymentEventId = null;
 
