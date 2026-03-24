@@ -13,7 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=13">
+    <link rel="stylesheet" href="css/style.css?v=14">
 </head>
 <body>
 
@@ -496,6 +496,10 @@
                 <div class="dash-card">
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">emoji_events</span> Рейтинг сотрудников</h3>
+                        <div class="rating-period-toggle">
+                            <button class="rating-period-btn active" data-rating-period="month">Месяц</button>
+                            <button class="rating-period-btn" data-rating-period="year">Год</button>
+                        </div>
                     </div>
                     <div class="dash-card-list" id="employee-rating-list"></div>
                 </div>
@@ -1723,6 +1727,6 @@
 <script src="js/gcal.js?v=11"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=40"></script>
+<script src="js/app.js?v=41"></script>
 </body>
 </html>

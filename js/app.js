@@ -2014,15 +2014,37 @@ function loadServiceRating() {
     });
 }
 
+let empRatingPeriod = 'month';
+
 function loadEmployeeRating() {
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
     const list = document.getElementById('employee-rating-list');
+    const period = empRatingPeriod;
+
+    const now = moscowNow();
+    let startDate;
+    if (period === 'year') {
+        startDate = `${now.getFullYear()}-01-01`;
+    } else {
+        startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+
+    const allShifts = DB.get('shifts', []);
     const ratings = employees.map(e => {
-        const monthData = getEmployeeMonthEarnings(e.id);
+        const shifts = allShifts.filter(s =>
+            s.employeeId === e.id && s.date >= startDate && s.endTime && s.earnings
+        );
+        const totalEarned = shifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
+
+        // Add manager accruals
+        const endDate = todayLocal();
+        const mgrAccruals = getManagerDailyAccruals(e, startDate, endDate);
+        const mgrTotal = mgrAccruals.reduce((s, a) => s + a.amount, 0);
+
         return {
             name: e.firstName + ' ' + e.lastName,
-            shifts: monthData.shiftCount,
-            earned: monthData.totalEarned
+            shifts: shifts.length,
+            earned: totalEarned + mgrTotal
         };
     }).sort((a, b) => b.earned - a.earned);
 
@@ -2065,6 +2087,15 @@ document.querySelectorAll('.period-btn').forEach(btn => {
         document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         loadDashboard();
+    });
+});
+
+document.querySelectorAll('.rating-period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.rating-period-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        empRatingPeriod = btn.dataset.ratingPeriod;
+        loadEmployeeRating();
     });
 });
 

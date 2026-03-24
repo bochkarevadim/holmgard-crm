@@ -2773,6 +2773,30 @@ body {
     margin: 4px 0;
 }
 
+/* ===== RATING PERIOD TOGGLE ===== */
+.rating-period-toggle {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 2px;
+}
+.rating-period-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.rating-period-btn.active {
+    background: var(--accent);
+    color: #000;
+    font-weight: 600;
+}
+
 /* ===== EVENT TOTAL SUMMARY ===== */
 .evt-total-summary {
     background: var(--bg-secondary);
