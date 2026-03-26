@@ -290,6 +290,11 @@ function initData() {
     if (!localStorage.getItem('hp_gsheets_id')) {
         localStorage.setItem('hp_gsheets_id', '1E6dtJNWzSNFCI3CXDUBsb2rWMuwpEbmIljrDmbBkWPE');
     }
+    // Set default calendar to holmgardpark@gmail.com
+    if (!DB.get('gcal_calendar_id', '')) {
+        DB.set('gcal_calendar_id', 'holmgardpark@gmail.com');
+    }
+    localStorage.setItem('hp_gcal_calendar_id', DB.get('gcal_calendar_id', 'holmgardpark@gmail.com'));
 }
 
 // ===== DATA MIGRATIONS =====

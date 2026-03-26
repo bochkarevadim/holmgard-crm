@@ -109,7 +109,7 @@ function deleteEvent(calId, eventId) {
     function getClientId() { return localStorage.getItem('hp_gcal_client_id') || ''; }
     function getCalendarId() {
         const shared = typeof DB !== 'undefined' ? DB.get('gcal_calendar_id', '') : '';
-        return shared || localStorage.getItem('hp_gcal_calendar_id') || 'primary';
+        return shared || localStorage.getItem('hp_gcal_calendar_id') || 'holmgardpark@gmail.com';
     }
     function setCalendarId(id) {
         localStorage.setItem('hp_gcal_calendar_id', id);
