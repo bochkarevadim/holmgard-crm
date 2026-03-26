@@ -824,21 +824,29 @@ function initEmployeeScreen() {
         startShift(selected, eventRoles);
     });
 
-    // FINISH WORK button
+    // FINISH WORK button — show comment modal first
     document.getElementById('emp-btn-finish-work').addEventListener('click', () => {
+        document.getElementById('shift-comment-text').value = '';
+        openModal('modal-shift-comment');
+    });
+
+    // Shift comment save — actually end the shift
+    document.getElementById('shift-comment-save').addEventListener('click', () => {
+        const comment = document.getElementById('shift-comment-text').value.trim();
         const todayStr = todayLocal();
         const timeStr = moscowTimeStr();
         const shifts = DB.get('shifts', []);
         const idx = shifts.findIndex(s => s.date === todayStr && s.employeeId === currentUser.id && !s.endTime);
         if (idx >= 0) {
             shifts[idx].endTime = timeStr;
+            shifts[idx].shiftComment = comment || '';
             const earnings = calculateShiftEarnings(shifts[idx]);
             shifts[idx].earnings = earnings;
             DB.set('shifts', shifts);
-            // Clear localStorage backup — shift is completed
             try { localStorage.removeItem('hp_active_shift_' + currentUser.id); } catch(e) {}
             showToast(`Смена завершена! Заработок: ${formatMoney(earnings.total)}`);
         }
+        closeModal('modal-shift-comment');
         loadEmployeeDashboard();
     });
 
@@ -2279,7 +2287,7 @@ function loadEmployees() {
 
     container.innerHTML = employees.map(emp => {
         // Regular shift earnings (exclude manager-role shifts to avoid double counting)
-        const empShifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= startDate && s.date <= endDate && (s.shiftRole || s.employeeRole) !== 'manager').sort((a, b) => b.date.localeCompare(a.date));
+        const empShifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= startDate && s.date <= endDate && (s.shiftRole || s.employeeRole) !== 'manager').sort((a, b) => a.date.localeCompare(b.date));
         const empPayments = allPayments.filter(p => p.employeeId === emp.id && p.date >= startDate && p.date <= endDate);
 
         // Manager daily accruals (auto-accrued per day)
@@ -2289,9 +2297,29 @@ function loadEmployees() {
         const shiftEarned = empShifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
         const earned = shiftEarned + mgrTotal;
         const paid = empPayments.reduce((s, p) => s + (p.amount || 0), 0);
-        const balance = earned - paid; // positive = debt to employee, negative = overpaid
+        const balance = earned - paid;
 
-        const shiftRows = empShifts.map(s => {
+        // Determine which accrual rows are "paid" (green)
+        // All-time paid for this employee to determine paid coverage
+        const allTimePaid = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
+        // All-time accruals chronologically to determine coverage
+        const allTimeShifts = DB.get('shifts', []).filter(s => s.employeeId === emp.id && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager').sort((a, b) => a.date.localeCompare(b.date));
+        const allTimeMgr = getManagerDailyAccruals(emp, '2020-01-01', endDate).sort((a, b) => a.date.localeCompare(b.date));
+        // Merge all accruals chronologically
+        const allAccruals = [];
+        allTimeShifts.forEach(s => allAccruals.push({ date: s.date, amount: s.earnings?.total || 0, id: s.id }));
+        allTimeMgr.forEach(a => allAccruals.push({ date: a.date, amount: a.amount, id: 'mgr_' + a.date }));
+        allAccruals.sort((a, b) => a.date.localeCompare(b.date));
+        let runningTotal = 0;
+        const paidIds = new Set();
+        for (const acc of allAccruals) {
+            runningTotal += acc.amount;
+            if (runningTotal <= allTimePaid) paidIds.add(acc.id);
+            else break;
+        }
+
+        // Build shift rows (newest first for display)
+        const shiftRows = empShifts.slice().reverse().map(s => {
             const role = s.shiftRole || s.employeeRole;
             const [sh, sm] = (s.startTime || '0:0').split(':').map(Number);
             const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
@@ -2299,30 +2327,36 @@ function loadEmployees() {
             const dateF = new Date(s.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
             const base = s.earnings?.base || 0;
             const bonus = s.earnings?.bonus || 0;
-            return `<tr>
+            const isPaid = paidIds.has(s.id);
+            const rowStyle = isPaid ? 'background:rgba(76,175,80,0.12);' : '';
+            const hasComment = s.shiftComment && s.shiftComment.trim();
+            const commentEsc = hasComment ? s.shiftComment.replace(/'/g, "\\'").replace(/\n/g, "\\n") : '';
+            return `<tr style="${rowStyle}cursor:pointer;" onclick="${hasComment ? `showShiftComment('${commentEsc}')` : ''}" title="${hasComment ? 'Нажмите, чтобы увидеть комментарий' : ''}">
                 <td>${dateF}</td>
+                <td>${s.startTime || '—'}</td>
+                <td>${s.endTime || '—'}</td>
                 <td>${hours.toFixed(1)}ч</td>
-                <td>${s.employeeName || '—'}</td>
                 <td><span class="list-item-badge badge-blue">${getRoleName(role)}</span></td>
                 <td>${formatMoney(base)}</td>
                 <td style="color:var(--green)">${bonus > 0 ? formatMoney(bonus) : '—'}</td>
-                <td>—</td>
                 <td>${formatMoney(s.earnings?.total || 0)}</td>
+                <td>${hasComment ? '<span class="material-icons-round" style="font-size:16px;color:var(--accent);">comment</span>' : ''}</td>
             </tr>`;
         }).join('');
 
         // Manager daily accrual rows
-        const mgrRows = mgrAccruals.map(a => {
+        const mgrRows = mgrAccruals.slice().reverse().map(a => {
             const dateF = new Date(a.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            return `<tr style="background:rgba(var(--accent-rgb),0.04);">
+            const isPaid = paidIds.has('mgr_' + a.date);
+            const rowStyle = isPaid ? 'background:rgba(76,175,80,0.12);' : 'background:rgba(var(--accent-rgb),0.04);';
+            return `<tr style="${rowStyle}">
                 <td>${dateF}</td>
+                <td colspan="2">Менеджер (авто)</td>
                 <td>—</td>
-                <td>${emp.firstName} ${emp.lastName}</td>
                 <td><span class="list-item-badge badge-blue">Менеджер</span></td>
-                <td>—</td>
-                <td>—</td>
+                <td colspan="2">${formatMoney(a.amount)}</td>
                 <td>${formatMoney(a.amount)}</td>
-                <td>${formatMoney(a.amount)}</td>
+                <td></td>
             </tr>`;
         }).join('');
 
@@ -2358,17 +2392,7 @@ function loadEmployees() {
                 <span class="material-icons-round emp-dash-chevron">expand_more</span>
             </div>
             <div class="emp-dash-card-body" id="emp-card-body-${emp.id}" style="display:none;">
-                <div class="emp-dash-section-title">Начисления${mgrTotal > 0 ? ` <span style="font-weight:400;font-size:12px;color:var(--text-secondary);">(менеджер: ${formatMoney(mgrTotal)} за ${mgrAccruals.length} дн.)</span>` : ''}</div>
-                ${hasData ? `<div class="table-container"><table class="data-table">
-                    <thead><tr><th>Дата</th><th>Часы</th><th>Сотрудник</th><th>Роль</th><th>Ставка</th><th>Бонус</th><th>Менеджер</th><th>Начислено</th></tr></thead>
-                    <tbody>${allRows}</tbody>
-                </table></div>` : '<p class="empty-state-text">Нет начислений за период</p>'}
-                ${empPayments.length ? `<div class="emp-dash-section-title" style="margin-top:16px;">Выплаты</div>
-                <div class="table-container"><table class="data-table">
-                    <thead><tr><th>Дата</th><th>Время</th><th>Сумма</th><th>Способ</th><th>Примечание</th></tr></thead>
-                    <tbody>${paymentRows}</tbody>
-                </table></div>` : ''}
-                <div class="emp-dash-card-actions">
+                <div class="emp-dash-card-actions" style="margin-bottom:12px;">
                     <button class="btn-primary" onclick="openSalaryPaymentModal(${emp.id})">
                         <span class="material-icons-round">account_balance_wallet</span>
                         Выплатить зарплату
@@ -2380,6 +2404,16 @@ function loadEmployees() {
                         <span class="material-icons-round">delete</span>
                     </button>
                 </div>
+                <div class="emp-dash-section-title">Начисления${mgrTotal > 0 ? ` <span style="font-weight:400;font-size:12px;color:var(--text-secondary);">(менеджер: ${formatMoney(mgrTotal)} за ${mgrAccruals.length} дн.)</span>` : ''}</div>
+                ${hasData ? `<div class="table-container"><table class="data-table">
+                    <thead><tr><th>Дата</th><th>Начало</th><th>Конец</th><th>Часы</th><th>Роль</th><th>Ставка</th><th>Бонус</th><th>Итого</th><th></th></tr></thead>
+                    <tbody>${allRows}</tbody>
+                </table></div>` : '<p class="empty-state-text">Нет начислений за период</p>'}
+                ${empPayments.length ? `<div class="emp-dash-section-title" style="margin-top:16px;">Выплаты</div>
+                <div class="table-container"><table class="data-table">
+                    <thead><tr><th>Дата</th><th>Время</th><th>Сумма</th><th>Способ</th><th>Примечание</th></tr></thead>
+                    <tbody>${paymentRows}</tbody>
+                </table></div>` : ''}
             </div>
         </div>`;
     }).join('');
@@ -2393,6 +2427,11 @@ function loadEmployees() {
             loadEmployees();
         };
     });
+}
+
+function showShiftComment(comment) {
+    const text = comment.replace(/\\n/g, '\n');
+    showConfirm('Комментарий к смене', text, () => {}, 'Закрыть');
 }
 
 function toggleEmpCard(empId) {
@@ -3034,41 +3073,18 @@ function loadFinances(period) {
     const totalDocExpenses = docs.reduce((sum, d) => sum + (d.amount || 0), 0);
     totalConsumablesCost += totalDocExpenses;
 
-    // === 3. SALARIES: all-time earned vs all-time paid (true balance) ===
+    // === 3. SALARIES: payments made in this period ===
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
-    let totalSalariesEarned = 0;
-    let totalSalariesPaid = 0;
-    const salaryRows = [];
-    // Period paid — for the top card (cash outflow this period)
     let periodSalariesPaid = 0;
+    const salaryRows = [];
     employees.forEach(emp => {
-        // All-time earnings
-        const allShifts = DB.get('shifts', []).filter(s =>
-            s.employeeId === emp.id && s.endTime && s.earnings
-        );
-        const allShiftEarned = allShifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
-        const allMgrAccruals = getManagerDailyAccruals(emp, '2020-01-01', endDate);
-        const allMgrTotal = allMgrAccruals.reduce((s, a) => s + a.amount, 0);
-        const empEarned = allShiftEarned + allMgrTotal;
-
-        // All-time paid
-        const allPaid = DB.get('salaryPayments', [])
-            .filter(p => p.employeeId === emp.id)
-            .reduce((sum, p) => sum + (p.amount || 0), 0);
-
-        // Period paid (for card)
         const periodPaid = getEmployeePaymentsForPeriod(emp.id, period).totalPaid;
         periodSalariesPaid += periodPaid;
-
-        totalSalariesEarned += empEarned;
-        totalSalariesPaid += allPaid;
-        if (empEarned > 0 || allPaid > 0) {
-            const balance = empEarned - allPaid;
+        if (periodPaid > 0) {
             salaryRows.push({
                 name: emp.firstName + ' ' + emp.lastName,
-                earned: empEarned,
-                paid: allPaid,
-                balance
+                role: getRoleName(emp.role),
+                paid: periodPaid
             });
         }
     });
@@ -3135,25 +3151,16 @@ function loadFinances(period) {
     // === SALARIES TABLE ===
     const salBody = document.getElementById('fin-salaries-body');
     if (salaryRows.length === 0) {
-        salBody.innerHTML = '<tr><td colspan="4" class="empty-state">Нет данных по зарплатам за период</td></tr>';
+        salBody.innerHTML = '<tr><td colspan="3" class="empty-state">Нет выплат за период</td></tr>';
     } else {
-        let html = salaryRows.map(r => {
-            const balClass = r.balance > 0 ? 'color:var(--red)' : r.balance < 0 ? 'color:var(--green)' : '';
-            const balLabel = r.balance >= 0 ? formatMoney(r.balance) : 'Переплата ' + formatMoney(Math.abs(r.balance));
-            return `<tr>
-                <td>${r.name}</td>
-                <td>${formatMoney(r.earned)}</td>
-                <td style="color:var(--green)">${formatMoney(r.paid)}</td>
-                <td style="${balClass};font-weight:600">${balLabel}</td>
-            </tr>`;
-        }).join('');
-        // Total row
-        const salBalance = totalSalariesEarned - totalSalariesPaid;
+        let html = salaryRows.map(r => `<tr>
+            <td>${r.name}</td>
+            <td>${r.role}</td>
+            <td style="color:var(--green);font-weight:600">${formatMoney(r.paid)}</td>
+        </tr>`).join('');
         html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
-            <td style="text-align:right;">Итого:</td>
-            <td>${formatMoney(totalSalariesEarned)}</td>
-            <td style="color:var(--green)">${formatMoney(totalSalariesPaid)}</td>
-            <td style="color:${salBalance > 0 ? 'var(--red)' : salBalance < 0 ? 'var(--green)' : 'inherit'}">${formatMoney(Math.abs(salBalance))}</td>
+            <td colspan="2" style="text-align:right;">Итого выплачено:</td>
+            <td style="color:var(--green)">${formatMoney(periodSalariesPaid)}</td>
         </tr>`;
         salBody.innerHTML = html;
     }

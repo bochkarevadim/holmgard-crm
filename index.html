@@ -768,10 +768,10 @@
             </div>
 
             <div class="fin-breakdown" id="fin-breakdown-salaries">
-                <h3><span class="material-icons-round">badge</span> Зарплаты</h3>
+                <h3><span class="material-icons-round">badge</span> Выплаты зарплат за период</h3>
                 <div class="table-container">
                     <table class="data-table">
-                        <thead><tr><th>Сотрудник</th><th>Начислено</th><th>Выплачено</th><th>Задолженность</th></tr></thead>
+                        <thead><tr><th>Сотрудник</th><th>Должность</th><th>Выплачено за период</th></tr></thead>
                         <tbody id="fin-salaries-body"></tbody>
                     </table>
                 </div>
@@ -1730,6 +1730,22 @@
 </div>
 
 <!-- CONFIRM DIALOG -->
+<!-- ===== SHIFT END COMMENT MODAL ===== -->
+<div class="modal-overlay" id="modal-shift-comment">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h2>Итоги смены</h2>
+        </div>
+        <div class="modal-body">
+            <p style="color:var(--text-secondary);margin-bottom:12px;">Опишите что вы сделали сегодня (по пунктам):</p>
+            <textarea id="shift-comment-text" rows="6" placeholder="1. &#10;2. &#10;3. &#10;4. &#10;5. " style="width:100%;resize:vertical;"></textarea>
+            <div class="form-actions" style="margin-top:16px;">
+                <button class="btn-primary" id="shift-comment-save" style="width:100%;">Завершить смену</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="modal-confirm">
     <div class="modal modal-sm">
         <div class="modal-header">
@@ -1812,7 +1828,7 @@
 <script src="js/gcal.js?v=12"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=48"></script>
+<script src="js/app.js?v=49"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
