@@ -32,7 +32,7 @@ const FIRESTORE_KEYS = new Set([
     'loyaltyPercent', 'accentColor', 'empDashOrder',
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'consumables_v1', 'tariffs_version',
-    'salaryPayments', 'gcal_token'
+    'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'consumablePrices'
 ]);
 
 const DB = {
@@ -3643,25 +3643,60 @@ function initSettings() {
     });
 
     // Google Calendar settings
+    const gcalAppsScriptInput = document.getElementById('gcal-apps-script-url');
     const gcalClientIdInput = document.getElementById('gcal-client-id');
     const gcalCalendarIdInput = document.getElementById('gcal-calendar-id');
+
+    // Apps Script URL (primary method)
+    if (gcalAppsScriptInput) {
+        gcalAppsScriptInput.value = GCalSync.getAppsScriptUrl() || '';
+        gcalAppsScriptInput.addEventListener('change', () => {
+            const url = gcalAppsScriptInput.value.trim();
+            GCalSync.setAppsScriptUrl(url);
+            if (url) {
+                GCalSync.init();
+                showToast('Проверяю подключение к Google Calendar...');
+            }
+        });
+    }
+    // Copy GAS code button
+    document.getElementById('btn-copy-gas-code')?.addEventListener('click', () => {
+        const code = GCalSync.getGasCode();
+        navigator.clipboard.writeText(code).then(() => {
+            showToast('Код скрипта скопирован в буфер обмена');
+        }).catch(() => {
+            // Fallback: create textarea
+            const ta = document.createElement('textarea');
+            ta.value = code;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            showToast('Код скрипта скопирован');
+        });
+    });
+    // OAuth Client ID (fallback)
     if (gcalClientIdInput) {
         gcalClientIdInput.value = localStorage.getItem('hp_gcal_client_id') || '';
         gcalClientIdInput.addEventListener('change', () => {
             localStorage.setItem('hp_gcal_client_id', gcalClientIdInput.value.trim());
-            GCalSync.reinitGis();
             GCalSync.init();
         });
     }
     if (gcalCalendarIdInput) {
         gcalCalendarIdInput.value = localStorage.getItem('hp_gcal_calendar_id') || 'primary';
         gcalCalendarIdInput.addEventListener('change', () => {
-            localStorage.setItem('hp_gcal_calendar_id', gcalCalendarIdInput.value.trim() || 'primary');
+            const calId = gcalCalendarIdInput.value.trim() || 'primary';
+            localStorage.setItem('hp_gcal_calendar_id', calId);
+            GCalSync.setCalendarId(calId);
         });
     }
     document.getElementById('btn-connect-gcal').addEventListener('click', () => {
         if (GCalSync.isConnected()) {
             GCalSync.disconnect();
+            if (gcalAppsScriptInput) gcalAppsScriptInput.value = '';
+        } else if (GCalSync.getAppsScriptUrl()) {
+            GCalSync.init();
         } else {
             GCalSync.authorize();
         }

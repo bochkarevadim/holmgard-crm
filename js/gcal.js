@@ -1,4 +1,7 @@
 // ===== GOOGLE CALENDAR SYNC MODULE =====
+// Supports two modes:
+// 1. Apps Script proxy (recommended) — permanent, no token expiry
+// 2. OAuth implicit flow (fallback) — token expires in 1 hour
 const GCalSync = (() => {
     const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets';
     const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
@@ -6,22 +9,138 @@ const GCalSync = (() => {
     let gapiInited = false;
     let accessToken = null;
 
+    // --- Google Apps Script code to copy ---
+    const GAS_CODE = `function doGet(e) { return handleRequest(e); }
+function doPost(e) { return handleRequest(e); }
+
+function handleRequest(e) {
+  var params = e.parameter;
+  var action = params.action;
+  var calId = params.calendarId || 'primary';
+
+  try {
+    var result;
+    switch (action) {
+      case 'list':
+        result = listEvents(calId, params.timeMin, params.timeMax);
+        break;
+      case 'create':
+        result = createEvent(calId, JSON.parse(params.data));
+        break;
+      case 'update':
+        result = updateEvent(calId, params.eventId, JSON.parse(params.data));
+        break;
+      case 'delete':
+        deleteEvent(calId, params.eventId);
+        result = { deleted: true };
+        break;
+      case 'ping':
+        result = { ok: true, email: Session.getActiveUser().getEmail() };
+        break;
+      default:
+        result = { error: 'Unknown action: ' + action };
+    }
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function listEvents(calId, timeMin, timeMax) {
+  var cal = CalendarApp.getCalendarById(calId) || CalendarApp.getDefaultCalendar();
+  var start = new Date(timeMin);
+  var end = new Date(timeMax);
+  var events = cal.getEvents(start, end);
+  return events.map(function(ev) {
+    return {
+      id: ev.getId().replace('@google.com', ''),
+      summary: ev.getTitle(),
+      description: ev.getDescription() || '',
+      start: { dateTime: ev.getStartTime().toISOString() },
+      end: { dateTime: ev.getEndTime().toISOString() },
+      location: ev.getLocation() || ''
+    };
+  });
+}
+
+function createEvent(calId, data) {
+  var cal = CalendarApp.getCalendarById(calId) || CalendarApp.getDefaultCalendar();
+  var start = new Date(data.start.dateTime);
+  var end = new Date(data.end.dateTime);
+  var ev = cal.createEvent(data.summary, start, end, {
+    description: data.description || '',
+    location: data.location || ''
+  });
+  return { id: ev.getId().replace('@google.com', ''), summary: ev.getTitle() };
+}
+
+function updateEvent(calId, eventId, data) {
+  var cal = CalendarApp.getCalendarById(calId) || CalendarApp.getDefaultCalendar();
+  var fullId = eventId.indexOf('@') === -1 ? eventId + '@google.com' : eventId;
+  var ev = cal.getEventById(fullId);
+  if (!ev) return { error: 'Event not found' };
+  ev.setTitle(data.summary);
+  if (data.description !== undefined) ev.setDescription(data.description);
+  ev.setTime(new Date(data.start.dateTime), new Date(data.end.dateTime));
+  return { id: eventId, summary: ev.getTitle() };
+}
+
+function deleteEvent(calId, eventId) {
+  var cal = CalendarApp.getCalendarById(calId) || CalendarApp.getDefaultCalendar();
+  var fullId = eventId.indexOf('@') === -1 ? eventId + '@google.com' : eventId;
+  var ev = cal.getEventById(fullId);
+  if (ev) ev.deleteEvent();
+}`;
+
     // --- Storage helpers ---
+    function getAppsScriptUrl() {
+        // Shared via Firestore (set once by director, available to all)
+        const shared = typeof DB !== 'undefined' ? DB.get('gcal_apps_script_url', '') : '';
+        return shared || localStorage.getItem('hp_gcal_apps_script_url') || '';
+    }
+    function setAppsScriptUrl(url) {
+        localStorage.setItem('hp_gcal_apps_script_url', url);
+        if (typeof DB !== 'undefined') {
+            DB.set('gcal_apps_script_url', url);
+        }
+    }
     function getClientId() { return localStorage.getItem('hp_gcal_client_id') || ''; }
-    function getCalendarId() { return localStorage.getItem('hp_gcal_calendar_id') || 'primary'; }
+    function getCalendarId() {
+        const shared = typeof DB !== 'undefined' ? DB.get('gcal_calendar_id', '') : '';
+        return shared || localStorage.getItem('hp_gcal_calendar_id') || 'primary';
+    }
+    function setCalendarId(id) {
+        localStorage.setItem('hp_gcal_calendar_id', id);
+        if (typeof DB !== 'undefined') DB.set('gcal_calendar_id', id);
+    }
     function getEventMap() {
         try { return JSON.parse(localStorage.getItem('hp_gcal_event_map') || '{}'); } catch { return {}; }
     }
     function setEventMap(map) { localStorage.setItem('hp_gcal_event_map', JSON.stringify(map)); }
 
+    function useAppsScript() { return !!getAppsScriptUrl(); }
+
+    // --- Apps Script API calls ---
+    async function gasCall(params) {
+        const url = getAppsScriptUrl();
+        if (!url) throw new Error('Apps Script URL not set');
+        const queryStr = Object.entries(params)
+            .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+            .join('&');
+        const resp = await fetch(`${url}?${queryStr}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return await resp.json();
+    }
+
+    // --- OAuth token management (fallback) ---
     function restoreToken() {
-        // Try Firestore shared token first (set by director, available to all)
         const shared = typeof DB !== 'undefined' ? DB.get('gcal_token', null) : null;
         if (shared && shared.token && Date.now() < shared.expiry) {
             accessToken = shared.token;
             return true;
         }
-        // Fallback to localStorage
         const t = localStorage.getItem('hp_gcal_token');
         const exp = parseInt(localStorage.getItem('hp_gcal_token_expiry') || '0');
         if (t && Date.now() < exp) { accessToken = t; return true; }
@@ -34,19 +153,14 @@ const GCalSync = (() => {
         const expiry = Date.now() + expiresIn * 1000;
         localStorage.setItem('hp_gcal_token', token);
         localStorage.setItem('hp_gcal_token_expiry', String(expiry));
-        // Share token via Firestore so all devices/employees can use it
-        if (typeof DB !== 'undefined') {
-            DB.set('gcal_token', { token, expiry });
-        }
+        if (typeof DB !== 'undefined') DB.set('gcal_token', { token, expiry });
     }
 
     function clearToken() {
         accessToken = null;
         localStorage.removeItem('hp_gcal_token');
         localStorage.removeItem('hp_gcal_token_expiry');
-        if (typeof DB !== 'undefined') {
-            DB.set('gcal_token', null);
-        }
+        if (typeof DB !== 'undefined') DB.set('gcal_token', null);
     }
 
     // --- Silent token refresh via hidden iframe ---
@@ -54,7 +168,6 @@ const GCalSync = (() => {
         return new Promise((resolve) => {
             const clientId = getClientId();
             if (!clientId) { resolve(false); return; }
-
             const redirectUri = window.location.origin + window.location.pathname;
             const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' +
                 'client_id=' + encodeURIComponent(clientId) +
@@ -63,21 +176,17 @@ const GCalSync = (() => {
                 '&scope=' + encodeURIComponent(SCOPES) +
                 '&include_granted_scopes=true' +
                 '&prompt=none';
-
             const iframe = document.createElement('iframe');
             iframe.style.display = 'none';
             document.body.appendChild(iframe);
-
             let resolved = false;
             const timeout = setTimeout(() => {
                 if (!resolved) { resolved = true; cleanup(); resolve(false); }
             }, 8000);
-
             function cleanup() {
                 clearTimeout(timeout);
                 try { document.body.removeChild(iframe); } catch {}
             }
-
             iframe.addEventListener('load', () => {
                 try {
                     const hash = iframe.contentWindow.location.hash;
@@ -91,33 +200,24 @@ const GCalSync = (() => {
                             return;
                         }
                     }
-                } catch (e) {
-                    // cross-origin — Google login page, no consent cached
-                }
+                } catch (e) {}
                 if (!resolved) { resolved = true; cleanup(); resolve(false); }
             });
-
             iframe.src = authUrl;
         });
     }
 
-    // --- Check URL hash for OAuth redirect response ---
     function handleRedirectResponse() {
         const hash = window.location.hash.substring(1);
         if (!hash) return false;
-
         const params = new URLSearchParams(hash);
         const token = params.get('access_token');
         const expiresIn = params.get('expires_in');
-
         if (token && expiresIn) {
             storeToken(token, parseInt(expiresIn));
-            // Clean URL hash
             history.replaceState(null, '', window.location.pathname + window.location.search);
             return true;
         }
-
-        // Check for error
         const error = params.get('error');
         if (error) {
             console.error('OAuth error:', error);
@@ -128,11 +228,24 @@ const GCalSync = (() => {
 
     // --- Init ---
     async function init() {
+        // Apps Script mode — ping to verify
+        if (useAppsScript()) {
+            try {
+                const r = await gasCall({ action: 'ping', calendarId: getCalendarId() });
+                if (r && (r.ok || r.email)) {
+                    updateStatus('connected');
+                    return;
+                }
+            } catch (err) {
+                console.error('GCalSync Apps Script ping error:', err);
+                updateStatus('error');
+                return;
+            }
+        }
+
+        // OAuth mode
         if (!getClientId()) { updateStatus('none'); return; }
-
-        // Check if returning from OAuth redirect
         const gotToken = handleRedirectResponse();
-
         try {
             await loadGapi();
             if (gotToken || restoreToken()) {
@@ -140,7 +253,6 @@ const GCalSync = (() => {
                 updateStatus('connected');
                 if (gotToken) showToast('Google Calendar подключён');
             } else {
-                // Token missing or expired — try silent refresh
                 const refreshed = await silentRefresh();
                 if (refreshed) {
                     gapi.client.setToken({ access_token: accessToken });
@@ -155,7 +267,7 @@ const GCalSync = (() => {
         }
     }
 
-    // --- Auto-sync: called after CRM login ---
+    // --- Auto-sync ---
     async function autoSync() {
         if (!isConnected()) return;
         try {
@@ -174,11 +286,8 @@ const GCalSync = (() => {
     function loadGapi() {
         return new Promise((resolve, reject) => {
             if (gapiInited) { resolve(); return; }
-
             function tryLoad() {
-                if (typeof gapi === 'undefined' || typeof gapi.load !== 'function') {
-                    return false;
-                }
+                if (typeof gapi === 'undefined' || typeof gapi.load !== 'function') return false;
                 gapi.load('client', async () => {
                     try {
                         await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
@@ -188,10 +297,7 @@ const GCalSync = (() => {
                 });
                 return true;
             }
-
             if (tryLoad()) return;
-
-            // gapi script loaded async — wait up to 5s for it
             let attempts = 0;
             const interval = setInterval(() => {
                 attempts++;
@@ -201,20 +307,14 @@ const GCalSync = (() => {
         });
     }
 
-    // --- Auth via OAuth redirect (no popup needed) ---
+    // --- Auth (OAuth fallback) ---
     function authorize() {
         const clientId = getClientId();
-        if (!clientId) {
-            showToast('Введите Client ID в Настройках');
-            return;
-        }
-        // Save current session before redirect (so PIN screen is skipped on return)
+        if (!clientId) { showToast('Введите Client ID в Настройках'); return; }
         sessionStorage.setItem('hp_gcal_pre_auth_page', 'settings');
         if (typeof currentUser !== 'undefined' && currentUser) {
             sessionStorage.setItem('hp_gcal_returning_user_id', String(currentUser.id));
         }
-
-        // Build OAuth 2.0 implicit flow URL
         const redirectUri = window.location.origin + window.location.pathname;
         const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' +
             'client_id=' + encodeURIComponent(clientId) +
@@ -223,13 +323,17 @@ const GCalSync = (() => {
             '&scope=' + encodeURIComponent(SCOPES) +
             '&include_granted_scopes=true' +
             '&prompt=select_account';
-
         window.location.href = authUrl;
     }
 
     function disconnect() {
+        if (useAppsScript()) {
+            setAppsScriptUrl('');
+            updateStatus('none');
+            showToast('Google Calendar отключён');
+            return;
+        }
         if (accessToken) {
-            // Revoke token via Google's endpoint
             fetch('https://oauth2.googleapis.com/revoke?token=' + accessToken, { method: 'POST' }).catch(() => {});
         }
         clearToken();
@@ -239,6 +343,7 @@ const GCalSync = (() => {
     }
 
     function isConnected() {
+        if (useAppsScript()) return true;
         return !!accessToken;
     }
 
@@ -248,17 +353,15 @@ const GCalSync = (() => {
         const label = document.getElementById('gcal-status-label');
         const btnConnect = document.getElementById('btn-connect-gcal');
         if (!dot || !label) return;
-
         dot.className = 'gcal-status-dot gcal-status-' + state;
         const labels = {
-            connected: 'Подключено',
+            connected: useAppsScript() ? 'Подключено (Apps Script)' : 'Подключено (OAuth)',
             disconnected: 'Отключено',
-            error: 'Ошибка',
-            none: 'Нет Client ID',
+            error: 'Ошибка подключения',
+            none: 'Не настроено',
             syncing: 'Синхронизация...'
         };
         label.textContent = labels[state] || state;
-
         if (btnConnect) {
             if (state === 'connected') {
                 btnConnect.textContent = 'Отключить';
@@ -276,32 +379,26 @@ const GCalSync = (() => {
         const dur = ev.duration || 60;
         const endDate = new Date(startDT);
         endDate.setMinutes(endDate.getMinutes() + dur);
-        const endDT = endDate.getFullYear() + '-' +
-            String(endDate.getMonth() + 1).padStart(2, '0') + '-' +
-            String(endDate.getDate()).padStart(2, '0') + 'T' +
-            String(endDate.getHours()).padStart(2, '0') + ':' +
-            String(endDate.getMinutes()).padStart(2, '0') + ':00';
+        const pad = (n) => String(n).padStart(2, '0');
+        const endDT = endDate.getFullYear() + '-' + pad(endDate.getMonth() + 1) + '-' + pad(endDate.getDate()) +
+            'T' + pad(endDate.getHours()) + ':' + pad(endDate.getMinutes()) + ':00';
 
         const descParts = [];
+        if (ev.clientName) descParts.push('Клиент: ' + ev.clientName);
+        if (ev.clientPhone) descParts.push('Телефон: ' + ev.clientPhone);
         if (ev.type) descParts.push('Тип: ' + ev.type);
         if (ev.participants || ev.players) descParts.push('Участники: ' + (ev.participants || ev.players));
         if (ev.price) descParts.push('Стоимость: ' + ev.price + ' ₽');
         if (ev.status) descParts.push('Статус: ' + ev.status);
         if (ev.notes) descParts.push('Заметки: ' + ev.notes);
         if (ev.occasion) descParts.push('Повод: ' + ev.occasion);
-        if (ev.playerAge) descParts.push('Возраст: ' + ev.playerAge);
+        descParts.push('CRM_ID: ' + ev.id);
 
         return {
-            summary: ev.title || 'Мероприятие',
+            summary: (ev.title || 'Мероприятие') + (ev.clientName ? ' — ' + ev.clientName : ''),
             description: descParts.join('\n'),
             start: { dateTime: startDT, timeZone: 'Europe/Moscow' },
-            end: { dateTime: endDT, timeZone: 'Europe/Moscow' },
-            extendedProperties: {
-                private: {
-                    crm_id: String(ev.id),
-                    crm_source: 'holmgard-crm'
-                }
-            }
+            end: { dateTime: endDT, timeZone: 'Europe/Moscow' }
         };
     }
 
@@ -311,14 +408,10 @@ const GCalSync = (() => {
         const startD = new Date(start);
         const endD = new Date(end);
         const dur = Math.round((endD - startD) / 60000);
+        const pad = (n) => String(n).padStart(2, '0');
+        const dateStr = startD.getFullYear() + '-' + pad(startD.getMonth() + 1) + '-' + pad(startD.getDate());
+        const timeStr = pad(startD.getHours()) + ':' + pad(startD.getMinutes());
 
-        const dateStr = startD.getFullYear() + '-' +
-            String(startD.getMonth() + 1).padStart(2, '0') + '-' +
-            String(startD.getDate()).padStart(2, '0');
-        const timeStr = String(startD.getHours()).padStart(2, '0') + ':' +
-            String(startD.getMinutes()).padStart(2, '0');
-
-        // Parse description for structured fields
         const desc = gcalEv.description || '';
         const getField = (label) => {
             const m = desc.match(new RegExp(label + ':\\s*(.+)'));
@@ -331,28 +424,28 @@ const GCalSync = (() => {
             time: timeStr,
             duration: dur || 60,
             type: getField('Тип') || 'other',
+            clientName: getField('Клиент') || '',
+            clientPhone: getField('Телефон') || '',
             participants: parseInt(getField('Участники')) || 0,
             price: parseFloat(getField('Стоимость')) || 0,
             status: getField('Статус') || 'pending',
             notes: getField('Заметки'),
             occasion: getField('Повод'),
-            playerAge: getField('Возраст'),
             gcalEventId: gcalEv.id,
         };
     }
 
-    // --- API calls with retry on 401 (auto-refresh token) ---
-    async function apiCall(fn) {
+    // --- API call with retry (OAuth mode) ---
+    async function oauthApiCall(fn) {
         try {
             return await fn();
         } catch (err) {
             if (err.status === 401) {
-                // Token expired — try silent refresh
                 const refreshed = await silentRefresh();
                 if (refreshed && gapiInited) {
                     gapi.client.setToken({ access_token: accessToken });
                     updateStatus('connected');
-                    return await fn(); // retry once
+                    return await fn();
                 }
                 clearToken();
                 updateStatus('disconnected');
@@ -363,7 +456,7 @@ const GCalSync = (() => {
         }
     }
 
-    // --- Push event to Google Calendar ---
+    // --- Push event ---
     async function pushEvent(crmEvent) {
         if (!isConnected()) return null;
         const calId = getCalendarId();
@@ -372,26 +465,41 @@ const GCalSync = (() => {
         const existingGcalId = map[String(crmEvent.id)];
 
         try {
-            let resp;
-            if (existingGcalId) {
-                resp = await apiCall(() =>
-                    gapi.client.calendar.events.update({
-                        calendarId: calId,
-                        eventId: existingGcalId,
-                        resource: gcalData
-                    })
-                );
+            let result;
+            if (useAppsScript()) {
+                if (existingGcalId) {
+                    result = await gasCall({
+                        action: 'update', calendarId: calId,
+                        eventId: existingGcalId, data: JSON.stringify(gcalData)
+                    });
+                } else {
+                    result = await gasCall({
+                        action: 'create', calendarId: calId,
+                        data: JSON.stringify(gcalData)
+                    });
+                }
             } else {
-                resp = await apiCall(() =>
-                    gapi.client.calendar.events.insert({
-                        calendarId: calId,
-                        resource: gcalData
-                    })
-                );
+                let resp;
+                if (existingGcalId) {
+                    resp = await oauthApiCall(() =>
+                        gapi.client.calendar.events.update({
+                            calendarId: calId, eventId: existingGcalId, resource: gcalData
+                        })
+                    );
+                } else {
+                    resp = await oauthApiCall(() =>
+                        gapi.client.calendar.events.insert({
+                            calendarId: calId, resource: gcalData
+                        })
+                    );
+                }
+                result = resp.result;
             }
-            map[String(crmEvent.id)] = resp.result.id;
-            setEventMap(map);
-            return resp.result;
+            if (result && result.id) {
+                map[String(crmEvent.id)] = result.id;
+                setEventMap(map);
+            }
+            return result;
         } catch (err) {
             console.error('GCal push error:', err);
             showToast('Ошибка синхронизации с Google Calendar');
@@ -399,7 +507,7 @@ const GCalSync = (() => {
         }
     }
 
-    // --- Delete event from Google Calendar ---
+    // --- Delete event ---
     async function deleteEvent(crmEventId) {
         if (!isConnected()) return;
         const map = getEventMap();
@@ -407,12 +515,13 @@ const GCalSync = (() => {
         if (!gcalId) return;
 
         try {
-            await apiCall(() =>
-                gapi.client.calendar.events.delete({
-                    calendarId: getCalendarId(),
-                    eventId: gcalId
-                })
-            );
+            if (useAppsScript()) {
+                await gasCall({ action: 'delete', calendarId: getCalendarId(), eventId: gcalId });
+            } else {
+                await oauthApiCall(() =>
+                    gapi.client.calendar.events.delete({ calendarId: getCalendarId(), eventId: gcalId })
+                );
+            }
             delete map[String(crmEventId)];
             setEventMap(map);
         } catch (err) {
@@ -425,36 +534,48 @@ const GCalSync = (() => {
         }
     }
 
-    // --- Pull events from Google Calendar ---
+    // --- Pull events ---
     async function pullEvents(timeMin, timeMax) {
-        if (!isConnected()) return [];
+        if (!isConnected()) return { added: 0, updated: 0, total: 0 };
         updateStatus('syncing');
 
         try {
-            const resp = await apiCall(() =>
-                gapi.client.calendar.events.list({
-                    calendarId: getCalendarId(),
-                    timeMin: timeMin,
-                    timeMax: timeMax,
-                    singleEvents: true,
-                    orderBy: 'startTime',
-                    maxResults: 250
-                })
-            );
+            let gcalEvents;
+            if (useAppsScript()) {
+                const result = await gasCall({
+                    action: 'list', calendarId: getCalendarId(),
+                    timeMin, timeMax
+                });
+                gcalEvents = Array.isArray(result) ? result : (result.error ? [] : []);
+                if (result.error) {
+                    console.error('GCal pull error:', result.error);
+                    updateStatus('error');
+                    return { added: 0, updated: 0, total: 0 };
+                }
+            } else {
+                const resp = await oauthApiCall(() =>
+                    gapi.client.calendar.events.list({
+                        calendarId: getCalendarId(),
+                        timeMin, timeMax,
+                        singleEvents: true, orderBy: 'startTime', maxResults: 250
+                    })
+                );
+                gcalEvents = resp.result.items || [];
+            }
 
-            const gcalEvents = resp.result.items || [];
             const events = DB.get('events', []);
             const map = getEventMap();
             let added = 0, updated = 0;
 
             for (const gEv of gcalEvents) {
-                // Check if this is our own event
-                const priv = (gEv.extendedProperties && gEv.extendedProperties.private) || {};
-                const crmId = priv.crm_id;
+                // Check CRM_ID in description
+                const desc = gEv.description || '';
+                const crmIdMatch = desc.match(/CRM_ID:\s*(\d+)/);
+                const crmId = crmIdMatch ? crmIdMatch[1] : null;
 
-                if (crmId && priv.crm_source === 'holmgard-crm') {
-                    // This event originated from CRM — update if exists
-                    const idx = events.findIndex(e => String(e.id) === String(crmId));
+                if (crmId) {
+                    // Event from CRM — update if exists
+                    const idx = events.findIndex(e => String(e.id) === crmId);
                     if (idx >= 0) {
                         const imported = gcalToCrm(gEv);
                         events[idx] = { ...events[idx], ...imported, id: events[idx].id };
@@ -462,7 +583,7 @@ const GCalSync = (() => {
                         updated++;
                     }
                 } else {
-                    // External event — check if already imported by gcalEventId
+                    // External event
                     const existingIdx = events.findIndex(e => e.gcalEventId === gEv.id);
                     if (existingIdx >= 0) {
                         const imported = gcalToCrm(gEv);
@@ -470,19 +591,15 @@ const GCalSync = (() => {
                         updated++;
                     } else {
                         const imported = gcalToCrm(gEv);
-                        // Fallback dedup: check by title + date + time
+                        // Dedup by title + date + time
                         const dupIdx = events.findIndex(e =>
-                            e.title === imported.title &&
-                            e.date === imported.date &&
-                            e.time === imported.time
+                            e.title === imported.title && e.date === imported.date && e.time === imported.time
                         );
                         if (dupIdx >= 0) {
-                            // Found duplicate — update and link gcalEventId
                             events[dupIdx] = { ...events[dupIdx], ...imported, id: events[dupIdx].id };
                             map[String(events[dupIdx].id)] = gEv.id;
                             updated++;
                         } else {
-                            // Truly new event — import it
                             imported.id = Date.now() + Math.floor(Math.random() * 1000);
                             events.push(imported);
                             map[String(imported.id)] = gEv.id;
@@ -504,7 +621,7 @@ const GCalSync = (() => {
         }
     }
 
-    // --- Cleanup existing duplicate events ---
+    // --- Dedup ---
     function deduplicateEvents() {
         const events = DB.get('events', []);
         const seen = new Map();
@@ -515,7 +632,6 @@ const GCalSync = (() => {
                 seen.set(key, ev);
                 unique.push(ev);
             } else {
-                // Keep the one with gcalEventId if possible
                 const existing = seen.get(key);
                 if (ev.gcalEventId && !existing.gcalEventId) {
                     const idx = unique.indexOf(existing);
@@ -526,13 +642,12 @@ const GCalSync = (() => {
         }
         if (unique.length < events.length) {
             DB.set('events', unique);
-            console.log(`GCal dedup: removed ${events.length - unique.length} duplicates`);
             return events.length - unique.length;
         }
         return 0;
     }
 
-    // --- Full sync: pull then push all ---
+    // --- Full sync ---
     async function fullSync() {
         if (!isConnected()) {
             showToast('Google Calendar не подключён');
@@ -540,23 +655,17 @@ const GCalSync = (() => {
         }
         updateStatus('syncing');
 
-        // Pull: last 30 days to next 90 days
         const now = new Date();
-        const from = new Date(now);
-        from.setDate(from.getDate() - 30);
-        const to = new Date(now);
-        to.setDate(to.getDate() + 90);
+        const from = new Date(now); from.setDate(from.getDate() - 30);
+        const to = new Date(now); to.setDate(to.getDate() + 90);
 
         const pullResult = await pullEvents(from.toISOString(), to.toISOString());
-
-        // Cleanup any existing duplicates
         const removed = deduplicateEvents();
 
-        // Push all CRM events without gcal mapping
+        // Push CRM events without mapping
         const events = DB.get('events', []);
         const map = getEventMap();
         let pushed = 0;
-
         for (const ev of events) {
             if (!map[String(ev.id)]) {
                 await pushEvent(ev);
@@ -568,25 +677,19 @@ const GCalSync = (() => {
         let msg = `Синхронизация: +${pullResult.added} импорт, ${pullResult.updated} обновл., ${pushed} отправл.`;
         if (removed > 0) msg += `, ${removed} дубл. удалено`;
         showToast(msg);
-
         return { ...pullResult, pushed };
     }
 
-    // --- Re-init (no longer needed but kept for compatibility) ---
     function reinitGis() {}
 
+    function getGasCode() { return GAS_CODE; }
+
     return {
-        init,
-        authorize,
-        disconnect,
-        isConnected,
-        pushEvent,
-        deleteEvent,
-        pullEvents,
-        fullSync,
-        autoSync,
-        updateStatus,
-        reinitGis,
-        deduplicateEvents
+        init, authorize, disconnect, isConnected,
+        pushEvent, deleteEvent, pullEvents,
+        fullSync, autoSync, updateStatus, reinitGis,
+        deduplicateEvents, getGasCode,
+        setAppsScriptUrl, getAppsScriptUrl,
+        setCalendarId
     };
 })();
