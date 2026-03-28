@@ -565,46 +565,61 @@ function deleteEvent(calId, eventId) {
 
             const events = DB.get('events', []);
             const map = getEventMap();
+            // Build reverse map: gcalId -> crmId
+            const reverseMap = {};
+            Object.entries(map).forEach(([crmId, gcalId]) => { reverseMap[gcalId] = crmId; });
             let added = 0, updated = 0;
 
             for (const gEv of gcalEvents) {
-                // Check CRM_ID in description
+                // Skip if this gcal event is already mapped to a CRM event
+                if (reverseMap[gEv.id]) {
+                    const crmId = reverseMap[gEv.id];
+                    const idx = events.findIndex(e => String(e.id) === crmId);
+                    if (idx >= 0) {
+                        // Already mapped — don't overwrite CRM data, just update mapping
+                        map[crmId] = gEv.id;
+                        continue;
+                    }
+                }
+
+                // Check CRM_ID in description — this is a CRM-originated event
                 const desc = gEv.description || '';
                 const crmIdMatch = desc.match(/CRM_ID:\s*(\d+)/);
                 const crmId = crmIdMatch ? crmIdMatch[1] : null;
 
                 if (crmId) {
-                    // Event from CRM — update if exists
+                    // Event from CRM — just update mapping, don't overwrite CRM data
                     const idx = events.findIndex(e => String(e.id) === crmId);
                     if (idx >= 0) {
-                        const imported = gcalToCrm(gEv);
-                        events[idx] = { ...events[idx], ...imported, id: events[idx].id };
                         map[String(events[idx].id)] = gEv.id;
-                        updated++;
+                        reverseMap[gEv.id] = String(events[idx].id);
                     }
+                    continue;
+                }
+
+                // External event (created in Google Calendar, not in CRM)
+                const existingIdx = events.findIndex(e => e.gcalEventId === gEv.id);
+                if (existingIdx >= 0) {
+                    // Already imported — update from GCal
+                    const imported = gcalToCrm(gEv);
+                    events[existingIdx] = { ...events[existingIdx], ...imported, id: events[existingIdx].id, status: events[existingIdx].status };
+                    updated++;
                 } else {
-                    // External event
-                    const existingIdx = events.findIndex(e => e.gcalEventId === gEv.id);
-                    if (existingIdx >= 0) {
-                        const imported = gcalToCrm(gEv);
-                        events[existingIdx] = { ...events[existingIdx], ...imported, id: events[existingIdx].id };
+                    const imported = gcalToCrm(gEv);
+                    // Dedup by title + date + time
+                    const dupIdx = events.findIndex(e =>
+                        e.title === imported.title && e.date === imported.date && e.time === imported.time
+                    );
+                    if (dupIdx >= 0) {
+                        map[String(events[dupIdx].id)] = gEv.id;
+                        reverseMap[gEv.id] = String(events[dupIdx].id);
                         updated++;
                     } else {
-                        const imported = gcalToCrm(gEv);
-                        // Dedup by title + date + time
-                        const dupIdx = events.findIndex(e =>
-                            e.title === imported.title && e.date === imported.date && e.time === imported.time
-                        );
-                        if (dupIdx >= 0) {
-                            events[dupIdx] = { ...events[dupIdx], ...imported, id: events[dupIdx].id };
-                            map[String(events[dupIdx].id)] = gEv.id;
-                            updated++;
-                        } else {
-                            imported.id = Date.now() + Math.floor(Math.random() * 1000);
-                            events.push(imported);
-                            map[String(imported.id)] = gEv.id;
-                            added++;
-                        }
+                        imported.id = Date.now() + Math.floor(Math.random() * 1000);
+                        events.push(imported);
+                        map[String(imported.id)] = gEv.id;
+                        reverseMap[gEv.id] = String(imported.id);
+                        added++;
                     }
                 }
             }
@@ -662,9 +677,16 @@ function deleteEvent(calId, eventId) {
         const pullResult = await pullEvents(from.toISOString(), to.toISOString());
         const removed = deduplicateEvents();
 
-        // Push CRM events without mapping
+        // Clean stale entries from event map
         const events = DB.get('events', []);
         const map = getEventMap();
+        const eventIds = new Set(events.map(e => String(e.id)));
+        for (const crmId of Object.keys(map)) {
+            if (!eventIds.has(crmId)) delete map[crmId];
+        }
+        setEventMap(map);
+
+        // Push CRM events without mapping
         let pushed = 0;
         for (const ev of events) {
             if (!map[String(ev.id)]) {
