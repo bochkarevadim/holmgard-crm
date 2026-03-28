@@ -501,10 +501,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateDate();
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     GCalSync.init();
-    // Auto-sync GCal every 5 minutes
+    // Auto-sync GCal every 1 minute
     setInterval(() => {
         if (typeof GCalSync !== 'undefined' && GCalSync.isConnected()) GCalSync.autoSync();
-    }, 5 * 60 * 1000);
+    }, 60 * 1000);
     // GSheetsSync disabled — Firestore is the single source of truth
     initDirectorTariffs();
     // Firestore is the single source of truth
