@@ -34,6 +34,9 @@ function handleRequest(e) {
         deleteEvent(calId, params.eventId);
         result = { deleted: true };
         break;
+      case 'deleteExcept':
+        result = deleteExcept(calId, params.timeMin, params.timeMax, params.keepIds || '');
+        break;
       case 'ping':
         result = { ok: true, email: Session.getActiveUser().getEmail() };
         break;
@@ -92,6 +95,26 @@ function deleteEvent(calId, eventId) {
   var fullId = eventId.indexOf('@') === -1 ? eventId + '@google.com' : eventId;
   var ev = cal.getEventById(fullId);
   if (ev) ev.deleteEvent();
+}
+
+function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
+  var cal = CalendarApp.getCalendarById(calId) || CalendarApp.getDefaultCalendar();
+  var start = new Date(timeMin);
+  var end = new Date(timeMax);
+  var events = cal.getEvents(start, end);
+  var keepSet = {};
+  if (keepIdsStr) {
+    keepIdsStr.split(',').forEach(function(id) { keepSet[id.trim()] = true; });
+  }
+  var deleted = 0;
+  for (var i = 0; i < events.length; i++) {
+    var eid = events[i].getId().replace('@google.com', '');
+    if (!keepSet[eid]) {
+      events[i].deleteEvent();
+      deleted++;
+    }
+  }
+  return { deleted: deleted, kept: events.length - deleted, total: events.length };
 }`;
 
     // --- Storage helpers ---
