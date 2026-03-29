@@ -451,7 +451,7 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
             clientPhone: getField('Телефон') || '',
             participants: parseInt(getField('Участники')) || 0,
             price: parseFloat(getField('Стоимость')) || 0,
-            status: getField('Статус') || 'pending',
+            // NEVER import status from GCal — status is managed only by CRM
             notes: getField('Заметки'),
             occasion: getField('Повод'),
             gcalEventId: gcalEv.id,
