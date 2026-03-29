@@ -2144,6 +2144,16 @@ function loadServiceRating() {
         typeCounts[typeName] = (typeCounts[typeName] || 0) + 1;
     });
 
+    // Also count from client visit history (historical data)
+    const clients = DB.get('clients', []);
+    clients.forEach(c => {
+        (c.visits || []).forEach(v => {
+            if (v.date && v.date >= startDate && v.game) {
+                typeCounts[v.game] = (typeCounts[v.game] || 0) + 1;
+            }
+        });
+    });
+
     const labels = Object.keys(typeCounts);
     const data = Object.values(typeCounts);
     const colors = ['#FFD600', '#448AFF', '#00E676', '#FF9100', '#E040FB', '#FF5252', '#40C4FF', '#69F0AE'];
