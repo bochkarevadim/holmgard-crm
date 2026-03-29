@@ -501,10 +501,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateDate();
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     GCalSync.init();
-    // Auto-sync GCal every 1 minute
-    setInterval(() => {
-        if (typeof GCalSync !== 'undefined' && GCalSync.isConnected()) GCalSync.autoSync();
-    }, 60 * 1000);
+    // GCal sync only on manual button press — no auto-sync to prevent duplicates
     // GSheetsSync disabled — Firestore is the single source of truth
     initDirectorTariffs();
     // Firestore is the single source of truth
@@ -602,12 +599,10 @@ function attemptLogin() {
             setupEmployeeScreen(user);
             empNavigateTo('emp-dashboard');
         }
-        // Auto-sync Google Calendar after login (for all users)
+        // Init GCal connection (no auto-sync to prevent duplicates)
         if (typeof GCalSync !== 'undefined') {
             setTimeout(async () => {
-                // Re-init GCal in case Firestore token was loaded after initial init
                 if (!GCalSync.isConnected()) await GCalSync.init();
-                if (GCalSync.isConnected()) GCalSync.autoSync();
             }, 2000);
         }
     } else {

@@ -110,8 +110,7 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
   for (var i = 0; i < events.length; i++) {
     var eid = events[i].getId().replace('@google.com', '');
     if (!keepSet[eid]) {
-      events[i].deleteEvent();
-      deleted++;
+      try { events[i].deleteEvent(); deleted++; } catch(e) {}
     }
   }
   return { deleted: deleted, kept: events.length - deleted, total: events.length };
@@ -685,7 +684,7 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         return 0;
     }
 
-    // --- Full sync ---
+    // --- Full sync (pull only — push happens on event save) ---
     async function fullSync() {
         if (!isConnected()) {
             showToast('Google Calendar не подключён');
@@ -695,12 +694,13 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
 
         const now = new Date();
         const from = new Date(now); from.setDate(from.getDate() - 30);
-        const to = new Date(now); to.setDate(to.getDate() + 90);
+        const to = new Date(now); to.setDate(to.getDate() + 180);
 
+        // Step 1: Pull external events from GCal into CRM
         const pullResult = await pullEvents(from.toISOString(), to.toISOString());
         const removed = deduplicateEvents();
 
-        // Clean stale entries from event map
+        // Step 2: Clean stale map entries
         const events = DB.get('events', []);
         const map = getEventMap();
         const eventIds = new Set(events.map(e => String(e.id)));
@@ -709,20 +709,14 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         }
         setEventMap(map);
 
-        // Push CRM events without mapping
-        let pushed = 0;
-        for (const ev of events) {
-            if (!map[String(ev.id)]) {
-                await pushEvent(ev);
-                pushed++;
-            }
-        }
+        // NOTE: We do NOT bulk-push unmapped events to avoid duplicates.
+        // Events are pushed to GCal individually when created/edited in CRM.
 
         updateStatus('connected');
-        let msg = `Синхронизация: +${pullResult.added} импорт, ${pullResult.updated} обновл., ${pushed} отправл.`;
+        let msg = `Синхронизация: +${pullResult.added} импорт, ${pullResult.updated} обновл.`;
         if (removed > 0) msg += `, ${removed} дубл. удалено`;
         showToast(msg);
-        return { ...pullResult, pushed };
+        return { ...pullResult, pushed: 0 };
     }
 
     function reinitGis() {}
