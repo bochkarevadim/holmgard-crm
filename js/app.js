@@ -2696,6 +2696,44 @@ function renderCalendar() {
     document.getElementById('calendar-cells').innerHTML = cells;
     if (!selectedCalDay) selectCalDay(todayStr);
     else selectCalDay(selectedCalDay);
+
+    // Render month events table
+    renderMonthEventsTable(year, month, events);
+}
+
+function renderMonthEventsTable(year, month, events) {
+    const tbody = document.getElementById('month-events-tbody');
+    if (!tbody) return;
+    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const monthEvents = events
+        .filter(e => e.date && e.date.startsWith(monthPrefix))
+        .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+
+    if (monthEvents.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">Нет мероприятий</td></tr>';
+        return;
+    }
+
+    const channelLabels = { wa: '🟢WA', tg: '🔵TG', vk: '🟣VK' };
+    const prepayLabels = { qr: 'QR', cash: 'Нал.' };
+
+    tbody.innerHTML = monthEvents.map(e => {
+        const dateF = new Date(e.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+        const statusClass = e.status === 'completed' ? 'status-completed' : e.status === 'confirmed' ? 'status-confirmed' : e.status === 'cancelled' ? 'status-cancelled' : '';
+        const statusName = getStatusName(e.status);
+        const rowStyle = e.status === 'completed' ? 'background:rgba(76,175,80,0.1);' : e.status === 'cancelled' ? 'background:rgba(244,67,54,0.08);opacity:0.6;' : '';
+        return `<tr style="${rowStyle}cursor:pointer;" onclick="openEventModal('${e.id}')">
+            <td>${dateF}</td>
+            <td>${e.time || '—'}</td>
+            <td><strong>${e.title || '—'}</strong></td>
+            <td>${e.clientName || '—'}</td>
+            <td>${channelLabels[e.contactChannel] || '—'}</td>
+            <td style="text-align:center;">${e.participants || '—'}</td>
+            <td style="text-align:right;">${e.price ? formatMoney(e.price) : '—'}</td>
+            <td style="text-align:right;">${e.prepayment ? formatMoney(e.prepayment) + (prepayLabels[e.prepaymentMethod] ? ' ' + prepayLabels[e.prepaymentMethod] : '') : '—'}</td>
+            <td><span class="emp-event-status ${statusClass}" style="font-size:11px;">${statusName}</span></td>
+        </tr>`;
+    }).join('');
 }
 
 function selectCalDay(dateStr) {
