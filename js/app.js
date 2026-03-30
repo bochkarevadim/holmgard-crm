@@ -32,7 +32,7 @@ const FIRESTORE_KEYS = new Set([
     'loyaltyPercent', 'accentColor', 'empDashOrder',
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'consumables_v1', 'tariffs_version',
-    'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'consumablePrices'
+    'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices'
 ]);
 
 const DB = {

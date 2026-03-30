@@ -138,9 +138,20 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         if (typeof DB !== 'undefined') DB.set('gcal_calendar_id', id);
     }
     function getEventMap() {
-        try { return JSON.parse(localStorage.getItem('hp_gcal_event_map') || '{}'); } catch { return {}; }
+        // Try Firestore first, fallback to localStorage
+        try {
+            const dbMap = typeof DB !== 'undefined' ? DB.get('gcal_event_map', null) : null;
+            if (dbMap && typeof dbMap === 'object' && Object.keys(dbMap).length > 0) return dbMap;
+            return JSON.parse(localStorage.getItem('hp_gcal_event_map') || '{}');
+        } catch { return {}; }
     }
-    function setEventMap(map) { localStorage.setItem('hp_gcal_event_map', JSON.stringify(map)); }
+    function setEventMap(map) {
+        localStorage.setItem('hp_gcal_event_map', JSON.stringify(map));
+        // Persist to Firestore so map survives across devices/cache clears
+        if (typeof DB !== 'undefined') {
+            try { DB.set('gcal_event_map', map); } catch(e) {}
+        }
+    }
 
     function useAppsScript() { return !!getAppsScriptUrl(); }
 
@@ -405,19 +416,24 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         const endDT = endDate.getFullYear() + '-' + pad(endDate.getMonth() + 1) + '-' + pad(endDate.getDate()) +
             'T' + pad(endDate.getHours()) + ':' + pad(endDate.getMinutes()) + ':00';
 
+        // Build rich description — skip empty/default values
         const descParts = [];
-        if (ev.clientName) descParts.push('Клиент: ' + ev.clientName);
-        if (ev.clientPhone) descParts.push('Телефон: ' + ev.clientPhone);
-        if (ev.type) descParts.push('Тип: ' + ev.type);
-        if (ev.participants || ev.players) descParts.push('Участники: ' + (ev.participants || ev.players));
-        if (ev.price) descParts.push('Стоимость: ' + ev.price + ' ₽');
-        if (ev.status) descParts.push('Статус: ' + ev.status);
-        if (ev.notes) descParts.push('Заметки: ' + ev.notes);
-        if (ev.occasion) descParts.push('Повод: ' + ev.occasion);
+        if (ev.title) descParts.push('📋 ' + ev.title);
+        if (ev.clientName) descParts.push('👤 Клиент: ' + ev.clientName);
+        if (ev.clientPhone) descParts.push('📞 Телефон: ' + ev.clientPhone);
+        const typeNames = { paintball: 'Пейнтбол', laser: 'Лазертаг', kidball: 'Кидбол', quest: 'Квест', corporate: 'Корпоратив', birthday: 'День рождения', other: 'Другое' };
+        if (ev.type && ev.type !== 'other') descParts.push('🎯 Тип: ' + (typeNames[ev.type] || ev.type));
+        if (ev.participants > 0 || ev.players > 0) descParts.push('👥 Участники: ' + (ev.participants || ev.players));
+        if (ev.price > 0) descParts.push('💰 Стоимость: ' + ev.price + ' ₽');
+        const statusNames = { pending: 'Ожидает', confirmed: 'Подтверждено', completed: 'Завершено', cancelled: 'Отменено' };
+        if (ev.status && ev.status !== 'pending') descParts.push('📌 Статус: ' + (statusNames[ev.status] || ev.status));
+        if (ev.occasion) descParts.push('🎉 Повод: ' + ev.occasion);
+        if (ev.notes) descParts.push('📝 Заметки: ' + ev.notes);
+        descParts.push('');
         descParts.push('CRM_ID: ' + ev.id);
 
         return {
-            summary: (ev.title || 'Мероприятие') + (ev.clientName ? ' — ' + ev.clientName : ''),
+            summary: ev.title || (ev.clientName ? 'Мероприятие — ' + ev.clientName : 'Мероприятие'),
             description: descParts.join('\n'),
             start: { dateTime: startDT, timeZone: 'Europe/Moscow' },
             end: { dateTime: endDT, timeZone: 'Europe/Moscow' }
@@ -478,13 +494,46 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         }
     }
 
-    // --- Push event ---
+    // --- Find existing GCal event by CRM_ID in description ---
+    async function findGcalEventByCrmId(calId, crmId) {
+        try {
+            if (useAppsScript()) {
+                // Search GCal for events containing this CRM_ID
+                const now = new Date();
+                const from = new Date(now); from.setFullYear(from.getFullYear() - 2);
+                const to = new Date(now); to.setFullYear(to.getFullYear() + 2);
+                const data = await gasCall({
+                    action: 'list', calendarId: calId,
+                    timeMin: from.toISOString(), timeMax: to.toISOString()
+                });
+                if (data && data.events) {
+                    const needle = 'CRM_ID: ' + crmId;
+                    const found = data.events.find(e => e.description && e.description.includes(needle));
+                    if (found) return found.id;
+                }
+            }
+        } catch(e) { console.warn('findGcalEventByCrmId error:', e); }
+        return null;
+    }
+
+    // --- Push event (with duplicate protection) ---
     async function pushEvent(crmEvent) {
         if (!isConnected()) return null;
         const calId = getCalendarId();
         const gcalData = crmToGcal(crmEvent);
         const map = getEventMap();
-        const existingGcalId = map[String(crmEvent.id)];
+        let existingGcalId = map[String(crmEvent.id)];
+
+        // If no mapping exists, search GCal for existing event by CRM_ID to prevent duplicates
+        if (!existingGcalId) {
+            existingGcalId = await findGcalEventByCrmId(calId, crmEvent.id);
+            if (existingGcalId) {
+                // Restore lost mapping
+                map[String(crmEvent.id)] = existingGcalId;
+                setEventMap(map);
+                console.log('GCal: restored mapping for CRM event', crmEvent.id, '->', existingGcalId);
+            }
+        }
 
         try {
             let result;
