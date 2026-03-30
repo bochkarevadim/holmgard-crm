@@ -2136,8 +2136,9 @@ function loadServiceRating() {
     const events = DB.get('events', []).filter(e => e.status === 'completed' && e.date >= startDate);
     const typeCounts = {};
     events.forEach(e => {
-        const typeName = getEventTypeName(e.type) || e.type || 'Другое';
-        typeCounts[typeName] = (typeCounts[typeName] || 0) + 1;
+        // Normalize event type to standard service name
+        const typeName = normalizeServiceName(getEventTypeName(e.type)) || normalizeServiceName(e.title) || getEventTypeName(e.type) || 'Другое';
+        if (typeName && typeName !== 'Другое') typeCounts[typeName] = (typeCounts[typeName] || 0) + 1;
     });
 
     // Also count from client visit history (historical data)
@@ -2145,7 +2146,8 @@ function loadServiceRating() {
     clients.forEach(c => {
         (c.visits || []).forEach(v => {
             if (v.date && v.date >= startDate && v.game) {
-                typeCounts[v.game] = (typeCounts[v.game] || 0) + 1;
+                const normalized = normalizeServiceName(v.game);
+                if (normalized) typeCounts[normalized] = (typeCounts[normalized] || 0) + 1;
             }
         });
     });
@@ -3790,8 +3792,23 @@ function getRoleName(role) {
 }
 
 function getEventTypeName(type) {
-    const names = { paintball: 'Пейнтбол', laser: 'Лазертаг', kidball: 'Кидбол', quest: 'Квесты', sup: 'Сапбординг', atv: 'Квадроциклы', race: 'Гонка с препятствиями', other: 'Другое' };
+    const names = { paintball: 'Пейнтбол', laser: 'Лазертаг', kidball: 'Кидбол', quest: 'Квесты', sup: 'Сапы', atv: 'Квадроциклы', race: 'Гонка с препятствиями', rent: 'Аренда', other: 'Другое' };
     return names[type] || type;
+}
+
+// Normalize any service name (from events or client visits) to standard 8 service names
+function normalizeServiceName(name) {
+    if (!name) return null;
+    const lower = name.toLowerCase();
+    if (lower.includes('пейнтбол')) return 'Пейнтбол';
+    if (lower.includes('лазертаг') || lower.includes('орбитаг')) return 'Лазертаг';
+    if (lower.includes('кидбол')) return 'Кидбол';
+    if (lower.includes('гонк') || lower.includes('препятств')) return 'Гонка с препятствиями';
+    if (lower.includes('квадроцикл') || lower.includes('atv')) return 'Квадроциклы';
+    if (lower.includes('сап')) return 'Сапы';
+    if (lower.includes('аренд')) return 'Аренда';
+    if (lower.includes('квест')) return 'Квесты';
+    return null; // Skip unknown (e.g. "Мероприятие")
 }
 
 function getSourceBadge(ev) {
@@ -3806,9 +3823,10 @@ const EVENT_TYPE_TARIFF_MAP = {
     laser: ['Лазертаг'],
     kidball: ['Кидбол'],
     quest: ['Квесты'],
-    sup: ['Водная прогулка на Сап-бордах'],
+    sup: ['Водная прогулка на Сап-бордах', 'Сапы'],
     atv: ['Квадроциклы'],
     race: ['Гонка с препятствиями'],
+    rent: ['Аренда'],
 };
 
 function updateTariffsByType() {
