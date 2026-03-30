@@ -1976,6 +1976,23 @@ body {
     color: var(--accent);
 }
 
+/* Source badge (CRM / GCal) */
+.source-badge {
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.source-crm {
+    background: rgba(76, 175, 80, 0.15);
+    color: #4CAF50;
+}
+.source-gcal {
+    background: rgba(66, 133, 244, 0.15);
+    color: #4285F4;
+}
+
 /* ===== FINANCES ===== */
 .finance-summary {
     display: grid;

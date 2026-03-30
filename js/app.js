@@ -501,7 +501,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateDate();
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     GCalSync.init();
-    // GCal sync only on manual button press — no auto-sync to prevent duplicates
+    // Auto-sync enabled — pulls from GCal every 3 min (startAutoSync called inside init)
     // GSheetsSync disabled — Firestore is the single source of truth
     initDirectorTariffs();
     // Firestore is the single source of truth
@@ -599,7 +599,7 @@ function attemptLogin() {
             setupEmployeeScreen(user);
             empNavigateTo('emp-dashboard');
         }
-        // Init GCal connection (no auto-sync to prevent duplicates)
+        // Init GCal connection + auto-sync
         if (typeof GCalSync !== 'undefined') {
             setTimeout(async () => {
                 if (!GCalSync.isConnected()) await GCalSync.init();
@@ -1737,6 +1737,7 @@ function selectEmpCalDay(dateStr) {
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
                     <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}</span>
                 </div>
+                ${getSourceBadge(e)}
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
             </div>
         `).join('');
@@ -2696,6 +2697,7 @@ function selectCalDay(dateStr) {
                 ${!isCompleted ? `<button class="btn-primary btn-sm" onclick="openEventModal('${e.id}', true)" style="flex-shrink:0;">
                     <span class="material-icons-round" style="font-size:16px">done_all</span> Выполнить
                 </button>` : ''}
+                ${getSourceBadge(e)}
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
             </div>`;
         }).join('');
@@ -3015,6 +3017,7 @@ function saveEvent(e) {
         if (idx >= 0) events[idx] = { ...events[idx], ...data };
     } else {
         data.id = Date.now();
+        data.source = 'crm'; // Mark as created in CRM
         events.push(data);
     }
 
@@ -3789,6 +3792,12 @@ function getRoleName(role) {
 function getEventTypeName(type) {
     const names = { paintball: 'Пейнтбол', laser: 'Лазертаг', kidball: 'Кидбол', quest: 'Квесты', sup: 'Сапбординг', atv: 'Квадроциклы', race: 'Гонка с препятствиями', other: 'Другое' };
     return names[type] || type;
+}
+
+function getSourceBadge(ev) {
+    if (ev.source === 'gcal') return '<span class="source-badge source-gcal" title="Создано в Google Calendar">📅 GCal</span>';
+    if (ev.source === 'crm') return '<span class="source-badge source-crm" title="Создано в CRM">📱 CRM</span>';
+    return '<span class="source-badge source-crm" title="CRM">📱 CRM</span>'; // default = CRM
 }
 
 // Map event type to tariff sheetCategory for filtering
