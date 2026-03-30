@@ -2731,10 +2731,10 @@ function renderUpcomingEventsTable(events) {
         return `<tr style="${rowStyle}cursor:pointer;" onclick="openEventModal('${e.id}')">
             <td style="${isToday ? 'font-weight:700;color:var(--accent);' : ''}">${dateF}</td>
             <td>${e.time || '—'}</td>
+            <td>${e.type ? getEventTypeName(e.type) : '—'}</td>
             <td><strong>${e.title || '—'}</strong></td>
             <td>${e.clientName || '—'}</td>
             <td>${channelLabels[e.contactChannel] || '—'}</td>
-            <td>${e.type ? getEventTypeName(e.type) : '—'}</td>
             <td>${occasionNames[e.occasion] || e.occasion || '—'}</td>
             <td style="text-align:center;">${e.participants || '—'}</td>
             <td style="text-align:right;">${e.price ? formatMoney(e.price) : '—'}</td>
