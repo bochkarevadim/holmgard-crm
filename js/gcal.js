@@ -441,6 +441,10 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         if (ev.price > 0) descParts.push('💰 Стоимость: ' + ev.price + ' ₽');
         const statusNames = { pending: 'Ожидает', confirmed: 'Подтверждено', completed: 'Завершено', cancelled: 'Отменено' };
         if (ev.status && ev.status !== 'pending') descParts.push('📌 Статус: ' + (statusNames[ev.status] || ev.status));
+        if (ev.prepayment > 0) {
+            const prepayMethod = ev.prepaymentMethod === 'qr' ? ' (QR)' : ev.prepaymentMethod === 'cash' ? ' (нал.)' : '';
+            descParts.push('💳 Предоплата: ' + ev.prepayment + ' ₽' + prepayMethod);
+        }
         if (ev.occasion) descParts.push('🎉 Повод: ' + ev.occasion);
         if (ev.notes) descParts.push('📝 Заметки: ' + ev.notes);
         descParts.push('');
