@@ -495,22 +495,29 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
     }
 
     // --- Find existing GCal event by CRM_ID in description ---
+    // Cache the GCal events list to avoid repeated API calls during batch operations
+    let _gcalEventsCache = null;
+    let _gcalEventsCacheTime = 0;
+
     async function findGcalEventByCrmId(calId, crmId) {
         try {
             if (useAppsScript()) {
-                // Search GCal for events containing this CRM_ID
-                const now = new Date();
-                const from = new Date(now); from.setFullYear(from.getFullYear() - 2);
-                const to = new Date(now); to.setFullYear(to.getFullYear() + 2);
-                const data = await gasCall({
-                    action: 'list', calendarId: calId,
-                    timeMin: from.toISOString(), timeMax: to.toISOString()
-                });
-                if (data && data.events) {
-                    const needle = 'CRM_ID: ' + crmId;
-                    const found = data.events.find(e => e.description && e.description.includes(needle));
-                    if (found) return found.id;
+                // Use cached list if fresh (< 30 seconds old)
+                const now = Date.now();
+                if (!_gcalEventsCache || now - _gcalEventsCacheTime > 30000) {
+                    const fromD = new Date(); fromD.setFullYear(fromD.getFullYear() - 2);
+                    const toD = new Date(); toD.setFullYear(toD.getFullYear() + 2);
+                    const data = await gasCall({
+                        action: 'list', calendarId: calId,
+                        timeMin: fromD.toISOString(), timeMax: toD.toISOString()
+                    });
+                    // GAS returns array directly, not {events: [...]}
+                    _gcalEventsCache = Array.isArray(data) ? data : [];
+                    _gcalEventsCacheTime = now;
                 }
+                const needle = 'CRM_ID: ' + crmId;
+                const found = _gcalEventsCache.find(e => e.description && e.description.includes(needle));
+                if (found) return found.id;
             }
         } catch(e) { console.warn('findGcalEventByCrmId error:', e); }
         return null;
