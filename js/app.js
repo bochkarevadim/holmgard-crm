@@ -2697,33 +2697,38 @@ function renderCalendar() {
     if (!selectedCalDay) selectCalDay(todayStr);
     else selectCalDay(selectedCalDay);
 
-    // Render month events table
-    renderMonthEventsTable(year, month, events);
+    // Render upcoming events table
+    renderUpcomingEventsTable(events);
 }
 
-function renderMonthEventsTable(year, month, events) {
+function renderUpcomingEventsTable(events) {
     const tbody = document.getElementById('month-events-tbody');
     if (!tbody) return;
-    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-    const monthEvents = events
-        .filter(e => e.date && e.date.startsWith(monthPrefix))
+    const today = todayLocal();
+    const d30 = new Date(moscowNow());
+    d30.setDate(d30.getDate() + 30);
+    const endDate = `${d30.getFullYear()}-${String(d30.getMonth() + 1).padStart(2, '0')}-${String(d30.getDate()).padStart(2, '0')}`;
+
+    const upcoming = events
+        .filter(e => e.date && e.date >= today && e.date <= endDate && e.status !== 'cancelled')
         .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
 
-    if (monthEvents.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">Нет мероприятий</td></tr>';
+    if (upcoming.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">Нет ближайших мероприятий</td></tr>';
         return;
     }
 
     const channelLabels = { wa: '🟢WA', tg: '🔵TG', vk: '🟣VK' };
     const prepayLabels = { qr: 'QR', cash: 'Нал.' };
 
-    tbody.innerHTML = monthEvents.map(e => {
+    tbody.innerHTML = upcoming.map(e => {
         const dateF = new Date(e.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-        const statusClass = e.status === 'completed' ? 'status-completed' : e.status === 'confirmed' ? 'status-confirmed' : e.status === 'cancelled' ? 'status-cancelled' : '';
+        const isToday = e.date === today;
+        const statusClass = e.status === 'completed' ? 'status-completed' : e.status === 'confirmed' ? 'status-confirmed' : '';
         const statusName = getStatusName(e.status);
-        const rowStyle = e.status === 'completed' ? 'background:rgba(76,175,80,0.1);' : e.status === 'cancelled' ? 'background:rgba(244,67,54,0.08);opacity:0.6;' : '';
+        const rowStyle = e.status === 'completed' ? 'background:rgba(76,175,80,0.1);' : isToday ? 'background:rgba(255,214,0,0.08);' : '';
         return `<tr style="${rowStyle}cursor:pointer;" onclick="openEventModal('${e.id}')">
-            <td>${dateF}</td>
+            <td style="${isToday ? 'font-weight:700;color:var(--accent);' : ''}">${dateF}</td>
             <td>${e.time || '—'}</td>
             <td><strong>${e.title || '—'}</strong></td>
             <td>${e.clientName || '—'}</td>
