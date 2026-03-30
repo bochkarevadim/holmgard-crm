@@ -1844,6 +1844,7 @@ function loadTariffs(category = 'services', subcategory = null) {
                 ${t.minPeople ? `<span><span class="material-icons-round">group</span> от ${t.minPeople} чел.</span>` : ''}
                 ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров</span>` : ''}
                 ${t.grenadesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">brightness_7</span> ${t.grenadesPerPerson} гранат</span>` : ''}
+                ${t.smokesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">cloud</span> ${t.smokesPerPerson} дым</span>` : ''}
             </div>
         </div>
     `).join('');
@@ -4017,6 +4018,7 @@ function loadDirectorTariffs(subcategory = undefined) {
                 ${t.age ? `<span><span class="material-icons-round">cake</span> ${t.age} лет</span>` : ''}
                 ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров</span>` : ''}
                 ${t.grenadesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">brightness_7</span> ${t.grenadesPerPerson} гранат</span>` : ''}
+                ${t.smokesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">cloud</span> ${t.smokesPerPerson} дым</span>` : ''}
             </div>
             <div class="tariff-card-actions">
                 <button class="btn-action" title="Редактировать">
