@@ -499,6 +499,15 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         const map = getEventMap();
         let existingGcalId = map[String(crmEvent.id)];
 
+        // If event was imported from GCal, use its original gcalEventId for update
+        // This prevents creating a duplicate when editing a GCal-originated event
+        if (!existingGcalId && crmEvent.gcalEventId) {
+            existingGcalId = crmEvent.gcalEventId;
+            map[String(crmEvent.id)] = existingGcalId;
+            setEventMap(map);
+            console.log('[GCal] Using gcalEventId for update:', crmEvent.id, '->', existingGcalId);
+        }
+
         // If no local mapping, search GCal by CRM_ID to recover lost mapping
         if (!existingGcalId) {
             existingGcalId = await _findGcalByCrmId(calId, crmEvent.id);
