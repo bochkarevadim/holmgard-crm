@@ -1482,7 +1482,7 @@ function completeEventPayment() {
     const eventDate = events[idx].date || todayStr2;
     const evtTitle = events[idx].title || 'Мероприятие';
 
-    const creditBonus = (empId, amount) => {
+    const creditBonus = (empId, amount, bonusType) => {
         if (amount <= 0) return;
         // Find shift: first by event date, then by today (if completing next day)
         let shiftIdx = shifts.findIndex(s => s.date === eventDate && s.employeeId === empId);
@@ -1491,16 +1491,18 @@ function completeEventPayment() {
         }
         if (shiftIdx >= 0) {
             if (!shifts[shiftIdx].eventBonuses) shifts[shiftIdx].eventBonuses = [];
-            shifts[shiftIdx].eventBonuses.push({ eventId: events[idx].id, eventTitle: evtTitle, amount });
-            // Recalculate earnings if shift already ended
+            // bonusType: 'instructor' or 'admin' — event role, NOT shift role
+            // Shift rate is always based on employee's own role (for showing up)
+            shifts[shiftIdx].eventBonuses.push({ eventId: events[idx].id, eventTitle: evtTitle, amount, bonusType });
+            // Recalculate earnings (shift rate stays based on employee's own role)
             if (shifts[shiftIdx].endTime) {
                 shifts[shiftIdx].earnings = calculateShiftEarnings(shifts[shiftIdx]);
             }
         }
     };
 
-    selectedInstructors.forEach(id => creditBonus(id, perInstructor));
-    selectedAdmins.forEach(id => creditBonus(id, perAdmin));
+    selectedInstructors.forEach(id => creditBonus(id, perInstructor, 'instructor'));
+    selectedAdmins.forEach(id => creditBonus(id, perAdmin, 'admin'));
     DB.set('shifts', shifts);
 
     // === AUTO-DEDUCT CONSUMABLES FROM STOCK ===
@@ -2361,10 +2363,9 @@ function loadEmployees() {
                 const [eh, em] = (shift.endTime || '0:0').split(':').map(Number);
                 hours = (((eh * 60 + em) - (sh * 60 + sm)) / 60).toFixed(1) + 'ч';
                 base = shift.earnings?.base || 0;
-                // Split bonuses by role from eventBonuses
+                // Split bonuses by event role (bonusType on each bonus entry)
                 (shift.eventBonuses || []).forEach(b => {
-                    const role = shift.shiftRole || shift.employeeRole;
-                    if (role === 'admin') adminBonus += (b.amount || 0);
+                    if (b.bonusType === 'admin') adminBonus += (b.amount || 0);
                     else instrBonus += (b.amount || 0);
                 });
                 hasComment = shift.shiftComment && shift.shiftComment.trim();
