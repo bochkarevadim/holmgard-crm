@@ -1724,7 +1724,8 @@ function selectEmpCalDay(dateStr) {
     const el = document.querySelector(`#emp-calendar-cells .cal-day[data-date="${dateStr}"]`);
     if (el) el.classList.add('selected');
 
-    const events = DB.get('events', []).filter(e => e.date === dateStr);
+    const events = DB.get('events', []).filter(e => e.date === dateStr)
+        .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     const dateFormatted = new Date(dateStr + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
     document.getElementById('emp-day-events-title').textContent = 'Мероприятия — ' + dateFormatted;
 
@@ -2677,7 +2678,8 @@ function selectCalDay(dateStr) {
     const el = document.querySelector(`#calendar-cells .cal-day[data-date="${dateStr}"]`);
     if (el) el.classList.add('selected');
 
-    const events = DB.get('events', []).filter(e => e.date === dateStr);
+    const events = DB.get('events', []).filter(e => e.date === dateStr)
+        .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     const dateFormatted = new Date(dateStr + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
     document.getElementById('day-events-title').textContent = 'Мероприятия — ' + dateFormatted;
 
