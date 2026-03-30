@@ -31,7 +31,7 @@ const FIRESTORE_KEYS = new Set([
     'stock', 'salaryRules', 'finances', 'documents',
     'loyaltyPercent', 'accentColor', 'empDashOrder',
     'initialized', 'roles_version_v2', 'multirole_v1',
-    'stock_critical_v1', 'consumables_v1', 'tariffs_version',
+    'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices'
 ]);
 
@@ -240,7 +240,7 @@ function initData() {
             senior_instructor: { shiftRate: 2000, bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] },
             admin: { shiftRate: 0, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] }
         });
-        DB.set('stock', { balls: 4500, ballsCritical: 60000, grenades: 120, grenadesCritical: 100 });
+        DB.set('stock', { balls: 4500, ballsCritical: 60000, kidsBalls: 0, kidsBallsCritical: 20000, grenades: 120, grenadesCritical: 100 });
         DB.set('loyaltyPercent', 5);
         DB.set('finances', { income: 0, expense: 0, cash: 0, receipts: [], orders: [], cashOps: [], shifts: [] });
         DB.set('documents', []);
@@ -342,6 +342,17 @@ function runDataMigrations() {
             DB.set('stock', stock);
         }
         DB.set('stock_critical_v1', true);
+    }
+
+    // Migration: add kidsBalls to stock
+    if (!DB.get('stock_kids_v1')) {
+        const stock = DB.get('stock', {});
+        if (stock.kidsBalls === undefined) {
+            stock.kidsBalls = 0;
+            stock.kidsBallsCritical = 20000;
+            DB.set('stock', stock);
+        }
+        DB.set('stock_kids_v1', true);
     }
 
     // Migration: add consumable fields to tariffs
@@ -1508,13 +1519,15 @@ function completeEventPayment() {
     // === AUTO-DEDUCT CONSUMABLES FROM STOCK ===
     const tariffs = DB.get('tariffs', []);
     const evt = events[idx];
-    let totalBalls = 0, totalGrenades = 0;
+    let totalBalls = 0, totalKidsBalls = 0, totalGrenades = 0;
+    const isKidball = evt.type === 'kidball' || (evt.title || '').toLowerCase().includes('кидбол');
 
     // Main tariff × participants
     if (evt.tariffId) {
         const tariff = tariffs.find(t => t.id === evt.tariffId);
         if (tariff) {
-            totalBalls += (tariff.ballsPerPerson || 0) * (evt.participants || 1);
+            const balls = (tariff.ballsPerPerson || 0) * (evt.participants || 1);
+            if (isKidball) totalKidsBalls += balls; else totalBalls += balls;
             totalGrenades += (tariff.grenadesPerPerson || 0) * (evt.participants || 1);
         }
     }
@@ -1525,20 +1538,21 @@ function completeEventPayment() {
             const opt = tariffs.find(t => t.id === optId);
             if (opt) {
                 const qty = evt.optionQuantities?.[optId] || 1;
-                totalBalls += (opt.ballsPerPerson || 0) * qty * (evt.participants || 1);
+                const balls = (opt.ballsPerPerson || 0) * qty * (evt.participants || 1);
+                if (isKidball) totalKidsBalls += balls; else totalBalls += balls;
                 totalGrenades += (opt.grenadesPerPerson || 0) * qty * (evt.participants || 1);
             }
         });
     }
 
     // Deduct from stock
-    if (totalBalls > 0 || totalGrenades > 0) {
+    if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0) {
         const stock = DB.get('stock', {});
         stock.balls = Math.max(0, (stock.balls || 0) - totalBalls);
+        stock.kidsBalls = Math.max(0, (stock.kidsBalls || 0) - totalKidsBalls);
         stock.grenades = Math.max(0, (stock.grenades || 0) - totalGrenades);
         DB.set('stock', stock);
-        // Save what was consumed in the event
-        events[idx].consumablesUsed = { balls: totalBalls, grenades: totalGrenades };
+        events[idx].consumablesUsed = { balls: totalBalls, kidsBalls: totalKidsBalls, grenades: totalGrenades };
     }
 
     DB.set('events', events);
@@ -2238,26 +2252,37 @@ function loadEmployeeRating() {
 }
 
 function loadStock() {
-    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, grenades: 0, grenadesCritical: 100 });
+    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, kidsBalls: 0, kidsBallsCritical: 20000, grenades: 0, grenadesCritical: 100 });
     const ballsCrit = stock.ballsCritical || 60000;
+    const kidsBallsCrit = stock.kidsBallsCritical || 20000;
     const grenadesCrit = stock.grenadesCritical || 100;
 
-    document.getElementById('stock-balls').textContent = stock.balls.toLocaleString('ru-RU');
-    document.getElementById('stock-grenades').textContent = stock.grenades.toLocaleString('ru-RU');
-
-    const ballsPct = Math.min(100, (stock.balls / ballsCrit) * 100);
+    // Пейнтбольные шары 0,68
+    document.getElementById('stock-balls').textContent = (stock.balls || 0).toLocaleString('ru-RU');
+    const ballsPct = Math.min(100, ((stock.balls || 0) / ballsCrit) * 100);
     const ballsBar = document.getElementById('stock-balls-bar');
     ballsBar.style.width = ballsPct + '%';
-    ballsBar.className = 'stock-bar-fill' + (stock.balls < ballsCrit ? ' warning' : '');
+    ballsBar.className = 'stock-bar-fill' + ((stock.balls || 0) < ballsCrit ? ' warning' : '');
     const ballsWarn = document.getElementById('stock-balls-warning');
-    if (ballsWarn) ballsWarn.textContent = stock.balls < ballsCrit ? `Ниже критического уровня (${ballsCrit.toLocaleString('ru-RU')})` : '';
+    if (ballsWarn) ballsWarn.textContent = (stock.balls || 0) < ballsCrit ? `Ниже критического уровня (${ballsCrit.toLocaleString('ru-RU')})` : '';
 
-    const grenadesPct = Math.min(100, (stock.grenades / grenadesCrit) * 100);
+    // Детские шары 0,50
+    document.getElementById('stock-kids-balls').textContent = (stock.kidsBalls || 0).toLocaleString('ru-RU');
+    const kidsPct = Math.min(100, ((stock.kidsBalls || 0) / kidsBallsCrit) * 100);
+    const kidsBar = document.getElementById('stock-kids-balls-bar');
+    kidsBar.style.width = kidsPct + '%';
+    kidsBar.className = 'stock-bar-fill' + ((stock.kidsBalls || 0) < kidsBallsCrit ? ' warning' : '');
+    const kidsWarn = document.getElementById('stock-kids-balls-warning');
+    if (kidsWarn) kidsWarn.textContent = (stock.kidsBalls || 0) < kidsBallsCrit ? `Ниже критического уровня (${kidsBallsCrit.toLocaleString('ru-RU')})` : '';
+
+    // Дымы / Гранаты
+    document.getElementById('stock-grenades').textContent = (stock.grenades || 0).toLocaleString('ru-RU');
+    const grenadesPct = Math.min(100, ((stock.grenades || 0) / grenadesCrit) * 100);
     const grenadesBar = document.getElementById('stock-grenades-bar');
     grenadesBar.style.width = grenadesPct + '%';
-    grenadesBar.className = 'stock-bar-fill' + (stock.grenades < grenadesCrit ? ' warning' : '');
+    grenadesBar.className = 'stock-bar-fill' + ((stock.grenades || 0) < grenadesCrit ? ' warning' : '');
     const grenadesWarn = document.getElementById('stock-grenades-warning');
-    if (grenadesWarn) grenadesWarn.textContent = stock.grenades < grenadesCrit ? `Ниже критического уровня (${grenadesCrit.toLocaleString('ru-RU')})` : '';
+    if (grenadesWarn) grenadesWarn.textContent = (stock.grenades || 0) < grenadesCrit ? `Ниже критического уровня (${grenadesCrit.toLocaleString('ru-RU')})` : '';
 }
 
 document.querySelectorAll('.period-btn').forEach(btn => {
@@ -3512,9 +3537,11 @@ function loadSettingsData() {
 
     // Stock
     const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, grenades: 0, grenadesCritical: 100 });
-    document.getElementById('set-balls').value = stock.balls;
+    document.getElementById('set-balls').value = stock.balls || 0;
     document.getElementById('set-balls-critical').value = stock.ballsCritical || 60000;
-    document.getElementById('set-grenades').value = stock.grenades;
+    document.getElementById('set-kids-balls').value = stock.kidsBalls || 0;
+    document.getElementById('set-kids-balls-critical').value = stock.kidsBallsCritical || 20000;
+    document.getElementById('set-grenades').value = stock.grenades || 0;
     document.getElementById('set-grenades-critical').value = stock.grenadesCritical || 100;
 
     // Manager assignment list
@@ -3613,6 +3640,8 @@ function initSettings() {
         const newStock = {
             balls: parseInt(document.getElementById('set-balls').value) || 0,
             ballsCritical: parseInt(document.getElementById('set-balls-critical').value) || 60000,
+            kidsBalls: parseInt(document.getElementById('set-kids-balls').value) || 0,
+            kidsBallsCritical: parseInt(document.getElementById('set-kids-balls-critical').value) || 20000,
             grenades: parseInt(document.getElementById('set-grenades').value) || 0,
             grenadesCritical: parseInt(document.getElementById('set-grenades-critical').value) || 100,
         };
