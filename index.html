@@ -1424,14 +1424,23 @@
                     <input type="text" id="evt-title" placeholder="Название мероприятия" required>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form-group" style="flex:2">
                         <label>Фамилия и имя клиента</label>
                         <input type="text" id="evt-client-name" placeholder="Иванов Иван">
                     </div>
-                    <div class="form-group">
-                        <label>Телефон клиента</label>
-                        <input type="tel" id="evt-client-phone" placeholder="+7 (999) 123-45-67">
+                    <div class="form-group" style="flex:1">
+                        <label>Связь</label>
+                        <select id="evt-contact-channel">
+                            <option value="">—</option>
+                            <option value="wa">WhatsApp</option>
+                            <option value="tg">Telegram</option>
+                            <option value="vk">VK</option>
+                        </select>
                     </div>
+                </div>
+                <div class="form-group">
+                    <label>Телефон клиента</label>
+                    <input type="tel" id="evt-client-phone" placeholder="+7 (999) 123-45-67">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -1486,12 +1495,8 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Участники (от — до)</label>
-                        <div class="participants-range">
-                            <input type="number" id="evt-participants-min" placeholder="от" min="1">
-                            <span class="range-sep">—</span>
-                            <input type="number" id="evt-participants" placeholder="до" min="1" value="10">
-                        </div>
+                        <label>Участники (чел.)</label>
+                        <input type="number" id="evt-participants" placeholder="10" min="1" value="10">
                     </div>
                     <div class="form-group">
                         <label>Длительность (мин)</label>
@@ -1533,6 +1538,14 @@
                     <div class="form-group">
                         <label>Предоплата (₽)</label>
                         <input type="number" id="evt-prepayment" placeholder="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Форма предоплаты</label>
+                        <select id="evt-prepayment-method">
+                            <option value="">—</option>
+                            <option value="qr">QR</option>
+                            <option value="cash">Наличка</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label>Дата предоплаты</label>

@@ -2720,8 +2720,8 @@ function selectCalDay(dateStr) {
             <div class="event-card" style="flex-wrap:wrap;gap:8px;">
                 <div class="event-time">${e.time}</div>
                 <div class="event-info" onclick="openEventModal('${e.id}')" style="cursor:pointer;flex:1;min-width:200px;">
-                    <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
-                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}${e.price ? ' · ' + formatMoney(e.price) : ''}</span>
+                    <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}${getChannelBadge(e.contactChannel)}</span>` : ''}
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}${e.price ? ' · ' + formatMoney(e.price) : ''}${e.prepayment ? ' · предоплата ' + formatMoney(e.prepayment) + (e.prepaymentMethod === 'qr' ? ' QR' : e.prepaymentMethod === 'cash' ? ' нал.' : '') : ''}</span>
                 </div>
                 <span class="emp-event-status ${statusClass}">${statusName}</span>
                 ${!isCompleted ? `<button class="btn-primary btn-sm" onclick="openEventModal('${e.id}', true)" style="flex-shrink:0;">
@@ -2833,6 +2833,7 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('evt-id').value = evt.id;
         document.getElementById('evt-title').value = evt.title;
         document.getElementById('evt-client-name').value = evt.clientName || '';
+        document.getElementById('evt-contact-channel').value = evt.contactChannel || '';
         document.getElementById('evt-client-phone').value = evt.clientPhone || '';
         document.getElementById('evt-date').value = evt.date;
         document.getElementById('evt-time').value = evt.time;
@@ -2842,7 +2843,6 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('evt-occasion').value = evt.occasion || '';
         document.getElementById('evt-player-age').value = evt.playerAge || '';
         document.getElementById('evt-tariff').value = evt.tariffId || '';
-        document.getElementById('evt-participants-min').value = evt.participantsMin || '';
         document.getElementById('evt-participants').value = evt.participants;
         // Check instructors
         const instrIds = evt.instructors || (evt.instructor ? [evt.instructor] : []);
@@ -2859,6 +2859,7 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('evt-discount').value = evt.discount || '';
         document.getElementById('evt-status').value = evt.status || 'pending';
         document.getElementById('evt-prepayment').value = evt.prepayment || '';
+        document.getElementById('evt-prepayment-method').value = evt.prepaymentMethod || '';
         document.getElementById('evt-prepayment-date').value = evt.prepaymentDate || '';
 
         // Set option quantities
@@ -3011,11 +3012,11 @@ function saveEvent(e) {
     });
 
     const participantsMax = parseInt(document.getElementById('evt-participants').value) || 0;
-    const participantsMin = parseInt(document.getElementById('evt-participants-min').value) || 0;
 
     const data = {
         title: document.getElementById('evt-title').value.trim(),
         clientName: document.getElementById('evt-client-name').value.trim(),
+        contactChannel: document.getElementById('evt-contact-channel').value,
         clientPhone: document.getElementById('evt-client-phone').value.trim(),
         date: document.getElementById('evt-date').value,
         time: document.getElementById('evt-time').value,
@@ -3025,7 +3026,6 @@ function saveEvent(e) {
         playerAge: document.getElementById('evt-player-age').value.trim(),
         tariffId: parseInt(document.getElementById('evt-tariff').value) || null,
         participants: participantsMax,
-        participantsMin: participantsMin > 0 ? participantsMin : null,
         instructors: [...document.querySelectorAll('.evt-instr-cb:checked')].map(cb => parseInt(cb.value)),
         admins: [...document.querySelectorAll('.evt-admin-cb:checked')].map(cb => parseInt(cb.value)),
         instructor: [...document.querySelectorAll('.evt-instr-cb:checked')].map(cb => parseInt(cb.value))[0] || null, // backward compat
@@ -3036,6 +3036,7 @@ function saveEvent(e) {
         discount: parseFloat(document.getElementById('evt-discount').value) || 0,
         status: document.getElementById('evt-status').value || 'pending',
         prepayment: parseFloat(document.getElementById('evt-prepayment').value) || 0,
+        prepaymentMethod: document.getElementById('evt-prepayment-method').value,
         prepaymentDate: document.getElementById('evt-prepayment-date').value,
         selectedOptions: selectedOptions, // backward compat: array of IDs
         optionQuantities: optionQuantities, // new: { optionId: quantity }
@@ -3830,6 +3831,11 @@ function getRoleName(role) {
 function getEventTypeName(type) {
     const names = { paintball: 'Пейнтбол', laser: 'Лазертаг', kidball: 'Кидбол', quest: 'Квесты', sup: 'Сапы', atv: 'Квадроциклы', race: 'Гонка с препятствиями', rent: 'Аренда', other: 'Другое' };
     return names[type] || type;
+}
+
+function getChannelBadge(channel) {
+    const badges = { wa: '🟢WA', tg: '🔵TG', vk: '🟣VK' };
+    return channel && badges[channel] ? ` <span style="font-size:11px;font-weight:600;opacity:0.8;">${badges[channel]}</span>` : '';
 }
 
 // Normalize any service name (from events or client visits) to standard 8 service names
