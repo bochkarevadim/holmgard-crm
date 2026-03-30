@@ -240,7 +240,7 @@ function initData() {
             senior_instructor: { shiftRate: 2000, bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] },
             admin: { shiftRate: 0, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] }
         });
-        DB.set('stock', { balls: 4500, ballsCritical: 60000, kidsBalls: 0, kidsBallsCritical: 20000, grenades: 120, grenadesCritical: 100 });
+        DB.set('stock', { balls: 4500, ballsCritical: 60000, kidsBalls: 0, kidsBallsCritical: 20000, grenades: 120, grenadesCritical: 100, smokes: 0, smokesCritical: 50 });
         DB.set('loyaltyPercent', 5);
         DB.set('finances', { income: 0, expense: 0, cash: 0, receipts: [], orders: [], cashOps: [], shifts: [] });
         DB.set('documents', []);
@@ -268,7 +268,7 @@ function initData() {
             // === Опции к игре (optionsForGame) ===
             { id: 19, category: 'optionsForGame', serviceId: 'opt_pb_grenade', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Граната', price: 300, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 1 },
             { id: 20, category: 'optionsForGame', serviceId: 'opt_pb_balls', sheetCategory: 'Доп. опции Пейнтбол/Кидбол', name: 'Дополнительные шары', price: 2, quantity: 1, unit: 'шт', inputType: 'number', inputPlaceholder: 'Кол-во шаров', included: '', description: '', ballsPerPerson: 1, grenadesPerPerson: 0 },
-            { id: 21, category: 'optionsForGame', serviceId: 'opt_pb_smoke', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дымовая шашка', price: 300, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 1 },
+            { id: 21, category: 'optionsForGame', serviceId: 'opt_pb_smoke', sheetCategory: 'Доп. опции Пейнтбол/Кидбол/Лазертаг', name: 'Дымовая шашка', price: 300, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0, smokesPerPerson: 1 },
             { id: 22, category: 'optionsForGame', serviceId: 'opt_pb_barrel', sheetCategory: 'Доп. опции Пейнтбол', name: 'Удлинённый ствол', price: 200, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
             // === Дополнительные опции (options) ===
             { id: 24, category: 'options', serviceId: 'Coffee', sheetCategory: 'Кофе', name: 'Кофе', price: 150, quantity: 1, unit: 'штука', included: '', description: '', ballsPerPerson: 0, grenadesPerPerson: 0 },
@@ -344,14 +344,18 @@ function runDataMigrations() {
         DB.set('stock_critical_v1', true);
     }
 
-    // Migration: add kidsBalls to stock
+    // Migration: add kidsBalls and smokes to stock
     if (!DB.get('stock_kids_v1')) {
         const stock = DB.get('stock', {});
         if (stock.kidsBalls === undefined) {
             stock.kidsBalls = 0;
             stock.kidsBallsCritical = 20000;
-            DB.set('stock', stock);
         }
+        if (stock.smokes === undefined) {
+            stock.smokes = 0;
+            stock.smokesCritical = 50;
+        }
+        DB.set('stock', stock);
         DB.set('stock_kids_v1', true);
     }
 
@@ -367,7 +371,7 @@ function runDataMigrations() {
             'Tir_500': { balls: 500, grenades: 0 },
             'opt_pb_grenade': { balls: 0, grenades: 1 },
             'opt_pb_balls': { balls: 200, grenades: 0 },
-            'opt_pb_smoke': { balls: 0, grenades: 1 },
+            'opt_pb_smoke': { balls: 0, grenades: 0, smokes: 1 },
         };
         tariffs.forEach(t => {
             if (t.ballsPerPerson === undefined) {
@@ -375,6 +379,13 @@ function runDataMigrations() {
                 const def = defaultConsumables[t.serviceId];
                 t.ballsPerPerson = def ? def.balls : 0;
                 t.grenadesPerPerson = def ? def.grenades : 0;
+                t.smokesPerPerson = def ? (def.smokes || 0) : 0;
+            }
+            // Fix smoke tariff: move from grenades to smokes
+            if (t.serviceId === 'opt_pb_smoke' && !t.smokesPerPerson) {
+                t.smokesPerPerson = t.grenadesPerPerson || 1;
+                t.grenadesPerPerson = 0;
+                changed = true;
             }
         });
         if (changed) DB.set('tariffs', tariffs);
@@ -1519,7 +1530,7 @@ function completeEventPayment() {
     // === AUTO-DEDUCT CONSUMABLES FROM STOCK ===
     const tariffs = DB.get('tariffs', []);
     const evt = events[idx];
-    let totalBalls = 0, totalKidsBalls = 0, totalGrenades = 0;
+    let totalBalls = 0, totalKidsBalls = 0, totalGrenades = 0, totalSmokes = 0;
     const isKidball = evt.type === 'kidball' || (evt.title || '').toLowerCase().includes('кидбол');
 
     // Main tariff × participants
@@ -1529,10 +1540,11 @@ function completeEventPayment() {
             const balls = (tariff.ballsPerPerson || 0) * (evt.participants || 1);
             if (isKidball) totalKidsBalls += balls; else totalBalls += balls;
             totalGrenades += (tariff.grenadesPerPerson || 0) * (evt.participants || 1);
+            totalSmokes += (tariff.smokesPerPerson || 0) * (evt.participants || 1);
         }
     }
 
-    // Options × quantity × participants (grenades, extra balls, smoke)
+    // Options × quantity × participants
     if (evt.selectedOptions && evt.selectedOptions.length > 0) {
         evt.selectedOptions.forEach(optId => {
             const opt = tariffs.find(t => t.id === optId);
@@ -1541,18 +1553,20 @@ function completeEventPayment() {
                 const balls = (opt.ballsPerPerson || 0) * qty * (evt.participants || 1);
                 if (isKidball) totalKidsBalls += balls; else totalBalls += balls;
                 totalGrenades += (opt.grenadesPerPerson || 0) * qty * (evt.participants || 1);
+                totalSmokes += (opt.smokesPerPerson || 0) * qty * (evt.participants || 1);
             }
         });
     }
 
     // Deduct from stock
-    if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0) {
+    if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0 || totalSmokes > 0) {
         const stock = DB.get('stock', {});
         stock.balls = Math.max(0, (stock.balls || 0) - totalBalls);
         stock.kidsBalls = Math.max(0, (stock.kidsBalls || 0) - totalKidsBalls);
         stock.grenades = Math.max(0, (stock.grenades || 0) - totalGrenades);
+        stock.smokes = Math.max(0, (stock.smokes || 0) - totalSmokes);
         DB.set('stock', stock);
-        events[idx].consumablesUsed = { balls: totalBalls, kidsBalls: totalKidsBalls, grenades: totalGrenades };
+        events[idx].consumablesUsed = { balls: totalBalls, kidsBalls: totalKidsBalls, grenades: totalGrenades, smokes: totalSmokes };
     }
 
     DB.set('events', events);
@@ -2252,37 +2266,23 @@ function loadEmployeeRating() {
 }
 
 function loadStock() {
-    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, kidsBalls: 0, kidsBallsCritical: 20000, grenades: 0, grenadesCritical: 100 });
-    const ballsCrit = stock.ballsCritical || 60000;
-    const kidsBallsCrit = stock.kidsBallsCritical || 20000;
-    const grenadesCrit = stock.grenadesCritical || 100;
+    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, kidsBalls: 0, kidsBallsCritical: 20000, grenades: 0, grenadesCritical: 100, smokes: 0, smokesCritical: 50 });
 
-    // Пейнтбольные шары 0,68
-    document.getElementById('stock-balls').textContent = (stock.balls || 0).toLocaleString('ru-RU');
-    const ballsPct = Math.min(100, ((stock.balls || 0) / ballsCrit) * 100);
-    const ballsBar = document.getElementById('stock-balls-bar');
-    ballsBar.style.width = ballsPct + '%';
-    ballsBar.className = 'stock-bar-fill' + ((stock.balls || 0) < ballsCrit ? ' warning' : '');
-    const ballsWarn = document.getElementById('stock-balls-warning');
-    if (ballsWarn) ballsWarn.textContent = (stock.balls || 0) < ballsCrit ? `Ниже критического уровня (${ballsCrit.toLocaleString('ru-RU')})` : '';
+    const renderStockItem = (id, value, critical) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = (value || 0).toLocaleString('ru-RU');
+        const pct = Math.min(100, ((value || 0) / (critical || 1)) * 100);
+        const bar = document.getElementById(id + '-bar');
+        if (bar) { bar.style.width = pct + '%'; bar.className = 'stock-bar-fill' + ((value || 0) < critical ? ' warning' : ''); }
+        const warn = document.getElementById(id + '-warning');
+        if (warn) warn.textContent = (value || 0) < critical ? `Ниже критического уровня (${critical.toLocaleString('ru-RU')})` : '';
+    };
 
-    // Детские шары 0,50
-    document.getElementById('stock-kids-balls').textContent = (stock.kidsBalls || 0).toLocaleString('ru-RU');
-    const kidsPct = Math.min(100, ((stock.kidsBalls || 0) / kidsBallsCrit) * 100);
-    const kidsBar = document.getElementById('stock-kids-balls-bar');
-    kidsBar.style.width = kidsPct + '%';
-    kidsBar.className = 'stock-bar-fill' + ((stock.kidsBalls || 0) < kidsBallsCrit ? ' warning' : '');
-    const kidsWarn = document.getElementById('stock-kids-balls-warning');
-    if (kidsWarn) kidsWarn.textContent = (stock.kidsBalls || 0) < kidsBallsCrit ? `Ниже критического уровня (${kidsBallsCrit.toLocaleString('ru-RU')})` : '';
-
-    // Дымы / Гранаты
-    document.getElementById('stock-grenades').textContent = (stock.grenades || 0).toLocaleString('ru-RU');
-    const grenadesPct = Math.min(100, ((stock.grenades || 0) / grenadesCrit) * 100);
-    const grenadesBar = document.getElementById('stock-grenades-bar');
-    grenadesBar.style.width = grenadesPct + '%';
-    grenadesBar.className = 'stock-bar-fill' + ((stock.grenades || 0) < grenadesCrit ? ' warning' : '');
-    const grenadesWarn = document.getElementById('stock-grenades-warning');
-    if (grenadesWarn) grenadesWarn.textContent = (stock.grenades || 0) < grenadesCrit ? `Ниже критического уровня (${grenadesCrit.toLocaleString('ru-RU')})` : '';
+    renderStockItem('stock-balls', stock.balls, stock.ballsCritical || 60000);
+    renderStockItem('stock-kids-balls', stock.kidsBalls, stock.kidsBallsCritical || 20000);
+    renderStockItem('stock-grenades', stock.grenades, stock.grenadesCritical || 100);
+    renderStockItem('stock-smokes', stock.smokes, stock.smokesCritical || 50);
 }
 
 document.querySelectorAll('.period-btn').forEach(btn => {
@@ -3543,6 +3543,8 @@ function loadSettingsData() {
     document.getElementById('set-kids-balls-critical').value = stock.kidsBallsCritical || 20000;
     document.getElementById('set-grenades').value = stock.grenades || 0;
     document.getElementById('set-grenades-critical').value = stock.grenadesCritical || 100;
+    document.getElementById('set-smokes').value = stock.smokes || 0;
+    document.getElementById('set-smokes-critical').value = stock.smokesCritical || 50;
 
     // Manager assignment list
     loadManagerAssignment();
@@ -3644,6 +3646,8 @@ function initSettings() {
             kidsBallsCritical: parseInt(document.getElementById('set-kids-balls-critical').value) || 20000,
             grenades: parseInt(document.getElementById('set-grenades').value) || 0,
             grenadesCritical: parseInt(document.getElementById('set-grenades-critical').value) || 100,
+            smokes: parseInt(document.getElementById('set-smokes').value) || 0,
+            smokesCritical: parseInt(document.getElementById('set-smokes-critical').value) || 50,
         };
         DB.set('stock', newStock);
         loadStock();
