@@ -1316,9 +1316,14 @@ function initEmployeeNavigation() {
 }
 
 function empNavigateTo(page) {
+    // Sync sidebar nav
     document.querySelectorAll('#employee-screen .nav-item').forEach(n => n.classList.remove('active'));
-    const navItem = document.querySelector(`[data-emp-page="${page}"]`);
+    const navItem = document.querySelector(`#employee-screen .sidebar .nav-item[data-emp-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
+    // Sync mobile bottom nav
+    document.querySelectorAll('#emp-mobile-bottom-nav .mobile-nav-item').forEach(n => n.classList.remove('active'));
+    const mobileEl = document.querySelector(`#emp-mobile-bottom-nav .mobile-nav-item[data-emp-page="${page}"]`);
+    if (mobileEl) mobileEl.classList.add('active');
 
     document.querySelectorAll('#employee-screen .page').forEach(p => p.classList.remove('active'));
     const pageEl = document.getElementById('emp-page-' + page.replace('emp-', ''));
@@ -1924,6 +1929,14 @@ function initNavigation() {
         });
     });
 
+    // Mobile bottom nav (director)
+    document.querySelectorAll('#mobile-bottom-nav .mobile-nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const page = item.dataset.page;
+            if (page) navigateTo(page);
+        });
+    });
+
     document.getElementById('btn-hamburger').addEventListener('click', () => {
         document.getElementById('sidebar').classList.toggle('open');
     });
@@ -1936,9 +1949,16 @@ function initNavigation() {
 }
 
 function navigateTo(page) {
+    // Sync sidebar nav
     document.querySelectorAll('#app-screen .nav-item').forEach(n => n.classList.remove('active'));
     const navEl = document.querySelector(`#app-screen .nav-item[data-page="${page}"]`);
     if (navEl) navEl.classList.add('active');
+    // Sync mobile bottom nav
+    document.querySelectorAll('#mobile-bottom-nav .mobile-nav-item').forEach(n => n.classList.remove('active'));
+    const mobileEl = document.querySelector(`#mobile-bottom-nav .mobile-nav-item[data-page="${page}"]`);
+    if (mobileEl) mobileEl.classList.add('active');
+    // Close sidebar on mobile after navigation
+    document.getElementById('sidebar')?.classList.remove('open');
 
     document.querySelectorAll('#app-screen .page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-' + page).classList.add('active');

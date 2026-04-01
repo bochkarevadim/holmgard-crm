@@ -2521,24 +2521,52 @@ body {
 }
 
 /* ===== RESPONSIVE ===== */
+/* ===== TABLET (768px — 1024px) ===== */
 @media (max-width: 1024px) {
-    .card-wide {
-        grid-column: span 1;
+    /* Sidebar collapses to icon-only strip */
+    .sidebar {
+        width: 60px;
+        overflow: hidden;
     }
-    .dashboard-grid {
-        grid-template-columns: 1fr;
+    .sidebar-logo {
+        padding: 16px 8px;
+        justify-content: center;
     }
-    .emp-welcome-card {
-        flex-direction: column;
+    .sidebar-brand { display: none; }
+    .sidebar-nav { padding: 8px 6px; }
+    .nav-item {
+        justify-content: center;
+        padding: 12px;
+        gap: 0;
     }
-    .emp-welcome-left {
-        min-width: auto;
+    .nav-item span:not(.material-icons-round) { display: none; }
+    .sidebar-footer { padding: 8px 6px; }
+    .btn-logout-sidebar {
+        justify-content: center;
+        padding: 12px;
+        gap: 0;
     }
+    .btn-logout-sidebar span:not(.material-icons-round) { display: none; }
+
+    .main-content { margin-left: 60px; }
+    .top-bar { padding: 14px 20px; }
+    .page { padding: 24px 20px; }
+
+    .card-wide { grid-column: span 1; }
+    .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+    .emp-welcome-card { flex-direction: column; }
+    .emp-welcome-left { min-width: auto; }
+    .tariff-grid { grid-template-columns: repeat(2, 1fr); }
+    .settings-grid { grid-template-columns: 1fr; }
+    .form-row { grid-template-columns: 1fr 1fr; }
 }
 
+/* ===== MOBILE (< 768px) ===== */
 @media (max-width: 768px) {
+    /* Hide sidebar completely, show bottom nav instead */
     .sidebar {
         transform: translateX(-100%);
+        width: 240px;
     }
     .sidebar.open {
         transform: translateX(0);
@@ -2546,138 +2574,80 @@ body {
     }
     .main-content {
         margin-left: 0;
+        padding-bottom: 72px; /* space for bottom nav */
     }
     .btn-hamburger {
         display: flex;
     }
     .top-bar {
-        padding: 12px 16px;
+        padding: 10px 16px;
     }
     .page {
-        padding: 20px 16px;
-    }
-    .form-row {
-        grid-template-columns: 1fr;
-    }
-    .salary-summary,
-    .finance-summary {
-        grid-template-columns: 1fr;
-    }
-    .loyalty-banner {
-        flex-direction: column;
-        text-align: center;
-    }
-    .settings-grid {
-        grid-template-columns: 1fr;
-    }
-    .salary-rules-grid {
-        grid-template-columns: 1fr;
-    }
-    .schedule-actions {
-        flex-direction: column;
-        width: 100%;
-    }
-    .section-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    .role-cards {
-        grid-template-columns: 1fr;
-    }
-    .payment-methods {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    .tariff-grid {
-        grid-template-columns: 1fr;
-    }
-    .emp-dash-grid {
-        grid-template-columns: 1fr;
+        padding: 16px 12px;
     }
 
-    /* --- Tables: horizontal scroll --- */
+    /* --- Grids: single column --- */
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .form-row { grid-template-columns: 1fr; }
+    .salary-summary,
+    .finance-summary { grid-template-columns: 1fr; }
+    .settings-grid { grid-template-columns: 1fr; }
+    .salary-rules-grid { grid-template-columns: 1fr; }
+    .role-cards { grid-template-columns: 1fr; }
+    .tariff-grid { grid-template-columns: 1fr; }
+    .emp-dash-grid { grid-template-columns: 1fr; }
+    .payment-methods { grid-template-columns: repeat(2, 1fr); }
+
+    .loyalty-banner { flex-direction: column; text-align: center; }
+    .schedule-actions { flex-direction: column; width: 100%; }
+    .section-header { flex-direction: column; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+
+    /* --- Tables: horizontal scroll + compact --- */
     .data-table, .settings-card table {
         display: block;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
-        font-size: 13px;
+        font-size: 12px;
     }
     .data-table th, .data-table td {
         white-space: nowrap;
-        padding: 8px 10px;
+        padding: 6px 8px;
     }
 
-    /* --- Modal dialogs --- */
+    /* --- Modal dialogs: full-screen on mobile --- */
     .modal-content {
-        width: 95vw !important;
-        max-width: 95vw !important;
-        max-height: 88vh;
-        margin: 6vh auto;
+        width: 100vw !important;
+        max-width: 100vw !important;
+        max-height: 100vh;
+        margin: 0;
         padding: 16px;
+        border-radius: 0;
     }
-    .modal-header h2, .modal-header h3 {
-        font-size: 16px;
-    }
+    .modal-header h2, .modal-header h3 { font-size: 16px; }
 
-    /* --- PIN screen optimization --- */
-    .pin-pad {
-        gap: 12px;
-    }
-    .pin-btn {
-        width: 70px;
-        height: 70px;
-        font-size: 22px;
-    }
-    .login-screen h1 {
-        font-size: 22px;
-    }
-    .login-screen .logo-icon {
-        width: 70px;
-        height: 70px;
-    }
+    /* --- PIN screen --- */
+    .pin-pad { gap: 12px; }
+    .pin-btn { width: 70px; height: 70px; font-size: 22px; }
+    .login-screen h1 { font-size: 22px; }
+    .login-screen .logo-icon { width: 70px; height: 70px; }
 
-    /* --- Top bar: hide date on mobile --- */
-    .top-bar-date {
-        display: none;
-    }
-    .top-bar {
-        gap: 8px;
-    }
-    #page-title {
-        font-size: 16px;
-    }
-    .user-info {
-        font-size: 13px;
-    }
-    .user-info .material-icons-round {
-        font-size: 20px;
-    }
+    /* --- Top bar compact --- */
+    .top-bar-date { display: none; }
+    .top-bar { gap: 8px; }
+    #page-title { font-size: 15px; }
+    .user-info { font-size: 12px; }
+    .user-info .material-icons-round { font-size: 20px; }
+    .top-bar-user { font-size: 12px; gap: 4px; }
 
     /* --- Calendar compact --- */
-    .calendar-grid {
-        font-size: 12px;
-    }
-    .calendar-grid .day-cell {
-        min-height: 50px;
-        padding: 2px;
-    }
-    .calendar-grid .day-events {
-        font-size: 10px;
-    }
-    .calendar-header {
-        flex-direction: column;
-        gap: 8px;
-    }
+    .calendar-grid { font-size: 11px; }
+    .calendar-grid .day-cell { min-height: 44px; padding: 2px; }
+    .calendar-grid .day-events { font-size: 9px; }
+    .calendar-header { flex-direction: column; gap: 8px; }
 
     /* --- Week groups (finances) --- */
-    .week-header {
-        flex-direction: column;
-        gap: 4px;
-        padding: 10px 12px;
-        font-size: 13px;
-    }
-    .week-group .data-table {
-        font-size: 12px;
-    }
+    .week-header { flex-direction: column; gap: 4px; padding: 10px 12px; font-size: 13px; }
+    .week-group .data-table { font-size: 12px; }
 
     /* --- Sidebar backdrop --- */
     .sidebar-backdrop {
@@ -2688,60 +2658,105 @@ body {
         background: rgba(0,0,0,0.5);
         z-index: 99;
     }
-    .sidebar.open ~ .sidebar-backdrop {
-        display: block;
-    }
+    .sidebar.open ~ .sidebar-backdrop { display: block; }
 
     /* --- Employee shift buttons --- */
-    .btn-shift {
-        padding: 14px;
-        font-size: 14px;
-    }
+    .btn-shift { padding: 14px; font-size: 14px; }
 
     /* --- Finance summary cards --- */
-    .finance-summary {
-        gap: 8px;
-    }
-    .fin-card {
-        padding: 12px;
-    }
-    .fin-card-value {
-        font-size: 18px;
-    }
+    .finance-summary { gap: 8px; }
+    .fin-card { padding: 12px; }
+    .fin-card-value { font-size: 18px; }
 
     /* --- Settings card compact --- */
-    .settings-card {
-        padding: 16px;
-    }
-    .salary-rule-block {
-        padding: 12px;
-    }
+    .settings-card { padding: 14px; }
+    .salary-rule-block { padding: 12px; }
 
     /* --- Clients, Documents --- */
-    .list-item {
-        padding: 10px 12px;
-    }
+    .list-item { padding: 10px 12px; }
 
     /* --- Firebase login form --- */
-    .firebase-login-form {
-        width: 90vw;
-        max-width: 340px;
-    }
+    .firebase-login-form { width: 90vw; max-width: 340px; }
+
+    /* --- Period toggle compact --- */
     .period-toggle { padding: 2px; }
     .period-toggle-btn { padding: 5px 10px; font-size: 11px; }
-    .section-header { flex-wrap: wrap; gap: 8px; }
-    .emp-dash-card-header { flex-direction: column; align-items: flex-start; padding: 16px; gap: 12px; }
+
+    /* --- Employee dashboard cards compact --- */
+    .emp-dash-card-header { flex-direction: column; align-items: flex-start; padding: 14px; gap: 10px; position: relative; }
     .emp-dash-card-info { min-width: auto; }
-    .emp-dash-card-stats { flex-wrap: wrap; gap: 12px; }
+    .emp-dash-card-stats { flex-wrap: wrap; gap: 10px; }
     .emp-dash-stat-value { font-size: 16px; }
-    .emp-dash-chevron { position: absolute; right: 16px; top: 16px; }
-    .emp-dash-card-header { position: relative; }
+    .emp-dash-chevron { position: absolute; right: 14px; top: 14px; }
     .emp-dash-card-body { padding: 12px; }
     .emp-dash-card-actions { flex-wrap: wrap; }
+
+    /* --- Payment methods compact --- */
     .payment-method-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
     .payment-method-option { padding: 8px 10px; font-size: 12px; }
     .salary-pay-info { padding: 10px 12px; }
     .salary-pay-stat { font-size: 12px; }
+
+    /* --- Bottom navigation bar for mobile --- */
+    .mobile-bottom-nav {
+        display: flex !important;
+    }
+}
+
+/* ===== BOTTOM NAV (hidden by default, shown on mobile) ===== */
+.mobile-bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: var(--bg-sidebar);
+    border-top: 1px solid var(--border);
+    z-index: 101;
+    align-items: center;
+    justify-content: space-around;
+    padding: 4px 0;
+    padding-bottom: env(safe-area-inset-bottom, 4px);
+}
+.mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 12px;
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: var(--transition);
+    background: none;
+    border: none;
+    font-family: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+.mobile-nav-item .material-icons-round {
+    font-size: 22px;
+}
+.mobile-nav-item.active {
+    color: var(--accent);
+}
+.mobile-nav-item:active {
+    background: var(--accent-dim);
+}
+
+/* ===== SMALL MOBILE (< 480px) ===== */
+@media (max-width: 480px) {
+    .page { padding: 12px 8px; }
+    .dash-card { padding: 14px; }
+    .data-table th, .data-table td { padding: 5px 6px; font-size: 11px; }
+    .calendar-grid .day-cell { min-height: 38px; }
+    .pin-btn { width: 64px; height: 64px; font-size: 20px; }
+    .modal-content { padding: 12px; }
+    .mobile-nav-item { padding: 4px 8px; font-size: 9px; }
+    .mobile-nav-item .material-icons-round { font-size: 20px; }
 }
 
 /* ===== SCROLLBAR ===== */
