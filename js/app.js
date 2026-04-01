@@ -2714,13 +2714,14 @@ function renderUpcomingEventsTable(events) {
         .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
 
     if (upcoming.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-secondary);">Нет ближайших мероприятий</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-secondary);">Нет ближайших мероприятий</td></tr>';
         return;
     }
 
     const channelLabels = { wa: '🟢WA', tg: '🔵TG', vk: '🟣VK' };
     const prepayLabels = { qr: 'QR', cash: 'Нал.' };
     const occasionNames = { corporate: 'Корпоратив', birthday: 'День рождения', friends: 'Встреча друзей', bachelor: 'Мальчишник', personal: 'Личный праздник', active: 'Активный отдых' };
+    const tariffs = DB.get('tariffs', []);
 
     tbody.innerHTML = upcoming.map(e => {
         const dateF = new Date(e.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
@@ -2728,10 +2729,14 @@ function renderUpcomingEventsTable(events) {
         const statusClass = e.status === 'completed' ? 'status-completed' : e.status === 'confirmed' ? 'status-confirmed' : '';
         const statusName = getStatusName(e.status);
         const rowStyle = e.status === 'completed' ? 'background:rgba(76,175,80,0.1);' : isToday ? 'background:rgba(255,214,0,0.08);' : '';
+        // Find tariff name
+        const tariff = e.tariffId ? tariffs.find(t => t.id === e.tariffId) : null;
+        const tariffName = tariff ? tariff.name : (e.tariffName || '—');
         return `<tr style="${rowStyle}cursor:pointer;" onclick="openEventModal('${e.id}')">
             <td style="${isToday ? 'font-weight:700;color:var(--accent);' : ''}">${dateF}</td>
             <td>${e.time || '—'}</td>
             <td>${e.type ? getEventTypeName(e.type) : '—'}</td>
+            <td>${tariffName}</td>
             <td><strong>${e.title || '—'}</strong></td>
             <td>${e.clientName || '—'}</td>
             <td>${channelLabels[e.contactChannel] || '—'}</td>
