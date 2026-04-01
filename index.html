@@ -925,7 +925,15 @@
                         </div>
                         <div class="form-group">
                             <label>Наименование товара</label>
-                            <input type="text" id="doc-item" placeholder="Например: Пейнтбольные шары" required>
+                            <select id="doc-item-select">
+                                <option value="">— Выберите расходник —</option>
+                                <option value="Пейнтбольные шары 0.68">Пейнтбольные шары 0.68</option>
+                                <option value="Детские пейнтбольные шары 0.50">Детские пейнтбольные шары 0.50</option>
+                                <option value="Гранаты">Гранаты</option>
+                                <option value="Дымы">Дымы</option>
+                                <option value="__custom">Другое (ввести вручную)</option>
+                            </select>
+                            <input type="text" id="doc-item" placeholder="Введите наименование" style="display:none;margin-top:8px;" required>
                         </div>
                         <div class="form-row">
                             <div class="form-group">

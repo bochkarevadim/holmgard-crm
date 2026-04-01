@@ -3313,6 +3313,19 @@ function initDocuments() {
     document.getElementById('modal-document-close').addEventListener('click', () => closeModal('modal-document'));
     document.getElementById('btn-cancel-document').addEventListener('click', () => closeModal('modal-document'));
     document.getElementById('document-form').addEventListener('submit', saveDocument);
+
+    // Doc item: select consumable or enter custom
+    document.getElementById('doc-item-select').addEventListener('change', function() {
+        const input = document.getElementById('doc-item');
+        if (this.value === '__custom') {
+            input.style.display = '';
+            input.value = '';
+            input.focus();
+        } else {
+            input.style.display = 'none';
+            input.value = this.value;
+        }
+    });
 }
 
 function loadDocuments(tab = 'incoming') {
@@ -3351,9 +3364,22 @@ function openDocumentModal(id = null) {
         document.getElementById('doc-qty').value = doc.qty;
         document.getElementById('doc-amount').value = doc.amount;
         document.getElementById('doc-comment').value = doc.comment || '';
+        // Set select to matching option or "custom"
+        const sel = document.getElementById('doc-item-select');
+        const match = [...sel.options].find(o => o.value === doc.item);
+        if (match) {
+            sel.value = doc.item;
+            document.getElementById('doc-item').style.display = 'none';
+        } else {
+            sel.value = '__custom';
+            document.getElementById('doc-item').style.display = '';
+        }
     } else {
         document.getElementById('modal-document-title').textContent = 'Новый документ';
         document.getElementById('doc-date').value = todayLocal();
+        document.getElementById('doc-item-select').value = '';
+        document.getElementById('doc-item').style.display = 'none';
+        document.getElementById('doc-item').value = '';
     }
     openModal('modal-document');
 }
