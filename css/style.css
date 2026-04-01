@@ -2639,11 +2639,18 @@ body {
     .user-info .material-icons-round { font-size: 20px; }
     .top-bar-user { font-size: 12px; gap: 4px; }
 
-    /* --- Calendar compact --- */
-    .calendar-grid { font-size: 11px; }
+    /* --- Calendar compact: fit 7 columns on any screen --- */
+    .calendar-grid { font-size: 11px; gap: 1px; }
     .calendar-grid .day-cell { min-height: 44px; padding: 2px; }
     .calendar-grid .day-events { font-size: 9px; }
     .calendar-header { flex-direction: column; gap: 8px; }
+    .cal-day {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+    }
+    .cal-header { font-size: 10px; }
+    .calendar-nav h3 { font-size: 14px; min-width: 130px; }
 
     /* --- Week groups (finances) --- */
     .week-header { flex-direction: column; gap: 4px; padding: 10px 12px; font-size: 13px; }
@@ -2753,6 +2760,9 @@ body {
     .dash-card { padding: 14px; }
     .data-table th, .data-table td { padding: 5px 6px; font-size: 11px; }
     .calendar-grid .day-cell { min-height: 38px; }
+    .cal-day { width: 28px; height: 28px; font-size: 11px; }
+    .cal-header { font-size: 9px; }
+    .calendar-nav h3 { font-size: 13px; min-width: 110px; }
     .pin-btn { width: 64px; height: 64px; font-size: 20px; }
     .modal-content { padding: 12px; }
     .mobile-nav-item { padding: 4px 8px; font-size: 9px; }
