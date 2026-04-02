@@ -2532,7 +2532,90 @@ function loadEmployees() {
 
     const allShifts = DB.get('shifts', []).filter(s => s.endTime && s.earnings);
     const allPayments = DB.get('salaryPayments', []);
-    const { startDate, endDate } = getDateRangeForPeriod(empDashPeriod);
+    // Always current month
+    const { startDate, endDate } = getDateRangeForPeriod('month');
+
+    // ===== SALARY ANALYTICS SUMMARY =====
+    const analyticsEl = document.getElementById('salary-analytics');
+    if (analyticsEl) {
+        const now = moscowNow();
+        const curMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        let totalEarned = 0, totalPaid = 0, totalDebt = 0, totalOverpay = 0;
+        // Per-month data for last 6 months chart
+        const monthData = [];
+        for (let m = 5; m >= 0; m--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
+            const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const mStart = mStr + '-01';
+            const mEnd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
+            const mNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+            let mEarned = 0, mPaid = 0;
+            employees.forEach(emp => {
+                const shifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= mStart && s.date <= mEnd && (s.shiftRole || s.employeeRole) !== 'manager');
+                mEarned += shifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
+                mEarned += getManagerDailyAccruals(emp, mStart, mEnd).reduce((s, a) => s + a.amount, 0);
+                mPaid += allPayments.filter(p => p.employeeId === emp.id && p.date >= mStart && p.date <= mEnd).reduce((s, p) => s + (p.amount || 0), 0);
+            });
+            monthData.push({ label: mNames[d.getMonth()], earned: mEarned, paid: mPaid });
+        }
+        // Current month totals for all employees (including carry-over)
+        employees.forEach(emp => {
+            // All-time earned
+            const allTimeEarned = allShifts.filter(s => s.employeeId === emp.id && (s.shiftRole || s.employeeRole) !== 'manager')
+                .reduce((s, sh) => s + (sh.earnings?.total || 0), 0)
+                + getManagerDailyAccruals(emp, '2020-01-01', endDate).reduce((s, a) => s + a.amount, 0);
+            const allTimePaidAmt = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
+            const bal = allTimeEarned - allTimePaidAmt;
+            if (bal > 0) totalDebt += bal;
+            else if (bal < 0) totalOverpay += Math.abs(bal);
+
+            // This month earned/paid
+            const mShifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= startDate && s.date <= endDate && (s.shiftRole || s.employeeRole) !== 'manager');
+            totalEarned += mShifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
+            totalEarned += getManagerDailyAccruals(emp, startDate, endDate).reduce((s, a) => s + a.amount, 0);
+            totalPaid += allPayments.filter(p => p.employeeId === emp.id && p.date >= startDate && p.date <= endDate).reduce((s, p) => s + (p.amount || 0), 0);
+        });
+
+        // Mini bar chart
+        const maxVal = Math.max(...monthData.map(m => Math.max(m.earned, m.paid)), 1);
+        const barsHtml = monthData.map(m => `
+            <div class="salary-chart-col">
+                <div class="salary-chart-bars">
+                    <div class="salary-chart-bar earned" style="height:${Math.round(m.earned / maxVal * 80)}px;" title="Начислено: ${formatMoney(m.earned)}"></div>
+                    <div class="salary-chart-bar paid" style="height:${Math.round(m.paid / maxVal * 80)}px;" title="Выплачено: ${formatMoney(m.paid)}"></div>
+                </div>
+                <div class="salary-chart-label">${m.label}</div>
+            </div>
+        `).join('');
+
+        analyticsEl.innerHTML = `
+            <div class="salary-analytics-grid">
+                <div class="salary-analytics-card">
+                    <div class="salary-analytics-title">Начислено (${curMonthStr.slice(5)}/${curMonthStr.slice(0,4)})</div>
+                    <div class="salary-analytics-value">${formatMoney(totalEarned)}</div>
+                </div>
+                <div class="salary-analytics-card">
+                    <div class="salary-analytics-title">Выплачено</div>
+                    <div class="salary-analytics-value green">${formatMoney(totalPaid)}</div>
+                </div>
+                <div class="salary-analytics-card">
+                    <div class="salary-analytics-title">Задолженность</div>
+                    <div class="salary-analytics-value ${totalDebt > 0 ? 'red' : ''}">${formatMoney(totalDebt)}</div>
+                </div>
+                <div class="salary-analytics-card">
+                    <div class="salary-analytics-title">Переплата</div>
+                    <div class="salary-analytics-value ${totalOverpay > 0 ? 'green' : ''}">${formatMoney(totalOverpay)}</div>
+                </div>
+            </div>
+            <div class="salary-chart-container">
+                <div class="salary-chart-legend">
+                    <span><span class="dot earned"></span> Начислено</span>
+                    <span><span class="dot paid"></span> Выплачено</span>
+                </div>
+                <div class="salary-chart">${barsHtml}</div>
+            </div>
+        `;
+    }
 
     container.innerHTML = employees.map(emp => {
         // Regular shift earnings (exclude manager-role shifts to avoid double counting)
@@ -2546,7 +2629,12 @@ function loadEmployees() {
         const shiftEarned = empShifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
         const earned = shiftEarned + mgrTotal;
         const paid = empPayments.reduce((s, p) => s + (p.amount || 0), 0);
-        const balance = earned - paid;
+        // Balance with carry-over: all-time earned - all-time paid
+        const allTimeEarnedEmp = allShifts.filter(s => s.employeeId === emp.id && (s.shiftRole || s.employeeRole) !== 'manager')
+            .reduce((s, sh) => s + (sh.earnings?.total || 0), 0)
+            + getManagerDailyAccruals(emp, '2020-01-01', endDate).reduce((s, a) => s + a.amount, 0);
+        const allTimePaidEmp = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
+        const balance = allTimeEarnedEmp - allTimePaidEmp; // positive = debt, negative = overpay (carries over)
 
         // Determine which accrual rows are "paid" (green)
         // All-time paid for this employee to determine paid coverage
@@ -2680,15 +2768,6 @@ function loadEmployees() {
         </div>`;
     }).join('');
 
-    // Bind period toggle
-    document.querySelectorAll('#emp-dash-period-toggle .period-toggle-btn').forEach(btn => {
-        btn.onclick = () => {
-            empDashPeriod = btn.dataset.period;
-            document.querySelectorAll('#emp-dash-period-toggle .period-toggle-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            loadEmployees();
-        };
-    });
 }
 
 function showShiftComment(comment) {
