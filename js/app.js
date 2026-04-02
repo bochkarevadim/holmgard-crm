@@ -3406,6 +3406,27 @@ function saveDocument(e) {
         docs.push(data);
     }
     DB.set('documents', docs);
+
+    // Auto-update stock when saving incoming/outgoing document for consumables
+    const stockKeyMap = {
+        'Пейнтбольные шары 0.68': 'balls',
+        'Детские пейнтбольные шары 0.50': 'kidsBalls',
+        'Гранаты': 'grenades',
+        'Дымы': 'smokes'
+    };
+    const stockKey = stockKeyMap[data.item];
+    if (stockKey && data.qty > 0) {
+        const stock = DB.get('stock', {});
+        const current = stock[stockKey] || 0;
+        if (data.type === 'incoming') {
+            stock[stockKey] = current + data.qty;
+            DB.set('stock', stock);
+        } else if (data.type === 'outgoing' || data.type === 'writeoff') {
+            stock[stockKey] = Math.max(0, current - data.qty);
+            DB.set('stock', stock);
+        }
+    }
+
     closeModal('modal-document');
     loadDocuments(data.type);
     showToast('Документ сохранён');
