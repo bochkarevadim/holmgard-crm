@@ -492,8 +492,13 @@
 
         <!-- ===== DASHBOARD PAGE ===== -->
         <div class="page active" id="page-dashboard">
-            <div class="dashboard-grid">
-                <div class="stock-row">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+                <button class="btn-icon" id="btn-edit-dashboard" title="Настроить дашборд">
+                    <span class="material-icons-round">tune</span>
+                </button>
+            </div>
+            <div class="dashboard-grid" id="dashboard-grid">
+                <div class="stock-row dash-sortable" data-card-id="stock">
                     <div class="stock-item">
                         <div class="stock-item-header"><span class="material-icons-round">sports_baseball</span> Шары 0,68</div>
                         <div class="stock-item-value" id="stock-balls">0</div>
@@ -520,7 +525,7 @@
                     </div>
                 </div>
 
-                <div class="dash-card card-revenue">
+                <div class="dash-card card-revenue dash-sortable" data-card-id="revenue">
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">trending_up</span> Выручка</h3>
                         <div class="dashboard-period">
@@ -545,7 +550,7 @@
                     </div>
                 </div>
 
-                <div class="dash-card">
+                <div class="dash-card dash-sortable" data-card-id="events-today">
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">event</span> Мероприятия сегодня</h3>
                     </div>
@@ -553,7 +558,7 @@
                     <div class="dash-card-list" id="events-today-list"></div>
                 </div>
 
-                <div class="dash-card">
+                <div class="dash-card dash-sortable" data-card-id="on-shift">
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">badge</span> Сегодня на смене</h3>
                     </div>
@@ -562,7 +567,7 @@
                     </div>
                 </div>
 
-                <div class="dash-card">
+                <div class="dash-card dash-sortable" data-card-id="services-rating">
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">star</span> Рейтинг услуг</h3>
                         <div class="rating-period-toggle">
@@ -575,7 +580,7 @@
                     </div>
                 </div>
 
-                <div class="dash-card">
+                <div class="dash-card dash-sortable" data-card-id="employee-rating">
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">emoji_events</span> Рейтинг сотрудников</h3>
                         <div class="rating-period-toggle">

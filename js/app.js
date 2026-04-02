@@ -32,7 +32,8 @@ const FIRESTORE_KEYS = new Set([
     'loyaltyPercent', 'accentColor', 'empDashOrder',
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
-    'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices'
+    'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
+    'directorDashOrder'
 ]);
 
 const DB = {
@@ -491,6 +492,7 @@ function onFirestoreReady() {
     // Refresh UI with data from Firestore
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     if (typeof loadDashboard === 'function') loadDashboard();
+    if (typeof initDirectorDashDragDrop === 'function') initDirectorDashDragDrop();
     if (typeof loadDirectorTariffs === 'function') loadDirectorTariffs();
 
     // Auto-cleanup duplicate events on startup
@@ -1913,6 +1915,132 @@ function initDashboardDragDrop() {
     if (savedOrder) {
         savedOrder.forEach(cardId => {
             const card = grid.querySelector(`[data-card-id="${cardId}"]`);
+            if (card) grid.appendChild(card);
+        });
+    }
+}
+
+// ===== DIRECTOR DASHBOARD DRAG & DROP =====
+function initDirectorDashDragDrop() {
+    const grid = document.getElementById('dashboard-grid');
+    if (!grid) return;
+    let draggedCard = null;
+    let editMode = false;
+
+    const editBtn = document.getElementById('btn-edit-dashboard');
+    if (editBtn) {
+        editBtn.addEventListener('click', () => {
+            editMode = !editMode;
+            grid.classList.toggle('dash-edit-mode', editMode);
+            editBtn.classList.toggle('active', editMode);
+            // Toggle draggable on cards
+            grid.querySelectorAll('.dash-sortable').forEach(c => {
+                c.draggable = editMode;
+            });
+            if (editMode) {
+                showToast('Режим редактирования: перетаскивайте карточки');
+            } else {
+                showToast('Порядок сохранён');
+            }
+        });
+    }
+
+    grid.addEventListener('dragstart', (e) => {
+        if (!editMode) return;
+        const card = e.target.closest('.dash-sortable');
+        if (!card) return;
+        draggedCard = card;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    });
+
+    grid.addEventListener('dragend', (e) => {
+        const card = e.target.closest('.dash-sortable');
+        if (card) card.classList.remove('dragging');
+        grid.querySelectorAll('.dash-sortable').forEach(c => c.classList.remove('drag-over'));
+        draggedCard = null;
+    });
+
+    grid.addEventListener('dragover', (e) => {
+        if (!editMode) return;
+        e.preventDefault();
+        const card = e.target.closest('.dash-sortable');
+        if (card && card !== draggedCard) {
+            grid.querySelectorAll('.dash-sortable').forEach(c => c.classList.remove('drag-over'));
+            card.classList.add('drag-over');
+        }
+    });
+
+    grid.addEventListener('drop', (e) => {
+        if (!editMode) return;
+        e.preventDefault();
+        const targetCard = e.target.closest('.dash-sortable');
+        if (targetCard && draggedCard && targetCard !== draggedCard) {
+            const cards = [...grid.querySelectorAll('.dash-sortable')];
+            const draggedIdx = cards.indexOf(draggedCard);
+            const targetIdx = cards.indexOf(targetCard);
+            if (draggedIdx < targetIdx) {
+                grid.insertBefore(draggedCard, targetCard.nextSibling);
+            } else {
+                grid.insertBefore(draggedCard, targetCard);
+            }
+            // Save order to Firestore
+            const order = [...grid.querySelectorAll('.dash-sortable')].map(c => c.dataset.cardId);
+            DB.set('directorDashOrder', order);
+        }
+        grid.querySelectorAll('.dash-sortable').forEach(c => c.classList.remove('drag-over'));
+    });
+
+    // Touch support for mobile drag
+    let touchCard = null, touchClone = null, touchStartY = 0;
+
+    grid.addEventListener('touchstart', (e) => {
+        if (!editMode) return;
+        const card = e.target.closest('.dash-sortable');
+        if (!card) return;
+        touchCard = card;
+        touchStartY = e.touches[0].clientY;
+        card.classList.add('dragging');
+    }, { passive: true });
+
+    grid.addEventListener('touchmove', (e) => {
+        if (!editMode || !touchCard) return;
+        e.preventDefault();
+        const touch = e.touches[0];
+        const el = document.elementFromPoint(touch.clientX, touch.clientY);
+        const target = el ? el.closest('.dash-sortable') : null;
+        grid.querySelectorAll('.dash-sortable').forEach(c => c.classList.remove('drag-over'));
+        if (target && target !== touchCard) {
+            target.classList.add('drag-over');
+        }
+    }, { passive: false });
+
+    grid.addEventListener('touchend', (e) => {
+        if (!editMode || !touchCard) return;
+        const touch = e.changedTouches[0];
+        const el = document.elementFromPoint(touch.clientX, touch.clientY);
+        const target = el ? el.closest('.dash-sortable') : null;
+        if (target && target !== touchCard) {
+            const cards = [...grid.querySelectorAll('.dash-sortable')];
+            const draggedIdx = cards.indexOf(touchCard);
+            const targetIdx = cards.indexOf(target);
+            if (draggedIdx < targetIdx) {
+                grid.insertBefore(touchCard, target.nextSibling);
+            } else {
+                grid.insertBefore(touchCard, target);
+            }
+            const order = [...grid.querySelectorAll('.dash-sortable')].map(c => c.dataset.cardId);
+            DB.set('directorDashOrder', order);
+        }
+        grid.querySelectorAll('.dash-sortable').forEach(c => c.classList.remove('drag-over', 'dragging'));
+        touchCard = null;
+    });
+
+    // Restore saved order
+    const savedOrder = DB.get('directorDashOrder', null);
+    if (savedOrder) {
+        savedOrder.forEach(cardId => {
+            const card = grid.querySelector(`.dash-sortable[data-card-id="${cardId}"]`);
             if (card) grid.appendChild(card);
         });
     }
