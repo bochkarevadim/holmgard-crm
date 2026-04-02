@@ -2086,24 +2086,79 @@ function loadRevenue() {
     const ctx = document.getElementById('revenueChart');
     if (revenueChart) revenueChart.destroy();
 
-    const months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-    const thisYear = moscowNow().getFullYear();
-    const thisYearData = getMonthlyRevenueData(thisYear);
-    const lastYearData = getMonthlyRevenueData(thisYear - 1);
+    const events = DB.get('events', []).filter(e => e.status === 'completed' && e.price > 0);
+    const now = moscowNow();
+    let labels = [], currentData = [], prevData = [], currentLabel = '', prevLabel = '';
+
+    if (period === 'today') {
+        // Hourly: 8:00–23:00 today vs yesterday
+        const todayStr = todayLocal();
+        const yest = new Date(now); yest.setDate(yest.getDate() - 1);
+        const yestStr = `${yest.getFullYear()}-${String(yest.getMonth()+1).padStart(2,'0')}-${String(yest.getDate()).padStart(2,'0')}`;
+        for (let h = 8; h <= 23; h++) { labels.push(h + ':00'); currentData.push(0); prevData.push(0); }
+        events.forEach(e => {
+            const hour = e.time ? parseInt(e.time.split(':')[0]) : -1;
+            if (hour >= 8 && hour <= 23) {
+                if (e.date === todayStr) currentData[hour - 8] += e.price;
+                else if (e.date === yestStr) prevData[hour - 8] += e.price;
+            }
+        });
+        currentLabel = 'Сегодня'; prevLabel = 'Вчера';
+    } else if (period === 'week') {
+        // Daily: Mon–Sun this week vs last week
+        const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+        const dow = now.getDay() || 7;
+        const monday = new Date(now); monday.setDate(now.getDate() - dow + 1);
+        const prevMonday = new Date(monday); prevMonday.setDate(monday.getDate() - 7);
+        for (let i = 0; i < 7; i++) {
+            labels.push(dayNames[i]); currentData.push(0); prevData.push(0);
+            const d1 = new Date(monday); d1.setDate(monday.getDate() + i);
+            const d1s = `${d1.getFullYear()}-${String(d1.getMonth()+1).padStart(2,'0')}-${String(d1.getDate()).padStart(2,'0')}`;
+            const d2 = new Date(prevMonday); d2.setDate(prevMonday.getDate() + i);
+            const d2s = `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`;
+            events.forEach(e => {
+                if (e.date === d1s) currentData[i] += e.price;
+                if (e.date === d2s) prevData[i] += e.price;
+            });
+        }
+        currentLabel = 'Эта неделя'; prevLabel = 'Прошлая неделя';
+    } else if (period === 'month') {
+        // Daily: 1–end of month this month vs last month
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const prevM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const daysInPrevMonth = new Date(prevM.getFullYear(), prevM.getMonth() + 1, 0).getDate();
+        const maxDays = Math.max(daysInMonth, daysInPrevMonth);
+        for (let d = 1; d <= maxDays; d++) { labels.push(String(d)); currentData.push(0); prevData.push(0); }
+        events.forEach(e => {
+            const parts = e.date.split('-');
+            const y = parseInt(parts[0]), m = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
+            if (y === now.getFullYear() && m === now.getMonth() && day <= maxDays) currentData[day - 1] += e.price;
+            if (y === prevM.getFullYear() && m === prevM.getMonth() && day <= maxDays) prevData[day - 1] += e.price;
+        });
+        const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+        currentLabel = monthNames[now.getMonth()]; prevLabel = monthNames[prevM.getMonth()];
+    } else {
+        // Year: monthly
+        const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+        labels = months;
+        currentData = getMonthlyRevenueData(now.getFullYear());
+        prevData = getMonthlyRevenueData(now.getFullYear() - 1);
+        currentLabel = String(now.getFullYear()); prevLabel = String(now.getFullYear() - 1);
+    }
 
     revenueChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: months,
+            labels,
             datasets: [
                 {
-                    label: String(thisYear), data: thisYearData,
+                    label: currentLabel, data: currentData,
                     borderColor: accent, backgroundColor: accent + '20',
-                    fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: accent,
+                    fill: true, tension: 0.4, pointRadius: period === 'month' ? 2 : 4, pointBackgroundColor: accent,
                 },
                 {
-                    label: String(thisYear - 1), data: lastYearData,
+                    label: prevLabel, data: prevData,
                     borderColor: '#5A5A6E', backgroundColor: 'transparent',
                     borderDash: [5, 5], tension: 0.4, pointRadius: 0,
                 }
@@ -2113,8 +2168,8 @@ function loadRevenue() {
             responsive: true, maintainAspectRatio: false,
             plugins: { legend: { labels: { color: '#8E8EA0', font: { size: 11 }, usePointStyle: true, pointStyle: 'circle' } } },
             scales: {
-                x: { ticks: { color: '#5A5A6E' }, grid: { color: '#1A1A24' } },
-                y: { ticks: { color: '#5A5A6E', callback: v => (v / 1000) + 'K' }, grid: { color: '#1A1A24' } }
+                x: { ticks: { color: '#5A5A6E', maxTicksLimit: period === 'month' ? 15 : undefined }, grid: { color: '#1A1A24' } },
+                y: { ticks: { color: '#5A5A6E', callback: v => v >= 1000 ? (v / 1000) + 'K' : v }, grid: { color: '#1A1A24' } }
             }
         }
     });
