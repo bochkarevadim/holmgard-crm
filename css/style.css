@@ -1857,11 +1857,12 @@ body {
 
 .calendar-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 2px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0;
     margin-bottom: 16px;
-    max-width: 100%;
-    overflow: hidden;
+    max-width: 350px;
+    margin-left: auto;
+    margin-right: auto;
 }
 #calendar-cells,
 #emp-calendar-cells {
@@ -1886,10 +1887,9 @@ body {
     transition: var(--transition);
     font-size: 13px;
     font-weight: 400;
-    width: 100%;
-    aspect-ratio: 1;
-    max-width: 36px;
-    margin: 1px auto;
+    width: 36px;
+    height: 36px;
+    margin: 2px auto;
     position: relative;
     color: var(--text);
 }
@@ -2644,15 +2644,13 @@ body {
     .top-bar-user { font-size: 12px; gap: 4px; }
 
     /* --- Calendar compact: fit 7 columns on any screen --- */
-    .calendar-grid { font-size: 11px; gap: 1px; }
-    .calendar-grid .day-cell { min-height: 44px; padding: 2px; }
-    .calendar-grid .day-events { font-size: 9px; }
-    .calendar-header { flex-direction: column; gap: 8px; }
+    .calendar-grid { max-width: 100%; }
     .cal-day {
-        max-width: 32px;
+        width: 32px;
+        height: 32px;
         font-size: 12px;
     }
-    .cal-header { font-size: 10px; }
+    .cal-header { font-size: 10px; padding: 2px 0; }
     .calendar-nav h3 { font-size: 14px; min-width: 0; }
 
     /* --- Week groups (finances) --- */
@@ -2762,10 +2760,11 @@ body {
     .page { padding: 12px 8px; }
     .dash-card { padding: 14px; }
     .data-table th, .data-table td { padding: 5px 6px; font-size: 11px; }
-    .calendar-grid .day-cell { min-height: 38px; }
-    .cal-day { max-width: 28px; font-size: 11px; }
-    .cal-header { font-size: 9px; }
+    .calendar-grid { max-width: 280px; }
+    .cal-day { width: 28px; height: 28px; font-size: 11px; margin: 1px auto; }
+    .cal-header { font-size: 9px; padding: 1px 0; }
     .calendar-nav h3 { font-size: 13px; min-width: 0; }
+    .calendar-nav .btn-icon { width: 32px; height: 32px; min-width: 32px; }
     .pin-btn { width: 64px; height: 64px; font-size: 20px; }
     .modal-content { padding: 12px; }
     .mobile-nav-item { padding: 4px 8px; font-size: 9px; }
