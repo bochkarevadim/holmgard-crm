@@ -2812,6 +2812,7 @@ function renderUpcomingEventsTable(events) {
             <td>${e.time || '—'}</td>
             <td>${e.type ? getEventTypeName(e.type) : '—'}</td>
             <td>${tariffName}</td>
+            <td><span class="emp-event-status ${statusClass}" style="font-size:11px;">${statusName}</span></td>
             <td><strong>${e.title || '—'}</strong></td>
             <td>${e.clientName || '—'}</td>
             <td>${channelLabels[e.contactChannel] || '—'}</td>
@@ -2819,7 +2820,6 @@ function renderUpcomingEventsTable(events) {
             <td style="text-align:center;">${e.participants || '—'}</td>
             <td style="text-align:right;">${e.price ? formatMoney(e.price) : '—'}</td>
             <td style="text-align:right;">${e.prepayment ? formatMoney(e.prepayment) + (prepayLabels[e.prepaymentMethod] ? ' ' + prepayLabels[e.prepaymentMethod] : '') : '—'}</td>
-            <td><span class="emp-event-status ${statusClass}" style="font-size:11px;">${statusName}</span></td>
         </tr>`;
     }).join('');
 }
