@@ -492,13 +492,6 @@
 
         <!-- ===== DASHBOARD PAGE ===== -->
         <div class="page active" id="page-dashboard">
-            <div class="dashboard-period">
-                <button class="period-btn active" data-period="today">Сегодня</button>
-                <button class="period-btn" data-period="week">Неделя</button>
-                <button class="period-btn" data-period="month">Месяц</button>
-                <button class="period-btn" data-period="year">Год</button>
-            </div>
-
             <div class="dashboard-grid">
                 <div class="stock-row">
                     <div class="stock-item">
@@ -527,9 +520,15 @@
                     </div>
                 </div>
 
-                <div class="dash-card card-wide">
+                <div class="dash-card card-revenue">
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">trending_up</span> Выручка</h3>
+                        <div class="dashboard-period">
+                            <button class="period-btn active" data-period="today">День</button>
+                            <button class="period-btn" data-period="week">Неделя</button>
+                            <button class="period-btn" data-period="month">Месяц</button>
+                            <button class="period-btn" data-period="year">Год</button>
+                        </div>
                     </div>
                     <div class="revenue-main">
                         <div class="revenue-current">

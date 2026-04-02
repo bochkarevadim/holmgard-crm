@@ -1063,17 +1063,16 @@ body {
 /* ===== DASHBOARD ===== */
 .dashboard-period {
     display: flex;
-    gap: 8px;
-    margin-bottom: 24px;
+    gap: 4px;
     flex-wrap: wrap;
 }
 .period-btn {
-    padding: 8px 20px;
+    padding: 4px 12px;
     border-radius: 100px;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
@@ -1108,6 +1107,13 @@ body {
 }
 .card-wide {
     grid-column: span 2;
+}
+.card-revenue .dash-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 .dash-card-header {
     margin-bottom: 20px;
