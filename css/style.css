@@ -2745,7 +2745,7 @@ body {
     }
     .main-content {
         margin-left: 0;
-        padding-bottom: 72px; /* space for bottom nav */
+        padding-bottom: 16px;
     }
     .btn-hamburger {
         display: flex;
@@ -2880,8 +2880,8 @@ body {
     .salary-pay-stat { font-size: 12px; }
 
     /* --- Bottom navigation bar for mobile --- */
-    .mobile-bottom-nav {
-        display: flex !important;
+    #mobile-bottom-nav {
+        display: none !important;
     }
 }
 
