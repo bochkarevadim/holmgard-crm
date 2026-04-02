@@ -583,7 +583,14 @@
             </div>
 
             <!-- Salary analytics summary -->
-            <div class="salary-analytics" id="salary-analytics"></div>
+            <div class="salary-analytics" id="salary-analytics">
+                <div class="salary-analytics-period">
+                    <button class="period-btn active" data-sal-period="month" onclick="setSalaryPeriod('month')">Месяц</button>
+                    <button class="period-btn" data-sal-period="quarter" onclick="setSalaryPeriod('quarter')">Квартал</button>
+                    <button class="period-btn" data-sal-period="year" onclick="setSalaryPeriod('year')">Год</button>
+                </div>
+                <div id="salary-analytics-content"></div>
+            </div>
 
             <div class="emp-dashboard-cards" id="emp-dashboard-cards"></div>
         </div>
