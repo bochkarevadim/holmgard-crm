@@ -1228,6 +1228,39 @@ body {
     color: var(--blue);
 }
 
+/* Stock row: all 4 items in one line */
+.stock-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    grid-column: 1 / -1; /* span full dashboard grid */
+    margin-bottom: 8px;
+}
+.stock-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+}
+.stock-item-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+.stock-item-header .material-icons-round { font-size: 16px; }
+.stock-item-value {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 8px;
+}
 .stock-display {
     display: flex;
     align-items: flex-end;
@@ -1240,7 +1273,7 @@ body {
     margin-bottom: 14px;
 }
 .stock-bar {
-    height: 8px;
+    height: 6px;
     background: var(--bg);
     border-radius: 100px;
     overflow: hidden;
@@ -1256,10 +1289,10 @@ body {
 }
 .stock-warning {
     color: var(--red);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     margin-top: 4px;
-    min-height: 16px;
+    min-height: 14px;
 }
 
 /* ATOL Online integration styles */
@@ -2607,6 +2640,10 @@ body {
 
     /* --- Grids: single column --- */
     .dashboard-grid { grid-template-columns: 1fr; }
+    .stock-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stock-item { padding: 10px 12px; }
+    .stock-item-value { font-size: 22px; }
+    .stock-item-header { font-size: 10px; }
     .form-row { grid-template-columns: 1fr; }
     .salary-summary,
     .finance-summary { grid-template-columns: 1fr; }
