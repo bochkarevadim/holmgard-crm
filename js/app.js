@@ -2789,18 +2789,20 @@ function selectCalDay(dateStr) {
             const statusClass = 'status-' + (e.status || 'pending');
             const statusName = getStatusName(e.status);
             return `
-            <div class="event-card" style="flex-wrap:wrap;gap:8px;">
-                <div class="event-time">${e.time}</div>
-                <div class="event-info" onclick="openEventModal('${e.id}')" style="cursor:pointer;flex:1;min-width:200px;">
+            <div class="event-card event-card-day" onclick="openEventModal('${e.id}')" style="flex-direction:column;align-items:stretch;gap:8px;cursor:pointer;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <div class="event-time">${e.time}</div>
+                    <span class="event-type-badge">${getEventTypeName(e.type)}</span>
+                    <span class="emp-event-status ${statusClass}">${statusName}</span>
+                    ${getSourceBadge(e)}
+                </div>
+                <div class="event-info">
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}${getChannelBadge(e.contactChannel)}</span>` : ''}
                     <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}${e.price ? ' · ' + formatMoney(e.price) : ''}${e.prepayment ? ' · предоплата ' + formatMoney(e.prepayment) + (e.prepaymentMethod === 'qr' ? ' QR' : e.prepaymentMethod === 'cash' ? ' нал.' : '') : ''}</span>
                 </div>
-                <span class="emp-event-status ${statusClass}">${statusName}</span>
-                ${!isCompleted ? `<button class="btn-primary btn-sm" onclick="openEventModal('${e.id}', true)" style="flex-shrink:0;">
+                ${!isCompleted ? `<button class="btn-primary btn-sm" onclick="event.stopPropagation();openEventModal('${e.id}', true)" style="width:100%;justify-content:center;">
                     <span class="material-icons-round" style="font-size:16px">done_all</span> Выполнить
                 </button>` : ''}
-                ${getSourceBadge(e)}
-                <span class="event-type-badge">${getEventTypeName(e.type)}</span>
             </div>`;
         }).join('');
     }
