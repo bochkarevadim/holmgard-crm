@@ -1565,8 +1565,8 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Стоимость (₽)</label>
-                        <input type="number" id="evt-price" placeholder="0">
+                        <label>Дата предоплаты</label>
+                        <input type="date" id="evt-prepayment-date">
                     </div>
                     <div class="form-group">
                         <label>Статус</label>
@@ -1591,16 +1591,19 @@
                             <option value="cash">Наличка</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label>Дата предоплаты</label>
-                        <input type="date" id="evt-prepayment-date">
-                    </div>
                 </div>
                 <div class="form-group">
                     <label>Комментарий</label>
                     <textarea id="evt-notes" placeholder="Дополнительная информация" rows="2"></textarea>
                 </div>
                 <div id="evt-total-block" style="display:none;"></div>
+                <div class="evt-price-block">
+                    <label>Стоимость</label>
+                    <div class="evt-price-value">
+                        <input type="number" id="evt-price" placeholder="0">
+                        <span class="evt-price-currency">₽</span>
+                    </div>
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="btn-cancel-event">Отмена</button>
                     <button type="button" class="btn-danger" id="btn-delete-event" style="display:none;">Удалить</button>

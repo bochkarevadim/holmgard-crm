@@ -1019,6 +1019,51 @@ body {
     color: var(--text-secondary);
     transition: var(--transition);
 }
+/* Event price block — highlighted at bottom */
+.evt-price-block {
+    background: var(--accent-dim);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-top: 8px;
+    text-align: center;
+}
+.evt-price-block label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+.evt-price-value {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.evt-price-value input {
+    width: 160px;
+    padding: 10px 16px;
+    font-size: 22px;
+    font-weight: 800;
+    text-align: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: inherit;
+}
+.evt-price-value input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.evt-price-currency {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent);
+}
 .options-qty-list { display: flex; flex-direction: column; gap: 8px; }
 .option-qty-row {
     display: flex;
