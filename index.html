@@ -508,10 +508,11 @@
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">trending_up</span> Выручка</h3>
                         <div class="dashboard-period">
-                            <button class="period-btn active" data-period="today">День</button>
-                            <button class="period-btn" data-period="week">Неделя</button>
-                            <button class="period-btn" data-period="month">Месяц</button>
-                            <button class="period-btn" data-period="year">Год</button>
+                            <button class="period-btn active" data-period="today" onclick="toggleRevenuePeriodType('today')">День</button>
+                            <button class="period-btn" data-period="week" onclick="toggleRevenuePeriodType('week')">Неделя</button>
+                            <button class="period-btn" data-period="month" onclick="toggleRevenuePeriodType('month')">Месяц</button>
+                            <button class="period-btn" data-period="year" onclick="toggleRevenuePeriodType('year')">Год</button>
+                            <select id="revenue-period-selector" class="period-selector" style="display:none;" onchange="onRevenuePeriodSelect(this.value)"></select>
                         </div>
                     </div>
                     <div class="revenue-main">
@@ -585,9 +586,10 @@
             <!-- Salary analytics summary -->
             <div class="salary-analytics" id="salary-analytics">
                 <div class="salary-analytics-period">
-                    <button class="period-btn active" data-sal-period="month" onclick="setSalaryPeriod('month')">Месяц</button>
-                    <button class="period-btn" data-sal-period="quarter" onclick="setSalaryPeriod('quarter')">Квартал</button>
-                    <button class="period-btn" data-sal-period="year" onclick="setSalaryPeriod('year')">Год</button>
+                    <button class="period-btn active" data-sal-period="month" onclick="toggleSalaryPeriodType('month')">Месяц</button>
+                    <button class="period-btn" data-sal-period="quarter" onclick="toggleSalaryPeriodType('quarter')">Квартал</button>
+                    <button class="period-btn" data-sal-period="year" onclick="toggleSalaryPeriodType('year')">Год</button>
+                    <select id="salary-period-selector" class="period-selector" style="display:none;" onchange="onSalaryPeriodSelect(this.value)"></select>
                 </div>
                 <div id="salary-analytics-content"></div>
             </div>

@@ -2116,6 +2116,58 @@ function navigateTo(page) {
 }
 
 // ===== DASHBOARD =====
+let revenuePeriodType = 'today';
+let revenuePeriodValue = null;
+
+function toggleRevenuePeriodType(type) {
+    revenuePeriodType = type;
+    revenuePeriodValue = null;
+    document.querySelectorAll('.dashboard-period [data-period]').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector(`.dashboard-period [data-period="${type}"]`);
+    if (btn) btn.classList.add('active');
+
+    const sel = document.getElementById('revenue-period-selector');
+    const now = moscowNow();
+    const mNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+    let opts = '';
+
+    if (type === 'today') {
+        sel.style.display = 'none';
+        loadDashboard();
+        return;
+    } else if (type === 'week') {
+        // Last 12 weeks
+        for (let i = 0; i < 12; i++) {
+            const wStart = new Date(now);
+            const dow = wStart.getDay() || 7;
+            wStart.setDate(wStart.getDate() - dow + 1 - i*7);
+            const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
+            const val = `${wStart.getFullYear()}-${String(wStart.getMonth()+1).padStart(2,'0')}-${String(wStart.getDate()).padStart(2,'0')}`;
+            const label = `${wStart.getDate()}.${String(wStart.getMonth()+1).padStart(2,'0')} — ${wEnd.getDate()}.${String(wEnd.getMonth()+1).padStart(2,'0')}.${wEnd.getFullYear()}`;
+            opts += `<option value="${val}"${i===0?' selected':''}>${label}</option>`;
+        }
+    } else if (type === 'month') {
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+            const label = mNames[d.getMonth()] + ' ' + d.getFullYear();
+            opts += `<option value="${val}"${i===0?' selected':''}>${label}</option>`;
+        }
+    } else if (type === 'year') {
+        for (let y = now.getFullYear(); y >= now.getFullYear()-3; y--) {
+            opts += `<option value="${y}"${y===now.getFullYear()?' selected':''}>${y}</option>`;
+        }
+    }
+    sel.innerHTML = opts;
+    sel.style.display = '';
+    loadDashboard();
+}
+
+function onRevenuePeriodSelect(val) {
+    revenuePeriodValue = val;
+    loadDashboard();
+}
+
 function loadDashboard() {
     loadRevenue();
     loadEventsToday();
@@ -2140,11 +2192,17 @@ function calculateRevenue(period) {
         prevStartDate = yesterdayStr;
         prevEndDate = yesterdayStr;
     } else if (period === 'week') {
-        const dayOfWeek = now.getDay() || 7; // 1=Mon, 7=Sun
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - dayOfWeek + 1);
+        let weekStart;
+        if (revenuePeriodValue) {
+            weekStart = new Date(revenuePeriodValue + 'T00:00:00');
+        } else {
+            weekStart = new Date(now);
+            const dayOfWeek = weekStart.getDay() || 7;
+            weekStart.setDate(weekStart.getDate() - dayOfWeek + 1);
+        }
         startDate = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
-        endDate = todayStr;
+        const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+        endDate = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth()+1).padStart(2,'0')}-${String(weekEnd.getDate()).padStart(2,'0')}`;
         const prevWeekEnd = new Date(weekStart);
         prevWeekEnd.setDate(prevWeekEnd.getDate() - 1);
         const prevWeekStart = new Date(prevWeekEnd);
@@ -2152,17 +2210,24 @@ function calculateRevenue(period) {
         prevStartDate = `${prevWeekStart.getFullYear()}-${String(prevWeekStart.getMonth() + 1).padStart(2, '0')}-${String(prevWeekStart.getDate()).padStart(2, '0')}`;
         prevEndDate = `${prevWeekEnd.getFullYear()}-${String(prevWeekEnd.getMonth() + 1).padStart(2, '0')}-${String(prevWeekEnd.getDate()).padStart(2, '0')}`;
     } else if (period === 'month') {
-        startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-        endDate = todayStr;
-        const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+        let selY, selM;
+        if (revenuePeriodValue) {
+            [selY, selM] = revenuePeriodValue.split('-').map(Number);
+        } else {
+            selY = now.getFullYear(); selM = now.getMonth() + 1;
+        }
+        startDate = `${selY}-${String(selM).padStart(2,'0')}-01`;
+        endDate = `${selY}-${String(selM).padStart(2,'0')}-${String(new Date(selY, selM, 0).getDate()).padStart(2,'0')}`;
+        const prevMonth = new Date(selY, selM - 2, 1);
+        const prevMonthEnd = new Date(selY, selM - 1, 0);
         prevStartDate = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}-01`;
         prevEndDate = `${prevMonthEnd.getFullYear()}-${String(prevMonthEnd.getMonth() + 1).padStart(2, '0')}-${String(prevMonthEnd.getDate()).padStart(2, '0')}`;
     } else { // year
-        startDate = `${now.getFullYear()}-01-01`;
-        endDate = todayStr;
-        prevStartDate = `${now.getFullYear() - 1}-01-01`;
-        prevEndDate = `${now.getFullYear() - 1}-12-31`;
+        const selYear = revenuePeriodValue ? parseInt(revenuePeriodValue) : now.getFullYear();
+        startDate = `${selYear}-01-01`;
+        endDate = `${selYear}-12-31`;
+        prevStartDate = `${selYear - 1}-01-01`;
+        prevEndDate = `${selYear - 1}-12-31`;
     }
 
     const currentRevenue = events
@@ -2195,9 +2260,7 @@ function getMonthlyRevenueData(year) {
 }
 
 function loadRevenue() {
-    // Determine active period
-    const activeBtn = document.querySelector('.period-btn.active');
-    const period = activeBtn ? activeBtn.dataset.period : 'month';
+    const period = revenuePeriodType || 'today';
 
     const { currentRevenue, change } = calculateRevenue(period);
     document.getElementById('revenue-current').textContent = formatMoney(currentRevenue);
@@ -2234,10 +2297,16 @@ function loadRevenue() {
         });
         currentLabel = 'Сегодня'; prevLabel = 'Вчера';
     } else if (period === 'week') {
-        // Daily: Mon–Sun this week vs last week
+        // Daily: Mon–Sun selected week vs prev week
         const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-        const dow = now.getDay() || 7;
-        const monday = new Date(now); monday.setDate(now.getDate() - dow + 1);
+        let monday;
+        if (revenuePeriodValue) {
+            monday = new Date(revenuePeriodValue + 'T00:00:00');
+        } else {
+            monday = new Date(now);
+            const dow = monday.getDay() || 7;
+            monday.setDate(monday.getDate() - dow + 1);
+        }
         const prevMonday = new Date(monday); prevMonday.setDate(monday.getDate() - 7);
         for (let i = 0; i < 7; i++) {
             labels.push(dayNames[i]); currentData.push(0); prevData.push(0);
@@ -2252,27 +2321,33 @@ function loadRevenue() {
         }
         currentLabel = 'Эта неделя'; prevLabel = 'Прошлая неделя';
     } else if (period === 'month') {
-        // Daily: 1–end of month this month vs last month
-        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        const prevM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        let selY, selM;
+        if (revenuePeriodValue) {
+            [selY, selM] = revenuePeriodValue.split('-').map(Number);
+        } else {
+            selY = now.getFullYear(); selM = now.getMonth() + 1;
+        }
+        const daysInMonth = new Date(selY, selM, 0).getDate();
+        const prevM = new Date(selY, selM - 2, 1);
         const daysInPrevMonth = new Date(prevM.getFullYear(), prevM.getMonth() + 1, 0).getDate();
         const maxDays = Math.max(daysInMonth, daysInPrevMonth);
         for (let d = 1; d <= maxDays; d++) { labels.push(String(d)); currentData.push(0); prevData.push(0); }
         events.forEach(e => {
             const parts = e.date.split('-');
             const y = parseInt(parts[0]), m = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
-            if (y === now.getFullYear() && m === now.getMonth() && day <= maxDays) currentData[day - 1] += e.price;
+            if (y === selY && m === selM - 1 && day <= maxDays) currentData[day - 1] += e.price;
             if (y === prevM.getFullYear() && m === prevM.getMonth() && day <= maxDays) prevData[day - 1] += e.price;
         });
         const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-        currentLabel = monthNames[now.getMonth()]; prevLabel = monthNames[prevM.getMonth()];
+        currentLabel = monthNames[selM - 1]; prevLabel = monthNames[prevM.getMonth()];
     } else {
         // Year: monthly
         const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
         labels = months;
-        currentData = getMonthlyRevenueData(now.getFullYear());
-        prevData = getMonthlyRevenueData(now.getFullYear() - 1);
-        currentLabel = String(now.getFullYear()); prevLabel = String(now.getFullYear() - 1);
+        const selYear = revenuePeriodValue ? parseInt(revenuePeriodValue) : now.getFullYear();
+        currentData = getMonthlyRevenueData(selYear);
+        prevData = getMonthlyRevenueData(selYear - 1);
+        currentLabel = String(selYear); prevLabel = String(selYear - 1);
     }
 
     revenueChart = new Chart(ctx, {
@@ -2489,13 +2564,7 @@ function loadStock() {
     renderStockItem('stock-smokes', stock.smokes, stock.smokesCritical || 50);
 }
 
-document.querySelectorAll('.period-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        loadDashboard();
-    });
-});
+// Period buttons are handled by onclick in HTML (toggleRevenuePeriodType / toggleSalaryPeriodType)
 
 document.querySelectorAll('.rating-period-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2526,34 +2595,91 @@ function initEmployees() {
 let empDashPeriod = 'month';
 let salaryAnalyticsPeriod = 'month';
 
-function setSalaryPeriod(period) {
-    salaryAnalyticsPeriod = period;
+let salaryPeriodValue = null; // specific selected value like '2026-04', 'Q1-2026', '2026'
+
+function toggleSalaryPeriodType(type) {
+    salaryAnalyticsPeriod = type;
+    salaryPeriodValue = null;
     document.querySelectorAll('[data-sal-period]').forEach(b => b.classList.remove('active'));
-    const btn = document.querySelector(`[data-sal-period="${period}"]`);
+    const btn = document.querySelector(`[data-sal-period="${type}"]`);
     if (btn) btn.classList.add('active');
+
+    const sel = document.getElementById('salary-period-selector');
+    const now = moscowNow();
+    const mNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+    let opts = '';
+
+    if (type === 'month') {
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+            const label = mNames[d.getMonth()] + ' ' + d.getFullYear();
+            opts += `<option value="${val}"${i===0?' selected':''}>${label}</option>`;
+        }
+    } else if (type === 'quarter') {
+        for (let i = 0; i < 8; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i*3, 1);
+            const q = Math.floor(d.getMonth()/3)+1;
+            const val = `Q${q}-${d.getFullYear()}`;
+            const label = `${q} квартал ${d.getFullYear()}`;
+            if (i > 0 && opts.includes(val)) continue;
+            opts += `<option value="${val}"${i===0?' selected':''}>${label}</option>`;
+        }
+    } else if (type === 'year') {
+        for (let y = now.getFullYear(); y >= now.getFullYear()-3; y--) {
+            opts += `<option value="${y}"${y===now.getFullYear()?' selected':''}>${y}</option>`;
+        }
+    }
+    sel.innerHTML = opts;
+    sel.style.display = '';
     loadEmployees();
+}
+
+function onSalaryPeriodSelect(val) {
+    salaryPeriodValue = val;
+    loadEmployees();
+}
+
+function getSalaryPeriodRange() {
+    const now = moscowNow();
+    let aStart, aEnd;
+    if (salaryPeriodValue && salaryAnalyticsPeriod === 'month') {
+        const [y, m] = salaryPeriodValue.split('-').map(Number);
+        aStart = `${y}-${String(m).padStart(2,'0')}-01`;
+        aEnd = `${y}-${String(m).padStart(2,'0')}-${String(new Date(y, m, 0).getDate()).padStart(2,'0')}`;
+    } else if (salaryPeriodValue && salaryAnalyticsPeriod === 'quarter') {
+        const [qStr, yStr] = salaryPeriodValue.split('-');
+        const q = parseInt(qStr.replace('Q',''));
+        const y = parseInt(yStr);
+        const qStart = (q-1)*3;
+        aStart = `${y}-${String(qStart+1).padStart(2,'0')}-01`;
+        const qEndDate = new Date(y, qStart+3, 0);
+        aEnd = `${y}-${String(qEndDate.getMonth()+1).padStart(2,'0')}-${String(qEndDate.getDate()).padStart(2,'0')}`;
+    } else if (salaryPeriodValue && salaryAnalyticsPeriod === 'year') {
+        const y = parseInt(salaryPeriodValue);
+        aStart = `${y}-01-01`;
+        aEnd = `${y}-12-31`;
+    } else if (salaryAnalyticsPeriod === 'month') {
+        aStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+        aEnd = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(new Date(now.getFullYear(),now.getMonth()+1,0).getDate()).padStart(2,'0')}`;
+    } else if (salaryAnalyticsPeriod === 'quarter') {
+        const qStart = Math.floor(now.getMonth()/3)*3;
+        aStart = `${now.getFullYear()}-${String(qStart+1).padStart(2,'0')}-01`;
+        const qEndDate = new Date(now.getFullYear(), qStart+3, 0);
+        aEnd = `${qEndDate.getFullYear()}-${String(qEndDate.getMonth()+1).padStart(2,'0')}-${String(qEndDate.getDate()).padStart(2,'0')}`;
+    } else {
+        aStart = `${now.getFullYear()}-01-01`;
+        aEnd = `${now.getFullYear()}-12-31`;
+    }
+    return { aStart, aEnd };
 }
 
 function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate) {
     const contentEl = document.getElementById('salary-analytics-content');
     if (!contentEl) return;
 
-    // Period range for analytics
     const now = moscowNow();
-    let aStart, aEnd;
-    if (salaryAnalyticsPeriod === 'month') {
-        aStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-        aEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
-    } else if (salaryAnalyticsPeriod === 'quarter') {
-        const qStart = Math.floor(now.getMonth() / 3) * 3;
-        const qStartDate = new Date(now.getFullYear(), qStart, 1);
-        const qEndDate = new Date(now.getFullYear(), qStart + 3, 0);
-        aStart = `${qStartDate.getFullYear()}-${String(qStartDate.getMonth() + 1).padStart(2, '0')}-01`;
-        aEnd = `${qEndDate.getFullYear()}-${String(qEndDate.getMonth() + 1).padStart(2, '0')}-${String(qEndDate.getDate()).padStart(2, '0')}`;
-    } else {
-        aStart = `${now.getFullYear()}-01-01`;
-        aEnd = `${now.getFullYear()}-12-31`;
-    }
+    const { aStart, aEnd } = getSalaryPeriodRange();
 
     const periodNames = { month: 'Текущий месяц', quarter: 'Текущий квартал', year: 'Текущий год' };
 
@@ -2743,8 +2869,6 @@ function loadEmployees() {
             <div class="emp-dash-card-header" onclick="toggleEmpCard(${emp.id})">
                 <div class="emp-dash-card-info">
                     <h3>${emp.firstName} ${emp.lastName}</h3>
-                    <span class="list-item-badge badge-blue">${getRoleName(emp.role)}</span>
-                    ${mgrAccruals.length > 0 ? '<span class="list-item-badge" style="background:var(--accent);color:#000;margin-left:4px;">Менеджер</span>' : ''}
                 </div>
                 <div class="emp-dash-card-stats">
                     <div class="emp-dash-stat">
@@ -2758,6 +2882,10 @@ function loadEmployees() {
                     <div class="emp-dash-stat">
                         <span class="emp-dash-stat-label">${balance >= 0 ? 'Задолженность' : 'Переплата'}</span>
                         <span class="emp-dash-stat-value ${balance > 0 ? 'red' : balance < 0 ? 'green' : ''}">${formatMoney(Math.abs(balance))}</span>
+                    </div>
+                    <div class="emp-dash-stat">
+                        <span class="emp-dash-stat-label">Должность</span>
+                        <span class="emp-dash-stat-value" style="font-size:13px;">${getRoleName(emp.role)}${mgrAccruals.length > 0 ? ' + Менеджер' : ''}</span>
                     </div>
                 </div>
                 <span class="material-icons-round emp-dash-chevron">expand_more</span>

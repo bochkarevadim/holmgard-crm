@@ -1065,6 +1065,23 @@ body {
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
+    align-items: center;
+}
+.period-selector {
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text);
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+}
+.salary-analytics-period {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    align-items: center;
 }
 .period-btn {
     padding: 4px 12px;
@@ -2813,10 +2830,11 @@ body {
     .period-toggle { padding: 2px; }
     .period-toggle-btn { padding: 5px 10px; font-size: 11px; }
 
-    /* --- Salary analytics mobile --- */
-    .salary-analytics-grid { grid-template-columns: 1fr; gap: 8px; }
-    .salary-analytics-card { padding: 12px; }
-    .salary-analytics-value { font-size: 18px; }
+    /* --- Salary analytics mobile: 3 cards in one row --- */
+    .salary-analytics-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .salary-analytics-card { padding: 8px; }
+    .salary-analytics-title { font-size: 9px; letter-spacing: 0; }
+    .salary-analytics-value { font-size: 14px; }
 
     /* --- Employee dashboard cards compact --- */
     .emp-dash-card-header { flex-direction: column; align-items: flex-start; padding: 14px; gap: 10px; position: relative; }
