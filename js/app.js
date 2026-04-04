@@ -3219,6 +3219,17 @@ function selectCalDay(dateStr) {
     }
 }
 
+function toggleOptionsSection(section) {
+    const listId = section === 'game' ? 'evt-options-game-list' : 'evt-options-extra-list';
+    const chevronId = section === 'game' ? 'options-game-chevron' : 'options-extra-chevron';
+    const list = document.getElementById(listId);
+    const chevron = document.getElementById(chevronId);
+    if (!list) return;
+    const isOpen = list.style.display !== 'none';
+    list.style.display = isOpen ? 'none' : '';
+    if (chevron) chevron.textContent = isOpen ? 'expand_more' : 'expand_less';
+}
+
 function changeOptionQty(optId, delta) {
     const el = document.getElementById('opt-qty-' + optId);
     if (!el) return;
@@ -3259,10 +3270,12 @@ function openEventModal(id = null, completing = false) {
     updateTariffsByType();
 
     // Populate options with quantity controls
-    const allOptions = DB.get('tariffs', []).filter(t => (t.category === 'optionsForGame' || t.category === 'options') && t.id !== 23);
-    document.getElementById('evt-options-list').innerHTML = allOptions.map(o => {
+    const allTariffOptions = DB.get('tariffs', []).filter(t => (t.category === 'optionsForGame' || t.category === 'options') && t.id !== 23);
+    const gameOptions = allTariffOptions.filter(t => t.category === 'optionsForGame');
+    const extraOptions = allTariffOptions.filter(t => t.category === 'options');
+
+    function renderOptionRow(o) {
         if (o.inputType === 'number') {
-            // Number input (e.g. balls)
             return `<div class="option-qty-row" data-option-id="${o.id}" data-input-type="number">
                 <span class="option-qty-name">${o.name}</span>
                 <span class="option-qty-price">${formatMoney(o.price)}/${o.unit}</span>
@@ -3271,7 +3284,6 @@ function openEventModal(id = null, completing = false) {
                 </div>
             </div>`;
         } else if (o.inputType === 'shop') {
-            // Shop: sum + quantity inputs
             return `<div class="option-qty-row" data-option-id="${o.id}" data-input-type="shop">
                 <span class="option-qty-name">${o.name}</span>
                 <div class="option-shop-controls">
@@ -3280,8 +3292,7 @@ function openEventModal(id = null, completing = false) {
                 </div>
             </div>`;
         } else {
-            // Standard +/- buttons
-            const priceLabel = o.unit === 'час' ? '/час' : (o.unit === 'штука' ? '/шт' : '/шт');
+            const priceLabel = o.unit === 'час' ? '/час' : '/шт';
             return `<div class="option-qty-row" data-option-id="${o.id}">
                 <span class="option-qty-name">${o.name}</span>
                 <span class="option-qty-price">${formatMoney(o.price)}${priceLabel}</span>
@@ -3292,10 +3303,13 @@ function openEventModal(id = null, completing = false) {
                 </div>
             </div>`;
         }
-    }).join('');
+    }
+
+    document.getElementById('evt-options-game-list').innerHTML = gameOptions.map(renderOptionRow).join('');
+    document.getElementById('evt-options-extra-list').innerHTML = extraOptions.map(renderOptionRow).join('');
 
     // Bind input events for number/shop fields to toggle active class + recalc total
-    document.querySelectorAll('#evt-options-list .option-number-input').forEach(input => {
+    document.querySelectorAll('#evt-options-game-list .option-number-input, #evt-options-extra-list .option-number-input').forEach(input => {
         input.addEventListener('input', () => {
             const row = input.closest('.option-qty-row');
             const val = parseInt(input.value) || 0;
@@ -3415,7 +3429,7 @@ function recalcEventTotal() {
     if (tariff) serviceCost = tariff.price * participants;
 
     let optionsCost = 0;
-    document.querySelectorAll('#evt-options-list .option-qty-row').forEach(row => {
+    document.querySelectorAll('#evt-options-game-list .option-qty-row, #evt-options-extra-list .option-qty-row').forEach(row => {
         const optId = parseInt(row.dataset.optionId);
         const opt = tariffs.find(t => t.id === optId);
         if (!opt) return;
@@ -3478,7 +3492,7 @@ function saveEvent(e) {
     const optionQuantities = {};
     const selectedOptions = [];
     let shopCount = null;
-    document.querySelectorAll('#evt-options-list .option-qty-row').forEach(row => {
+    document.querySelectorAll('#evt-options-game-list .option-qty-row, #evt-options-extra-list .option-qty-row').forEach(row => {
         const optId = parseInt(row.dataset.optionId);
         const inputType = row.dataset.inputType;
         let qty = 0;
@@ -3568,14 +3582,54 @@ document.getElementById('btn-delete-event').addEventListener('click', () => {
 });
 
 // ===== FINANCES =====
+let finPeriodType = 'week';
+let finPeriodValue = null;
+
+function toggleFinPeriodType(type) {
+    finPeriodType = type;
+    finPeriodValue = null;
+    document.querySelectorAll('.fin-period-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector(`.fin-period-btn[data-fin-period="${type}"]`);
+    if (btn) btn.classList.add('active');
+
+    const sel = document.getElementById('fin-period-selector');
+    const now = moscowNow();
+    const mNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+    let opts = '';
+
+    if (type === 'week') {
+        for (let i = 0; i < 12; i++) {
+            const wStart = new Date(now);
+            const dow = wStart.getDay() || 7;
+            wStart.setDate(wStart.getDate() - dow + 1 - i*7);
+            const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
+            const val = `${wStart.getFullYear()}-${String(wStart.getMonth()+1).padStart(2,'0')}-${String(wStart.getDate()).padStart(2,'0')}`;
+            const label = `${wStart.getDate()}.${String(wStart.getMonth()+1).padStart(2,'0')} — ${wEnd.getDate()}.${String(wEnd.getMonth()+1).padStart(2,'0')}.${wEnd.getFullYear()}`;
+            opts += `<option value="${val}"${i===0?' selected':''}>${label}</option>`;
+        }
+    } else if (type === 'month') {
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+            opts += `<option value="${val}"${i===0?' selected':''}>${mNames[d.getMonth()]} ${d.getFullYear()}</option>`;
+        }
+    } else if (type === 'year') {
+        for (let y = now.getFullYear(); y >= now.getFullYear()-3; y--) {
+            opts += `<option value="${y}"${y===now.getFullYear()?' selected':''}>${y}</option>`;
+        }
+    }
+    sel.innerHTML = opts;
+    sel.style.display = '';
+    loadFinances();
+}
+
+function onFinPeriodSelect(val) {
+    finPeriodValue = val;
+    loadFinances();
+}
+
 function initFinances() {
-    document.querySelectorAll('.fin-period-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.fin-period-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            loadFinances(btn.dataset.finPeriod);
-        });
-    });
+    // Period buttons now handled by onclick in HTML
     // Salary payment modal
     document.getElementById('btn-salary-payout')?.addEventListener('click', () => openSalaryPaymentModal());
     document.getElementById('modal-salary-payment-close')?.addEventListener('click', () => closeModal('modal-salary-payment'));
@@ -3585,11 +3639,24 @@ function initFinances() {
 }
 
 function loadFinances(period) {
-    if (!period) {
-        const activeBtn = document.querySelector('.fin-period-btn.active');
-        period = activeBtn ? activeBtn.dataset.finPeriod : 'week';
+    if (!period) period = finPeriodType || 'week';
+
+    let startDate, endDate;
+    if (finPeriodValue && period === 'week') {
+        const ws = new Date(finPeriodValue + 'T00:00:00');
+        startDate = finPeriodValue;
+        const we = new Date(ws); we.setDate(ws.getDate() + 6);
+        endDate = `${we.getFullYear()}-${String(we.getMonth()+1).padStart(2,'0')}-${String(we.getDate()).padStart(2,'0')}`;
+    } else if (finPeriodValue && period === 'month') {
+        const [y, m] = finPeriodValue.split('-').map(Number);
+        startDate = `${y}-${String(m).padStart(2,'0')}-01`;
+        endDate = `${y}-${String(m).padStart(2,'0')}-${String(new Date(y, m, 0).getDate()).padStart(2,'0')}`;
+    } else if (finPeriodValue && period === 'year') {
+        startDate = `${finPeriodValue}-01-01`;
+        endDate = `${finPeriodValue}-12-31`;
+    } else {
+        ({ startDate, endDate } = getDateRangeForPeriod(period));
     }
-    const { startDate, endDate } = getDateRangeForPeriod(period);
 
     // === 1. INCOME: completed events in period ===
     const allEvents = DB.get('events', []);

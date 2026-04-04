@@ -973,6 +973,22 @@ body {
 }
 
 /* Option quantity controls */
+.options-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 8px 0;
+}
+.options-section-header label {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+}
+.options-chevron {
+    color: var(--text-secondary);
+    transition: var(--transition);
+}
 .options-qty-list { display: flex; flex-direction: column; gap: 8px; }
 .option-qty-row {
     display: flex;

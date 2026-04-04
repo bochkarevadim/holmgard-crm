@@ -763,9 +763,10 @@
             </div>
 
             <div class="fin-period-tabs">
-                <button class="fin-period-btn active" data-fin-period="week">Неделя</button>
-                <button class="fin-period-btn" data-fin-period="month">Месяц</button>
-                <button class="fin-period-btn" data-fin-period="year">Год</button>
+                <button class="fin-period-btn active" data-fin-period="week" onclick="toggleFinPeriodType('week')">Неделя</button>
+                <button class="fin-period-btn" data-fin-period="month" onclick="toggleFinPeriodType('month')">Месяц</button>
+                <button class="fin-period-btn" data-fin-period="year" onclick="toggleFinPeriodType('year')">Год</button>
+                <select id="fin-period-selector" class="period-selector" style="display:none;" onchange="onFinPeriodSelect(this.value)"></select>
             </div>
 
             <div class="finance-summary">
@@ -1523,8 +1524,22 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Дополнительные опции</label>
-                    <div class="options-qty-list" id="evt-options-list"></div>
+                    <div class="options-section">
+                        <div class="options-section-header" onclick="toggleOptionsSection('game')">
+                            <label>Опции к игре</label>
+                            <span class="material-icons-round options-chevron" id="options-game-chevron">expand_more</span>
+                        </div>
+                        <div class="options-qty-list" id="evt-options-game-list" style="display:none;"></div>
+                    </div>
+                    <div class="options-section" style="margin-top:12px;">
+                        <div class="options-section-header" onclick="toggleOptionsSection('extra')">
+                            <label>Дополнительные опции</label>
+                            <span class="material-icons-round options-chevron" id="options-extra-chevron">expand_more</span>
+                        </div>
+                        <div class="options-qty-list" id="evt-options-extra-list" style="display:none;"></div>
+                    </div>
+                    <!-- Hidden container for compatibility -->
+                    <div id="evt-options-list" style="display:none;"></div>
                 </div>
                 <div class="form-group">
                     <label>Кто проводит — Инструкторы</label>
