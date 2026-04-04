@@ -973,19 +973,49 @@ body {
 }
 
 /* Option quantity controls */
+.options-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+}
 .options-section-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     cursor: pointer;
-    padding: 8px 0;
+    padding: 4px 0;
 }
 .options-section-header label {
     cursor: pointer;
     font-weight: 600;
     font-size: 14px;
+    color: var(--accent);
 }
 .options-chevron {
+    color: var(--text-secondary);
+    transition: var(--transition);
+}
+/* Staff collapsible section (instructors/admins) */
+.staff-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+}
+.staff-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 4px 0;
+}
+.staff-section-header label {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+}
+.staff-chevron {
     color: var(--text-secondary);
     transition: var(--transition);
 }

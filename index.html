@@ -1542,12 +1542,22 @@
                     <div id="evt-options-list" style="display:none;"></div>
                 </div>
                 <div class="form-group">
-                    <label>Кто проводит — Инструкторы</label>
-                    <div class="staff-select-list" id="evt-instructors-list"></div>
+                    <div class="staff-section">
+                        <div class="staff-section-header" onclick="toggleStaffSection('instructors')">
+                            <label>Инструкторы</label>
+                            <span class="material-icons-round staff-chevron" id="staff-instructors-chevron">expand_more</span>
+                        </div>
+                        <div class="staff-select-list" id="evt-instructors-list" style="display:none;"></div>
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label>Кто проводит — Администраторы</label>
-                    <div class="staff-select-list" id="evt-admins-list"></div>
+                    <div class="staff-section">
+                        <div class="staff-section-header" onclick="toggleStaffSection('admins')">
+                            <label>Администраторы</label>
+                            <span class="material-icons-round staff-chevron" id="staff-admins-chevron">expand_more</span>
+                        </div>
+                        <div class="staff-select-list" id="evt-admins-list" style="display:none;"></div>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Скидка (%)</label>

@@ -3230,6 +3230,17 @@ function toggleOptionsSection(section) {
     if (chevron) chevron.textContent = isOpen ? 'expand_more' : 'expand_less';
 }
 
+function toggleStaffSection(section) {
+    const listId = 'evt-' + section + '-list';
+    const chevronId = 'staff-' + section + '-chevron';
+    const list = document.getElementById(listId);
+    const chevron = document.getElementById(chevronId);
+    if (!list) return;
+    const isOpen = list.style.display !== 'none';
+    list.style.display = isOpen ? 'none' : '';
+    if (chevron) chevron.textContent = isOpen ? 'expand_more' : 'expand_less';
+}
+
 function changeOptionQty(optId, delta) {
     const el = document.getElementById('opt-qty-' + optId);
     if (!el) return;
@@ -3253,7 +3264,7 @@ function openEventModal(id = null, completing = false) {
         return roles.includes('instructor') || roles.includes('senior_instructor');
     });
     document.getElementById('evt-instructors-list').innerHTML = instructorEmps.length
-        ? instructorEmps.map(i => `<label class="staff-select-item"><input type="checkbox" value="${i.id}" class="evt-instr-cb"> ${i.firstName} ${i.lastName} <span class="staff-role-hint">${getRoleName(i.role)}</span></label>`).join('')
+        ? instructorEmps.map(i => `<label class="staff-select-item"><input type="checkbox" value="${i.id}" class="evt-instr-cb"> ${i.firstName} ${i.lastName}</label>`).join('')
         : '<span class="empty-state-text">Нет инструкторов</span>';
 
     // Populate admin checkboxes (employees with admin in allowedShiftRoles)
@@ -3262,7 +3273,7 @@ function openEventModal(id = null, completing = false) {
         return roles.includes('admin');
     });
     document.getElementById('evt-admins-list').innerHTML = adminEmps.length
-        ? adminEmps.map(a => `<label class="staff-select-item"><input type="checkbox" value="${a.id}" class="evt-admin-cb"> ${a.firstName} ${a.lastName} <span class="staff-role-hint">${getRoleName(a.role)}</span></label>`).join('')
+        ? adminEmps.map(a => `<label class="staff-select-item"><input type="checkbox" value="${a.id}" class="evt-admin-cb"> ${a.firstName} ${a.lastName}</label>`).join('')
         : '<span class="empty-state-text">Нет администраторов</span>';
 
     // Populate tariff select (filtered by event type)
