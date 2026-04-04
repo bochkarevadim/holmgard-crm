@@ -2684,30 +2684,16 @@ body {
 @media (max-width: 1024px) {
     /* Sidebar collapses to icon-only strip */
     .sidebar {
-        width: 60px;
-        overflow: hidden;
+        transform: translateX(-100%);
+        width: 240px;
     }
-    .sidebar-logo {
-        padding: 16px 8px;
-        justify-content: center;
+    .sidebar.open {
+        transform: translateX(0);
+        box-shadow: 20px 0 60px rgba(0,0,0,0.5);
     }
-    .sidebar-brand { display: none; }
-    .sidebar-nav { padding: 8px 6px; }
-    .nav-item {
-        justify-content: center;
-        padding: 12px;
-        gap: 0;
-    }
-    .nav-item span:not(.material-icons-round) { display: none; }
-    .sidebar-footer { padding: 8px 6px; }
-    .btn-logout-sidebar {
-        justify-content: center;
-        padding: 12px;
-        gap: 0;
-    }
-    .btn-logout-sidebar span:not(.material-icons-round) { display: none; }
+    .btn-hamburger { display: flex; }
 
-    .main-content { margin-left: 60px; }
+    .main-content { margin-left: 0; }
     .top-bar { padding: 14px 20px; }
     .page { padding: 24px 20px; }
 
