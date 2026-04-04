@@ -1519,10 +1519,33 @@
                         <input type="number" id="evt-participants" placeholder="10" min="1" value="10">
                     </div>
                     <div class="form-group">
-                        <label>Длительность (мин)</label>
-                        <input type="number" id="evt-duration" value="60">
+                        <label>Скидка / Сертификат</label>
+                        <select id="evt-discount-type" onchange="toggleDiscountType()">
+                            <option value="none">Нет</option>
+                            <option value="percent">Скидка %</option>
+                            <option value="certificate">Сертификат</option>
+                        </select>
                     </div>
                 </div>
+                <div id="evt-discount-details" style="display:none;">
+                    <div class="form-row" id="evt-discount-percent-row">
+                        <div class="form-group">
+                            <label>Скидка (%)</label>
+                            <input type="number" id="evt-discount" placeholder="0" min="0" max="100">
+                        </div>
+                    </div>
+                    <div class="form-row" id="evt-certificate-row" style="display:none;">
+                        <div class="form-group">
+                            <label>Номер сертификата</label>
+                            <input type="text" id="evt-certificate-number" placeholder="№ сертификата">
+                        </div>
+                        <div class="form-group">
+                            <label>Сумма сертификата (₽)</label>
+                            <input type="number" id="evt-certificate-amount" placeholder="0" min="0">
+                        </div>
+                    </div>
+                </div>
+                <input type="hidden" id="evt-duration" value="60">
                 <div class="form-group">
                     <div class="options-section">
                         <div class="options-section-header" onclick="toggleOptionsSection('game')">
@@ -1558,10 +1581,6 @@
                         </div>
                         <div class="staff-select-list" id="evt-admins-list" style="display:none;"></div>
                     </div>
-                </div>
-                <div class="form-group">
-                    <label>Скидка (%)</label>
-                    <input type="number" id="evt-discount" placeholder="0" min="0" max="100">
                 </div>
                 <div class="form-row">
                     <div class="form-group">

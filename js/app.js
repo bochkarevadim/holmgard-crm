@@ -3230,6 +3230,32 @@ function toggleOptionsSection(section) {
     if (chevron) chevron.textContent = isOpen ? 'expand_more' : 'expand_less';
 }
 
+function toggleDiscountType() {
+    const type = document.getElementById('evt-discount-type').value;
+    const details = document.getElementById('evt-discount-details');
+    const percentRow = document.getElementById('evt-discount-percent-row');
+    const certRow = document.getElementById('evt-certificate-row');
+
+    if (type === 'none') {
+        details.style.display = 'none';
+        document.getElementById('evt-discount').value = '';
+        document.getElementById('evt-certificate-number').value = '';
+        document.getElementById('evt-certificate-amount').value = '';
+    } else if (type === 'percent') {
+        details.style.display = '';
+        percentRow.style.display = '';
+        certRow.style.display = 'none';
+        document.getElementById('evt-certificate-number').value = '';
+        document.getElementById('evt-certificate-amount').value = '';
+    } else if (type === 'certificate') {
+        details.style.display = '';
+        percentRow.style.display = 'none';
+        certRow.style.display = '';
+        document.getElementById('evt-discount').value = '';
+    }
+    recalcEventTotal();
+}
+
 function toggleStaffSection(section) {
     const listId = 'evt-' + section + '-list';
     const chevronId = 'staff-' + section + '-chevron';
@@ -3330,7 +3356,7 @@ function openEventModal(id = null, completing = false) {
     });
 
     // Recalc total when key fields change
-    ['evt-tariff', 'evt-participants', 'evt-discount', 'evt-prepayment'].forEach(fid => {
+    ['evt-tariff', 'evt-participants', 'evt-discount', 'evt-prepayment', 'evt-certificate-amount'].forEach(fid => {
         const el = document.getElementById(fid);
         if (el) el.addEventListener('input', recalcEventTotal);
         if (el) el.addEventListener('change', recalcEventTotal);
@@ -3367,6 +3393,17 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('evt-notes').value = evt.notes || '';
         document.getElementById('evt-price').value = evt.price || '';
         document.getElementById('evt-discount').value = evt.discount || '';
+        // Set discount type
+        if (evt.certificateNumber || evt.certificateAmount) {
+            document.getElementById('evt-discount-type').value = 'certificate';
+            document.getElementById('evt-certificate-number').value = evt.certificateNumber || '';
+            document.getElementById('evt-certificate-amount').value = evt.certificateAmount || '';
+        } else if (evt.discount > 0) {
+            document.getElementById('evt-discount-type').value = 'percent';
+        } else {
+            document.getElementById('evt-discount-type').value = 'none';
+        }
+        toggleDiscountType();
         document.getElementById('evt-status').value = evt.status || 'pending';
         document.getElementById('evt-prepayment').value = evt.prepayment || '';
         document.getElementById('evt-prepayment-method').value = evt.prepaymentMethod || '';
@@ -3407,6 +3444,10 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('modal-event-title').textContent = 'Новое мероприятие';
         if (selectedCalDay) document.getElementById('evt-date').value = selectedCalDay;
         else if (empSelectedCalDay) document.getElementById('evt-date').value = empSelectedCalDay;
+        document.getElementById('evt-discount-type').value = 'none';
+        document.getElementById('evt-certificate-number').value = '';
+        document.getElementById('evt-certificate-amount').value = '';
+        toggleDiscountType();
     }
 
     // Show/hide complete button and total summary
@@ -3460,7 +3501,18 @@ function recalcEventTotal() {
     });
 
     const subtotal = serviceCost + optionsCost;
-    const discountAmount = subtotal * discount / 100;
+    const discountType = document.getElementById('evt-discount-type').value;
+    const certAmount = parseFloat(document.getElementById('evt-certificate-amount').value) || 0;
+    let discountAmount = 0;
+    let discountLabel = '';
+    if (discountType === 'percent' && discount > 0) {
+        discountAmount = subtotal * discount / 100;
+        discountLabel = `Скидка ${discount}%`;
+    } else if (discountType === 'certificate' && certAmount > 0) {
+        discountAmount = certAmount;
+        const certNum = document.getElementById('evt-certificate-number').value.trim();
+        discountLabel = `Сертификат${certNum ? ' №' + certNum : ''}`;
+    }
     const total = subtotal - discountAmount;
     const toPay = total - prepayment;
 
@@ -3470,7 +3522,7 @@ function recalcEventTotal() {
             <div class="evt-total-summary">
                 <div class="evt-total-row"><span>Услуга:</span><span>${formatMoney(serviceCost)}</span></div>
                 <div class="evt-total-row"><span>Доп. опции:</span><span>${formatMoney(optionsCost)}</span></div>
-                ${discount > 0 ? `<div class="evt-total-row"><span>Скидка ${discount}%:</span><span>−${formatMoney(discountAmount)}</span></div>` : ''}
+                ${discountAmount > 0 ? `<div class="evt-total-row"><span>${discountLabel}:</span><span>−${formatMoney(discountAmount)}</span></div>` : ''}
                 <div class="evt-total-row evt-total-main"><span>Итого:</span><span>${formatMoney(total)}</span></div>
                 ${prepayment > 0 ? `<div class="evt-total-row"><span>Предоплата:</span><span>−${formatMoney(prepayment)}</span></div>
                 <div class="evt-total-row evt-total-main"><span>К оплате:</span><span>${formatMoney(toPay)}</span></div>` : ''}
@@ -3544,6 +3596,9 @@ function saveEvent(e) {
         totalPrice: parseFloat(document.getElementById('evt-price').value) || 0,
         toPay: parseFloat(document.getElementById('evt-price').dataset.toPay) || 0,
         discount: parseFloat(document.getElementById('evt-discount').value) || 0,
+        discountType: document.getElementById('evt-discount-type').value,
+        certificateNumber: document.getElementById('evt-certificate-number').value.trim(),
+        certificateAmount: parseFloat(document.getElementById('evt-certificate-amount').value) || 0,
         status: document.getElementById('evt-status').value || 'pending',
         prepayment: parseFloat(document.getElementById('evt-prepayment').value) || 0,
         prepaymentMethod: document.getElementById('evt-prepayment-method').value,
