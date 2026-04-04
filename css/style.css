@@ -2883,6 +2883,36 @@ body {
     .salary-pay-info { padding: 10px 12px; }
     .salary-pay-stat { font-size: 12px; }
 
+    /* --- Modal compact for mobile --- */
+    .modal {
+        max-width: 100vw;
+        max-height: 100vh;
+        border-radius: 0;
+        margin: 0;
+    }
+    .modal-overlay { padding: 0; }
+    .modal-header { padding: 12px 16px; }
+    .modal-header h2 { font-size: 15px; }
+    .modal-body { padding: 12px 16px; }
+    .form-group { margin-bottom: 10px; }
+    .form-group label { font-size: 11px; margin-bottom: 4px; }
+    .form-group input,
+    .form-group select,
+    .form-group textarea { padding: 8px 10px; font-size: 13px; }
+    .form-row { gap: 8px; }
+    .options-section { padding: 8px 10px; }
+    .options-section-header label { font-size: 12px; }
+    .staff-section { padding: 8px 10px; }
+    .staff-section-header label { font-size: 12px; }
+    .option-qty-row { padding: 6px 8px; gap: 6px; }
+    .option-qty-name { font-size: 12px; }
+    .option-qty-price { font-size: 11px; }
+    .option-qty-btn { width: 28px; height: 28px; font-size: 14px; }
+    .staff-select-item { padding: 6px 10px; font-size: 13px; }
+    .modal-footer { padding: 12px 16px; }
+    .modal-footer .btn-primary,
+    .modal-footer .btn-secondary { padding: 8px 16px; font-size: 13px; }
+
     /* --- Bottom navigation bar for mobile --- */
     #mobile-bottom-nav {
         display: none !important;
