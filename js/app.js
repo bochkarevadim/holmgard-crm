@@ -1191,8 +1191,17 @@ function getManagerDailyAccruals(emp, startDate, endDate) {
     const dailyRate = mgrRule.dailyRate || 360;
 
     // Determine effective range
+    // managerUntil is exclusive (the day they stopped being manager, NOT paid)
     const effectiveStart = managerSince && managerSince > startDate ? managerSince : startDate;
-    const effectiveEnd = managerUntil && managerUntil < endDate ? managerUntil : endDate;
+    let mgrLastDay = endDate;
+    if (managerUntil) {
+        // Day before managerUntil is the last paid day
+        const untilD = new Date(managerUntil + 'T00:00:00');
+        untilD.setDate(untilD.getDate() - 1);
+        const lastPaidDay = untilD.getFullYear() + '-' + String(untilD.getMonth() + 1).padStart(2, '0') + '-' + String(untilD.getDate()).padStart(2, '0');
+        if (lastPaidDay < endDate) mgrLastDay = lastPaidDay;
+    }
+    const effectiveEnd = mgrLastDay;
 
     if (effectiveStart > effectiveEnd) return [];
 
@@ -4831,7 +4840,7 @@ function initSettings() {
                 if (sinceDate) emp.managerSince = sinceDate;
             } else if (!cb.checked && wasManager) {
                 roles = roles.filter(r => r !== 'manager');
-                emp.managerUntil = today;
+                emp.managerUntil = today; // exclusive: this day is NOT paid
             }
             emp.allowedShiftRoles = roles;
         });
