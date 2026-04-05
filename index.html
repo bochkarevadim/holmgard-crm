@@ -426,6 +426,10 @@
                 <span class="material-icons-round">account_balance_wallet</span>
                 <span class="nav-label">Финансы</span>
             </a>
+            <a class="nav-item" data-page="certificates">
+                <span class="material-icons-round">card_giftcard</span>
+                <span class="nav-label">Сертификаты</span>
+            </a>
             <a class="nav-item" data-page="documents">
                 <span class="material-icons-round">description</span>
                 <span class="nav-label">Документы</span>
@@ -778,6 +782,13 @@
                     </div>
                 </div>
                 <div class="fin-card">
+                    <span class="material-icons-round">card_giftcard</span>
+                    <div>
+                        <p class="fin-card-label">Сертификаты</p>
+                        <p class="fin-card-value green" id="fin-cert-income">0 ₽</p>
+                    </div>
+                </div>
+                <div class="fin-card">
                     <span class="material-icons-round">sports_baseball</span>
                     <div>
                         <p class="fin-card-label">Расходники</p>
@@ -800,34 +811,214 @@
                 </div>
             </div>
 
-            <!-- Breakdown sections -->
+            <!-- Breakdown sections (collapsible) -->
             <div class="fin-breakdown" id="fin-breakdown-income">
-                <h3><span class="material-icons-round">event</span> Мероприятия</h3>
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead><tr><th>Дата</th><th>Клиент</th><th>Услуга</th><th>Участники</th><th>Сумма</th><th>Оплата</th></tr></thead>
-                        <tbody id="fin-events-body"></tbody>
-                    </table>
+                <div class="fin-breakdown-header" onclick="toggleFinSection('income')">
+                    <div class="fin-breakdown-title">
+                        <span class="material-icons-round">event</span>
+                        <span>Доходы</span>
+                    </div>
+                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-income">expand_more</span>
+                </div>
+                <div class="fin-breakdown-content" id="fin-content-income" style="display:none;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Дата</th><th>Клиент</th><th>Услуга</th><th>Участники</th><th>Сумма</th><th>Оплата</th></tr></thead>
+                            <tbody id="fin-events-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
             <div class="fin-breakdown" id="fin-breakdown-consumables">
-                <h3><span class="material-icons-round">sports_baseball</span> Расход расходников</h3>
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead><tr><th>Дата</th><th>Мероприятие</th><th>Шары</th><th>Гранаты/дым</th><th>Стоимость</th></tr></thead>
-                        <tbody id="fin-consumables-body"></tbody>
-                    </table>
+                <div class="fin-breakdown-header" onclick="toggleFinSection('consumables')">
+                    <div class="fin-breakdown-title">
+                        <span class="material-icons-round">sports_baseball</span>
+                        <span>Расходы</span>
+                    </div>
+                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-consumables">expand_more</span>
+                </div>
+                <div class="fin-breakdown-content" id="fin-content-consumables" style="display:none;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Дата</th><th>Мероприятие</th><th>Шары</th><th>Гранаты/дым</th><th>Стоимость</th></tr></thead>
+                            <tbody id="fin-consumables-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
             <div class="fin-breakdown" id="fin-breakdown-salaries">
-                <h3><span class="material-icons-round">badge</span> Выплаты зарплат за период</h3>
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead><tr><th>Сотрудник</th><th>Должность</th><th>Выплачено за период</th></tr></thead>
-                        <tbody id="fin-salaries-body"></tbody>
-                    </table>
+                <div class="fin-breakdown-header" onclick="toggleFinSection('salaries')">
+                    <div class="fin-breakdown-title">
+                        <span class="material-icons-round">badge</span>
+                        <span>Зарплаты</span>
+                    </div>
+                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-salaries">expand_more</span>
+                </div>
+                <div class="fin-breakdown-content" id="fin-content-salaries" style="display:none;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Сотрудник</th><th>Должность</th><th>Выплачено за период</th></tr></thead>
+                            <tbody id="fin-salaries-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="fin-breakdown" id="fin-breakdown-certificates">
+                <div class="fin-breakdown-header" onclick="toggleFinSection('certificates')">
+                    <div class="fin-breakdown-title">
+                        <span class="material-icons-round">card_giftcard</span>
+                        <span>Сертификаты</span>
+                    </div>
+                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-certificates">expand_more</span>
+                </div>
+                <div class="fin-breakdown-content" id="fin-content-certificates" style="display:none;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Дата</th><th>Номер</th><th>Номинал</th><th>Покупатель</th><th>Оплата</th></tr></thead>
+                            <tbody id="fin-certificates-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== CERTIFICATES PAGE ===== -->
+        <div class="page" id="page-certificates">
+            <div class="section-header">
+                <h2>Сертификаты</h2>
+                <button class="btn-primary" id="btn-add-certificate">
+                    <span class="material-icons-round">add</span>
+                    Создать сертификат
+                </button>
+            </div>
+
+            <div class="cert-filter-tabs">
+                <button class="cert-filter-btn active" data-cert-filter="all" onclick="filterCertificates('all')">Все</button>
+                <button class="cert-filter-btn" data-cert-filter="active" onclick="filterCertificates('active')">Активные</button>
+                <button class="cert-filter-btn" data-cert-filter="used" onclick="filterCertificates('used')">Использованные</button>
+                <button class="cert-filter-btn" data-cert-filter="expired" onclick="filterCertificates('expired')">Просроченные</button>
+            </div>
+
+            <div class="cert-summary-grid" id="cert-summary">
+                <div class="cert-summary-card">
+                    <span class="cert-summary-icon active">🟢</span>
+                    <div>
+                        <p class="cert-summary-label">Активные</p>
+                        <p class="cert-summary-value" id="cert-active-count">0 шт</p>
+                        <p class="cert-summary-amount" id="cert-active-amount">0 ₽</p>
+                    </div>
+                </div>
+                <div class="cert-summary-card">
+                    <span class="cert-summary-icon used">🔵</span>
+                    <div>
+                        <p class="cert-summary-label">Погашено</p>
+                        <p class="cert-summary-value" id="cert-used-count">0 шт</p>
+                        <p class="cert-summary-amount" id="cert-used-amount">0 ₽</p>
+                    </div>
+                </div>
+                <div class="cert-summary-card">
+                    <span class="cert-summary-icon expired">🔴</span>
+                    <div>
+                        <p class="cert-summary-label">Просроченные</p>
+                        <p class="cert-summary-value" id="cert-expired-count">0 шт</p>
+                        <p class="cert-summary-amount" id="cert-expired-amount">0 ₽</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>№</th>
+                            <th>Дата</th>
+                            <th>Номинал</th>
+                            <th>Остаток</th>
+                            <th>Статус</th>
+                            <th>Покупатель</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cert-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ===== CERTIFICATE MODAL ===== -->
+        <div class="modal-overlay" id="modal-certificate">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2 id="modal-cert-title">Новый сертификат</h2>
+                    <button class="btn-close" id="modal-cert-close">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="certificate-form">
+                        <input type="hidden" id="cert-id">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Номер сертификата</label>
+                                <input type="text" id="cert-number" placeholder="HP-2026-0001">
+                            </div>
+                            <div class="form-group">
+                                <label>Номинал (₽)</label>
+                                <input type="number" id="cert-amount" placeholder="5000" min="1" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Дата продажи</label>
+                                <input type="date" id="cert-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Срок действия до</label>
+                                <input type="date" id="cert-expiry" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Покупатель</label>
+                                <input type="text" id="cert-buyer-name" placeholder="Имя Фамилия">
+                            </div>
+                            <div class="form-group">
+                                <label>Телефон</label>
+                                <input type="text" id="cert-buyer-phone" placeholder="+7...">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Способ оплаты</label>
+                            <div class="cert-payment-methods">
+                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="cash" checked> 💵 Наличные</label>
+                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="sberbank"> 🟢 Сбербанк</label>
+                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="tbank"> 🟡 Т-Банк</label>
+                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="alfabank"> 🔴 Альфа</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Примечание</label>
+                            <textarea id="cert-note" rows="2" placeholder="Комментарий..."></textarea>
+                        </div>
+
+                        <!-- Usage history (shown only when editing) -->
+                        <div id="cert-usage-history" style="display:none;">
+                            <h4 style="color:var(--text-secondary);margin:16px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:1px;">История использования</h4>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead><tr><th>Дата</th><th>Мероприятие</th><th>Сумма</th></tr></thead>
+                                    <tbody id="cert-usage-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="modal-actions">
+                            <button type="button" class="btn-secondary" id="btn-cancel-cert">Отмена</button>
+                            <button type="submit" class="btn-primary" id="btn-save-cert">Сохранить</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -1535,13 +1726,15 @@
                         </div>
                     </div>
                     <div class="form-row" id="evt-certificate-row" style="display:none;">
-                        <div class="form-group">
+                        <div class="form-group" style="position:relative;">
                             <label>Номер сертификата</label>
-                            <input type="text" id="evt-certificate-number" placeholder="№ сертификата">
+                            <input type="text" id="evt-certificate-number" placeholder="Начните вводить №" autocomplete="off" oninput="onCertNumberInput(this.value)" onfocus="onCertNumberInput(this.value)">
+                            <div class="cert-autocomplete-list" id="cert-autocomplete" style="display:none;"></div>
                         </div>
                         <div class="form-group">
                             <label>Сумма сертификата (₽)</label>
                             <input type="number" id="evt-certificate-amount" placeholder="0" min="0">
+                            <small id="evt-cert-remaining" style="color:var(--text-secondary);font-size:11px;"></small>
                         </div>
                     </div>
                 </div>

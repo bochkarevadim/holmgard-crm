@@ -2387,28 +2387,161 @@ body {
     border-color: var(--accent);
 }
 .fin-breakdown {
-    margin-top: 28px;
-    background: var(--card);
+    margin-top: 12px;
+    background: var(--bg-card);
     border-radius: var(--radius);
-    padding: 20px;
+    border: 1px solid var(--border);
+    overflow: hidden;
 }
-.fin-breakdown h3 {
+.fin-breakdown-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: background 0.2s;
+    user-select: none;
+}
+.fin-breakdown-header:hover {
+    background: var(--bg-card-hover);
+}
+.fin-breakdown-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: 15px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: var(--text-secondary);
-    margin-bottom: 16px;
+    color: var(--text);
 }
-.fin-breakdown h3 .material-icons-round {
+.fin-breakdown-title .material-icons-round {
     font-size: 20px;
     color: var(--accent);
 }
+.fin-breakdown-chevron {
+    font-size: 22px;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+}
+.fin-breakdown-content {
+    padding: 0 18px 18px;
+}
 .fin-breakdown .table-container {
     margin: 0;
+}
+
+/* ===== CERTIFICATES ===== */
+.cert-filter-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.cert-filter-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.cert-filter-btn.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+    font-weight: 600;
+}
+
+.cert-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.cert-summary-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+}
+.cert-summary-icon { font-size: 24px; }
+.cert-summary-label { color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.cert-summary-value { font-size: 18px; font-weight: 700; color: var(--text); }
+.cert-summary-amount { font-size: 13px; color: var(--text-secondary); }
+
+.cert-status-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.cert-status-active { background: rgba(0, 230, 118, 0.15); color: var(--green); }
+.cert-status-used { background: rgba(68, 138, 255, 0.15); color: #448AFF; }
+.cert-status-expired { background: rgba(255, 82, 82, 0.15); color: var(--red); }
+
+.cert-payment-methods {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+}
+.cert-pay-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+.cert-pay-option:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+}
+.cert-pay-option input[type="radio"] { width: 14px; height: 14px; accent-color: var(--accent); }
+
+/* Certificate autocomplete */
+.cert-autocomplete-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-modal);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 100;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.cert-autocomplete-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+}
+.cert-autocomplete-item:last-child { border-bottom: none; }
+.cert-autocomplete-item:hover { background: var(--bg-card-hover); }
+
+@media (max-width: 768px) {
+    .cert-summary-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .cert-summary-card { padding: 8px 10px; gap: 6px; flex-direction: column; text-align: center; }
+    .cert-summary-value { font-size: 14px; }
+    .cert-summary-amount { font-size: 11px; }
+    .cert-payment-methods { grid-template-columns: 1fr; }
 }
 
 .fin-tabs, .doc-tabs {

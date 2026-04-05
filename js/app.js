@@ -32,7 +32,7 @@ const FIRESTORE_KEYS = new Set([
     'loyaltyPercent', 'accentColor', 'empDashOrder',
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
-    'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
+    'certificates', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
     'directorDashOrder'
 ]);
 
@@ -518,6 +518,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initEmployees();
     initSchedule();
     initFinances();
+    initCertificates();
     initDocuments();
     initClients();
     initSettings();
@@ -540,6 +541,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             else if (pid === 'page-employees') loadEmployees();
             else if (pid === 'page-schedule') renderCalendar();
             else if (pid === 'page-finances') loadFinances();
+            else if (pid === 'page-certificates') loadCertificates();
             else if (pid === 'page-documents') loadDocuments();
             else if (pid === 'page-clients') loadClients();
             else if (pid === 'page-tariffs') loadDirectorTariffs();
@@ -1578,6 +1580,9 @@ function completeEventPayment() {
 
     DB.set('events', events);
 
+    // === REDEEM CERTIFICATE IF USED ===
+    redeemCertificateForEvent(events[idx]);
+
     // === AUTO-ADD CLIENT TO CLIENTS DATABASE ===
     const evtCompleted = events[idx];
     if (evtCompleted.clientName) {
@@ -2107,6 +2112,7 @@ function navigateTo(page) {
     if (page === 'employees') loadEmployees();
     if (page === 'schedule') renderCalendar();
     if (page === 'finances') loadFinances();
+    if (page === 'certificates') loadCertificates();
     if (page === 'documents') loadDocuments();
     if (page === 'clients') loadClients();
     if (page === 'tariffs') loadDirectorTariffs();
@@ -3256,6 +3262,15 @@ function toggleDiscountType() {
     recalcEventTotal();
 }
 
+function toggleFinSection(section) {
+    const content = document.getElementById('fin-content-' + section);
+    const chevron = document.getElementById('fin-chevron-' + section);
+    if (!content) return;
+    const isOpen = content.style.display !== 'none';
+    content.style.display = isOpen ? 'none' : '';
+    if (chevron) chevron.textContent = isOpen ? 'expand_more' : 'expand_less';
+}
+
 function toggleStaffSection(section) {
     const listId = 'evt-' + section + '-list';
     const chevronId = 'staff-' + section + '-chevron';
@@ -3769,11 +3784,17 @@ function loadFinances(period) {
         }
     });
 
+    // === 4. CERTIFICATES: sold in this period ===
+    const allCerts = DB.get('certificates', []);
+    const periodCerts = allCerts.filter(c => c.createdDate >= startDate && c.createdDate <= endDate);
+    const totalCertIncome = periodCerts.reduce((sum, c) => sum + (c.initialAmount || 0), 0);
+
     const totalExpenses = totalConsumablesCost + periodSalariesPaid;
-    const totalBalance = totalIncome - totalExpenses;
+    const totalBalance = totalIncome + totalCertIncome - totalExpenses;
 
     // === UPDATE CARDS ===
     document.getElementById('fin-income').textContent = formatMoney(totalIncome);
+    document.getElementById('fin-cert-income').textContent = formatMoney(totalCertIncome);
     document.getElementById('fin-consumables').textContent = formatMoney(totalConsumablesCost);
     document.getElementById('fin-salaries').textContent = formatMoney(periodSalariesPaid);
 
@@ -3844,6 +3865,280 @@ function loadFinances(period) {
         </tr>`;
         salBody.innerHTML = html;
     }
+
+    // === CERTIFICATES TABLE ===
+    const certBody = document.getElementById('fin-certificates-body');
+    if (periodCerts.length === 0) {
+        certBody.innerHTML = '<tr><td colspan="5" class="empty-state">Нет проданных сертификатов за период</td></tr>';
+    } else {
+        let html = periodCerts.sort((a, b) => (b.createdDate || '').localeCompare(a.createdDate || '')).map(c => `<tr>
+            <td>${c.createdDate}</td>
+            <td style="color:var(--accent);font-weight:600">${c.number || '—'}</td>
+            <td>${formatMoney(c.initialAmount || 0)}</td>
+            <td>${c.buyerName || '—'}</td>
+            <td>${getPaymentMethodName(c.paymentMethod)}</td>
+        </tr>`).join('');
+        html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
+            <td colspan="2" style="text-align:right;">Итого продано:</td>
+            <td style="color:var(--green)">${formatMoney(totalCertIncome)}</td>
+            <td colspan="2">${periodCerts.length} шт.</td>
+        </tr>`;
+        certBody.innerHTML = html;
+    }
+}
+
+// ===== CERTIFICATES =====
+let certFilter = 'all';
+
+function initCertificates() {
+    document.getElementById('btn-add-certificate').addEventListener('click', () => openCertificateModal());
+    document.getElementById('modal-cert-close').addEventListener('click', () => closeModal('modal-certificate'));
+    document.getElementById('btn-cancel-cert').addEventListener('click', () => closeModal('modal-certificate'));
+    document.getElementById('certificate-form').addEventListener('submit', saveCertificate);
+}
+
+function generateCertNumber() {
+    const certs = DB.get('certificates', []);
+    const year = new Date().getFullYear();
+    let maxNum = 0;
+    certs.forEach(c => {
+        const match = c.number && c.number.match(/HP-\d+-(\d+)/);
+        if (match) maxNum = Math.max(maxNum, parseInt(match[1]) || 0);
+    });
+    return `HP-${year}-${String(maxNum + 1).padStart(4, '0')}`;
+}
+
+function openCertificateModal(certId) {
+    const cert = certId ? DB.get('certificates', []).find(c => c.id === certId) : null;
+    document.getElementById('modal-cert-title').textContent = cert ? 'Редактирование сертификата' : 'Новый сертификат';
+    document.getElementById('cert-id').value = cert ? cert.id : '';
+    document.getElementById('cert-number').value = cert ? cert.number : generateCertNumber();
+    document.getElementById('cert-amount').value = cert ? cert.initialAmount : '';
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const nextYear = new Date(today); nextYear.setFullYear(nextYear.getFullYear() + 1);
+    const nextYearStr = `${nextYear.getFullYear()}-${String(nextYear.getMonth()+1).padStart(2,'0')}-${String(nextYear.getDate()).padStart(2,'0')}`;
+
+    document.getElementById('cert-date').value = cert ? cert.createdDate : todayStr;
+    document.getElementById('cert-expiry').value = cert ? cert.expiryDate : nextYearStr;
+    document.getElementById('cert-buyer-name').value = cert ? (cert.buyerName || '') : '';
+    document.getElementById('cert-buyer-phone').value = cert ? (cert.buyerPhone || '') : '';
+    document.getElementById('cert-note').value = cert ? (cert.note || '') : '';
+
+    const paymentMethod = cert ? cert.paymentMethod : 'cash';
+    document.querySelectorAll('input[name="cert-payment"]').forEach(r => {
+        r.checked = r.value === paymentMethod;
+    });
+
+    // Usage history
+    const historyBlock = document.getElementById('cert-usage-history');
+    const historyBody = document.getElementById('cert-usage-body');
+    if (cert && cert.usageHistory && cert.usageHistory.length > 0) {
+        historyBlock.style.display = '';
+        historyBody.innerHTML = cert.usageHistory.map(u => `<tr>
+            <td>${u.date}</td>
+            <td>${u.eventTitle || '—'}</td>
+            <td style="color:var(--accent);font-weight:600">${formatMoney(u.amount)}</td>
+        </tr>`).join('');
+    } else {
+        historyBlock.style.display = 'none';
+        historyBody.innerHTML = '';
+    }
+
+    openModal('modal-certificate');
+}
+
+function saveCertificate(e) {
+    e.preventDefault();
+    const certs = DB.get('certificates', []);
+    const id = document.getElementById('cert-id').value;
+    const initialAmount = parseFloat(document.getElementById('cert-amount').value) || 0;
+
+    const data = {
+        number: document.getElementById('cert-number').value.trim(),
+        initialAmount: initialAmount,
+        createdDate: document.getElementById('cert-date').value,
+        expiryDate: document.getElementById('cert-expiry').value,
+        buyerName: document.getElementById('cert-buyer-name').value.trim(),
+        buyerPhone: document.getElementById('cert-buyer-phone').value.trim(),
+        paymentMethod: document.querySelector('input[name="cert-payment"]:checked').value,
+        note: document.getElementById('cert-note').value.trim(),
+    };
+
+    if (id) {
+        const idx = certs.findIndex(c => c.id === parseInt(id));
+        if (idx >= 0) {
+            certs[idx] = { ...certs[idx], ...data };
+        }
+    } else {
+        data.id = Date.now();
+        data.remainingAmount = initialAmount;
+        data.status = 'active';
+        data.usageHistory = [];
+        certs.push(data);
+    }
+
+    DB.set('certificates', certs);
+    closeModal('modal-certificate');
+    loadCertificates();
+    showToast('Сертификат сохранён');
+}
+
+function deleteCertificate(certId) {
+    showConfirm('Удалить сертификат?', 'Это действие нельзя отменить', () => {
+        let certs = DB.get('certificates', []);
+        certs = certs.filter(c => c.id !== certId);
+        DB.set('certificates', certs);
+        loadCertificates();
+        showToast('Сертификат удалён');
+    });
+}
+
+function filterCertificates(filter) {
+    certFilter = filter;
+    document.querySelectorAll('.cert-filter-btn').forEach(b => b.classList.toggle('active', b.dataset.certFilter === filter));
+    loadCertificates();
+}
+
+function checkExpiredCertificates() {
+    const certs = DB.get('certificates', []);
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    let changed = false;
+    certs.forEach(c => {
+        if (c.status === 'active' && c.expiryDate && c.expiryDate < todayStr) {
+            c.status = 'expired';
+            changed = true;
+        }
+    });
+    if (changed) DB.set('certificates', certs);
+}
+
+function loadCertificates() {
+    checkExpiredCertificates();
+    const certs = DB.get('certificates', []);
+
+    // Summary
+    const active = certs.filter(c => c.status === 'active');
+    const used = certs.filter(c => c.status === 'used');
+    const expired = certs.filter(c => c.status === 'expired');
+
+    document.getElementById('cert-active-count').textContent = active.length + ' шт';
+    document.getElementById('cert-active-amount').textContent = formatMoney(active.reduce((s, c) => s + (c.remainingAmount || 0), 0));
+    document.getElementById('cert-used-count').textContent = used.length + ' шт';
+    document.getElementById('cert-used-amount').textContent = formatMoney(used.reduce((s, c) => s + (c.initialAmount || 0), 0));
+    document.getElementById('cert-expired-count').textContent = expired.length + ' шт';
+    document.getElementById('cert-expired-amount').textContent = formatMoney(expired.reduce((s, c) => s + (c.remainingAmount || 0), 0));
+
+    // Filter
+    let filtered = certs;
+    if (certFilter !== 'all') filtered = certs.filter(c => c.status === certFilter);
+    filtered.sort((a, b) => (b.createdDate || '').localeCompare(a.createdDate || ''));
+
+    // Table
+    const tbody = document.getElementById('cert-table-body');
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Нет сертификатов</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(c => {
+        const statusClass = c.status === 'active' ? 'cert-status-active' : c.status === 'used' ? 'cert-status-used' : 'cert-status-expired';
+        const statusName = c.status === 'active' ? 'Активен' : c.status === 'used' ? 'Использован' : 'Просрочен';
+        return `<tr>
+            <td style="font-weight:600;color:var(--accent)">${c.number || '—'}</td>
+            <td>${c.createdDate || '—'}</td>
+            <td>${formatMoney(c.initialAmount || 0)}</td>
+            <td style="font-weight:600;${c.remainingAmount > 0 ? 'color:var(--green)' : ''}">${formatMoney(c.remainingAmount || 0)}</td>
+            <td><span class="cert-status-badge ${statusClass}">${statusName}</span></td>
+            <td>${c.buyerName || '—'}</td>
+            <td>
+                <button class="btn-icon" onclick="openCertificateModal(${c.id})" title="Редактировать"><span class="material-icons-round">edit</span></button>
+                <button class="btn-icon" onclick="deleteCertificate(${c.id})" title="Удалить"><span class="material-icons-round">delete</span></button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// === Certificate autocomplete in event modal ===
+function onCertNumberInput(val) {
+    const list = document.getElementById('cert-autocomplete');
+    if (!list) return;
+    const certs = DB.get('certificates', []).filter(c => c.status === 'active');
+
+    if (!val && certs.length === 0) { list.style.display = 'none'; return; }
+
+    const filtered = val ? certs.filter(c => c.number.toLowerCase().includes(val.toLowerCase())) : certs;
+
+    if (filtered.length === 0) {
+        list.style.display = 'none';
+        document.getElementById('evt-cert-remaining').textContent = '';
+        return;
+    }
+
+    list.style.display = '';
+    list.innerHTML = filtered.map(c =>
+        `<div class="cert-autocomplete-item" onclick="selectCertForEvent(${c.id})">
+            <span style="font-weight:600;color:var(--accent)">${c.number}</span>
+            <span>Остаток: ${formatMoney(c.remainingAmount || 0)}</span>
+            ${c.buyerName ? `<span style="color:var(--text-secondary);font-size:11px">${c.buyerName}</span>` : ''}
+        </div>`
+    ).join('');
+}
+
+function selectCertForEvent(certId) {
+    const cert = DB.get('certificates', []).find(c => c.id === certId);
+    if (!cert) return;
+
+    document.getElementById('evt-certificate-number').value = cert.number;
+    document.getElementById('evt-certificate-amount').value = cert.remainingAmount || 0;
+    document.getElementById('evt-cert-remaining').textContent = `Остаток на сертификате: ${formatMoney(cert.remainingAmount || 0)}`;
+    document.getElementById('cert-autocomplete').style.display = 'none';
+
+    // Store cert id for later use when saving
+    document.getElementById('evt-certificate-number').dataset.certId = certId;
+
+    recalcEventTotal();
+}
+
+// Close autocomplete on click outside
+document.addEventListener('click', (e) => {
+    const list = document.getElementById('cert-autocomplete');
+    if (list && !e.target.closest('#evt-certificate-row')) {
+        list.style.display = 'none';
+    }
+});
+
+// === Certificate redemption when event is completed ===
+function redeemCertificateForEvent(eventData) {
+    if (eventData.discountType !== 'certificate' || !eventData.certificateAmount) return;
+
+    const certNumber = eventData.certificateNumber;
+    if (!certNumber) return;
+
+    const certs = DB.get('certificates', []);
+    const idx = certs.findIndex(c => c.number === certNumber && c.status === 'active');
+    if (idx < 0) return; // Certificate not found or not active
+
+    const redeemAmount = Math.min(eventData.certificateAmount, certs[idx].remainingAmount || 0);
+    if (redeemAmount <= 0) return;
+
+    certs[idx].remainingAmount = (certs[idx].remainingAmount || 0) - redeemAmount;
+    if (!certs[idx].usageHistory) certs[idx].usageHistory = [];
+    certs[idx].usageHistory.push({
+        date: eventData.date,
+        eventId: eventData.id,
+        eventTitle: eventData.title || eventData.clientName || 'Мероприятие',
+        amount: redeemAmount
+    });
+
+    if (certs[idx].remainingAmount <= 0) {
+        certs[idx].remainingAmount = 0;
+        certs[idx].status = 'used';
+    }
+
+    DB.set('certificates', certs);
 }
 
 // ===== DOCUMENTS =====
