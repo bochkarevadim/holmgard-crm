@@ -1576,6 +1576,33 @@ function completeEventPayment() {
         stock.smokes = Math.max(0, (stock.smokes || 0) - totalSmokes);
         DB.set('stock', stock);
         events[idx].consumablesUsed = { balls: totalBalls, kidsBalls: totalKidsBalls, grenades: totalGrenades, smokes: totalSmokes };
+
+        // === AUTO-CREATE WRITE-OFF DOCUMENTS ===
+        const docs = DB.get('documents', []);
+        const evtDate = events[idx].date || todayLocal();
+        const evtName = events[idx].title || 'Мероприятие';
+        const writeoffItems = [
+            { item: 'Пейнтбольные шары 0.68', qty: totalBalls },
+            { item: 'Детские пейнтбольные шары 0.50', qty: totalKidsBalls },
+            { item: 'Гранаты', qty: totalGrenades },
+            { item: 'Дымы', qty: totalSmokes }
+        ];
+        writeoffItems.forEach(wi => {
+            if (wi.qty > 0) {
+                docs.push({
+                    id: Date.now() + Math.random(),
+                    type: 'writeoff',
+                    date: evtDate,
+                    item: wi.item,
+                    qty: wi.qty,
+                    amount: 0,
+                    delivery: 0,
+                    comment: `Авто: ${evtName} (${events[idx].participants || 0} чел.)`,
+                    eventId: events[idx].id
+                });
+            }
+        });
+        DB.set('documents', docs);
     }
 
     DB.set('events', events);
