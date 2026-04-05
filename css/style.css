@@ -3080,8 +3080,26 @@ body {
     .fin-card-value { font-size: 18px; }
 
     /* --- Settings card compact --- */
-    .settings-card { padding: 14px; }
-    .salary-rule-block { padding: 12px; }
+    .settings-card { padding: 12px; }
+    .settings-card h3 { font-size: 14px; gap: 6px; margin-bottom: 12px; }
+    .settings-card h3 .material-icons-round { font-size: 20px; }
+    .salary-rule-block { padding: 10px; }
+    .salary-rule-block h4 { font-size: 13px; }
+    .salary-rule-header { gap: 6px; }
+    .salary-rule-header .material-icons-round { font-size: 18px; }
+    .salary-rules-grid { gap: 10px; margin-bottom: 12px; }
+    .bonus-sources { padding: 8px 10px; margin: 6px 0 8px; font-size: 12px; }
+    .bonus-sources .option-checkbox { font-size: 12px; }
+    .settings-card .form-hint { font-size: 11px; }
+    .settings-card .form-group label { font-size: 12px; }
+    .settings-card .form-group input { font-size: 13px; padding: 8px 10px; }
+    .integration-item { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+    .integration-info strong { font-size: 13px; }
+    .gcal-settings { padding: 10px; }
+    .gcal-settings details { font-size: 12px; }
+    .gcal-settings ol { font-size: 12px; line-height: 1.6; }
+    .settings-card .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .settings-card .table-scroll table { min-width: 400px; }
 
     /* --- Clients, Documents --- */
     .list-item { padding: 10px 12px; }
