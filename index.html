@@ -841,7 +841,7 @@
                 <div class="fin-breakdown-content" id="fin-content-consumables" style="display:none;">
                     <div class="table-container">
                         <table class="data-table">
-                            <thead><tr><th>Дата</th><th>Мероприятие</th><th>Шары</th><th>Гранаты/дым</th><th>Стоимость</th></tr></thead>
+                            <thead><tr><th>Дата</th><th>Наименование</th><th>Кол-во</th><th>Стоимость</th><th>Доставка</th><th>Итого</th></tr></thead>
                             <tbody id="fin-consumables-body"></tbody>
                         </table>
                     </div>
@@ -1105,8 +1105,12 @@
                                 <input type="number" id="doc-qty" placeholder="0" required>
                             </div>
                             <div class="form-group">
-                                <label>Сумма (₽)</label>
+                                <label>Стоимость (₽)</label>
                                 <input type="number" id="doc-amount" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Доставка (₽)</label>
+                                <input type="number" id="doc-delivery" placeholder="0">
                             </div>
                         </div>
                         <div class="form-group">

@@ -3799,7 +3799,7 @@ function loadFinances(period) {
     const docs = DB.get('documents', []).filter(d =>
         d.type === 'incoming' && d.date >= startDate && d.date <= endDate
     );
-    const totalConsumablesCost = docs.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const totalConsumablesCost = docs.reduce((sum, d) => sum + (d.amount || 0) + (d.delivery || 0), 0);
 
     // === 3. SALARIES: payments made in this period ===
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
@@ -3856,17 +3856,28 @@ function loadFinances(period) {
     // === CONSUMABLES TABLE (only purchases) ===
     const consBody = document.getElementById('fin-consumables-body');
     if (docs.length === 0) {
-        consBody.innerHTML = '<tr><td colspan="5" class="empty-state">Нет закупок за период</td></tr>';
+        consBody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет закупок за период</td></tr>';
     } else {
-        let html = docs.map(d => `<tr>
-            <td>${d.date}</td>
-            <td>${d.item || '—'}</td>
-            <td colspan="2">${d.qty || '—'} шт.</td>
-            <td style="color:var(--red);font-weight:600">${formatMoney(d.amount || 0)}</td>
-        </tr>`).join('');
+        let html = docs.map(d => {
+            const delivery = d.delivery || 0;
+            const itemCost = d.amount || 0;
+            const total = itemCost + delivery;
+            return `<tr>
+                <td>${d.date}</td>
+                <td>${d.item || '—'}</td>
+                <td>${d.qty || '—'} шт.</td>
+                <td>${formatMoney(itemCost)}</td>
+                <td>${delivery > 0 ? formatMoney(delivery) : '—'}</td>
+                <td style="color:var(--red);font-weight:600">${formatMoney(total)}</td>
+            </tr>`;
+        }).join('');
+        const totalDelivery = docs.reduce((s, d) => s + (d.delivery || 0), 0);
+        const grandTotal = totalConsumablesCost + totalDelivery;
         html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
-            <td colspan="4" style="text-align:right;">Итого закупки:</td>
-            <td style="color:var(--red);">${formatMoney(totalConsumablesCost)}</td>
+            <td colspan="3" style="text-align:right;">Итого:</td>
+            <td>${formatMoney(totalConsumablesCost)}</td>
+            <td>${totalDelivery > 0 ? formatMoney(totalDelivery) : '—'}</td>
+            <td style="color:var(--red);">${formatMoney(grandTotal)}</td>
         </tr>`;
         consBody.innerHTML = html;
     }
@@ -4277,6 +4288,7 @@ function openDocumentModal(id = null) {
         document.getElementById('doc-item').value = doc.item;
         document.getElementById('doc-qty').value = doc.qty;
         document.getElementById('doc-amount').value = doc.amount;
+        document.getElementById('doc-delivery').value = doc.delivery || '';
         document.getElementById('doc-comment').value = doc.comment || '';
         // Set select to matching option or "custom"
         const sel = document.getElementById('doc-item-select');
@@ -4308,6 +4320,7 @@ function saveDocument(e) {
         item: document.getElementById('doc-item').value.trim(),
         qty: parseInt(document.getElementById('doc-qty').value) || 0,
         amount: parseFloat(document.getElementById('doc-amount').value) || 0,
+        delivery: parseFloat(document.getElementById('doc-delivery').value) || 0,
         comment: document.getElementById('doc-comment').value.trim(),
     };
     if (id) {
