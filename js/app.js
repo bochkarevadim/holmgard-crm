@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder'
+    'directorDashOrder', 'salary_import_v1'
 ]);
 
 const DB = {
@@ -488,7 +488,148 @@ function startAutoCloseTimer() {
 
 // ===== INIT =====
 // Called from auth.js after Firestore is ready and user is authenticated
+// === ONE-TIME SALARY IMPORT FROM EXCEL ===
+function importSalaryPaymentsFromExcel() {
+    if (DB.get('salary_import_v1', false)) return; // already imported
+    const importData = [
+        {id:1700000000001,date:"2025-05-25",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:19550,method:"cash",note:"Импорт: 19.05-25.05 2025"},
+        {id:1700000000002,date:"2025-05-25",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:5550,method:"cash",note:"Импорт: 19.05-25.05 2025"},
+        {id:1700000000003,date:"2025-05-25",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:8640,method:"cash",note:"Импорт: 19.05-25.05 2025"},
+        {id:1700000000004,date:"2025-05-25",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:10540,method:"cash",note:"Импорт: 19.05-25.05 2025"},
+        {id:1700000000005,date:"2025-06-05",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:6180,method:"cash",note:"Импорт: 26.05-05.06 2025"},
+        {id:1700000000006,date:"2025-06-05",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:6350,method:"cash",note:"Импорт: 26.05-05.06 2025"},
+        {id:1700000000007,date:"2025-06-05",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:20000,method:"cash",note:"Импорт: 26.05-05.06 2025"},
+        {id:1700000000008,date:"2025-06-05",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:5850,method:"cash",note:"Импорт: 26.05-05.06 2025"},
+        {id:1700000000009,date:"2025-06-12",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:2250,method:"cash",note:"Импорт: 06.06-12.06 2025"},
+        {id:1700000000010,date:"2025-06-12",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:12500,method:"cash",note:"Импорт: 06.06-12.06 2025"},
+        {id:1700000000011,date:"2025-06-12",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:5750,method:"cash",note:"Импорт: 06.06-12.06 2025"},
+        {id:1700000000012,date:"2025-06-18",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:7500,method:"cash",note:"Импорт: 13.06-18.06 2025"},
+        {id:1700000000013,date:"2025-06-18",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:2400,method:"cash",note:"Импорт: 13.06-18.06 2025"},
+        {id:1700000000014,date:"2025-06-18",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:11800,method:"cash",note:"Импорт: 13.06-18.06 2025"},
+        {id:1700000000015,date:"2025-06-18",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:7150,method:"cash",note:"Импорт: 13.06-18.06 2025"},
+        {id:1700000000016,date:"2025-06-23",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:12130,method:"cash",note:"Импорт: 19.06-23.06 2025"},
+        {id:1700000000017,date:"2025-06-23",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:9160,method:"cash",note:"Импорт: 19.06-23.06 2025"},
+        {id:1700000000018,date:"2025-06-23",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:8910,method:"cash",note:"Импорт: 19.06-23.06 2025"},
+        {id:1700000000019,date:"2025-06-29",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:6780,method:"cash",note:"Импорт: 24.06-29.06 2025"},
+        {id:1700000000020,date:"2025-06-29",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:4640,method:"cash",note:"Импорт: 24.06-29.06 2025"},
+        {id:1700000000021,date:"2025-06-29",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:11090,method:"cash",note:"Импорт: 24.06-29.06 2025"},
+        {id:1700000000022,date:"2025-06-29",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:10200,method:"cash",note:"Импорт: 24.06-29.06 2025"},
+        {id:1700000000023,date:"2025-07-07",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:12500,method:"cash",note:"Импорт: 30.06-07.07 2025"},
+        {id:1700000000024,date:"2025-07-07",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:5200,method:"cash",note:"Импорт: 30.06-07.07 2025"},
+        {id:1700000000025,date:"2025-07-07",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:18750,method:"cash",note:"Импорт: 30.06-07.07 2025"},
+        {id:1700000000026,date:"2025-07-15",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:10620,method:"cash",note:"Импорт: 08.07-15.07 2025"},
+        {id:1700000000027,date:"2025-07-15",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:1755,method:"cash",note:"Импорт: 08.07-15.07 2025"},
+        {id:1700000000028,date:"2025-07-15",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:14230,method:"cash",note:"Импорт: 08.07-15.07 2025"},
+        {id:1700000000029,date:"2025-07-20",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:10640,method:"cash",note:"Импорт: 16.07-20.07 2025"},
+        {id:1700000000030,date:"2025-07-20",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:13370,method:"cash",note:"Импорт: 16.07-20.07 2025"},
+        {id:1700000000031,date:"2025-07-27",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:10910,method:"cash",note:"Импорт: 21.07-27.07 2025"},
+        {id:1700000000032,date:"2025-07-27",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:14450,method:"cash",note:"Импорт: 21.07-27.07 2025"},
+        {id:1700000000033,date:"2025-07-27",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:10270,method:"cash",note:"Импорт: 21.07-27.07 2025"},
+        {id:1700000000034,date:"2025-08-03",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:12400,method:"cash",note:"Импорт: 28.07-03.08 2025"},
+        {id:1700000000035,date:"2025-08-03",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:16395,method:"cash",note:"Импорт: 28.07-03.08 2025"},
+        {id:1700000000036,date:"2025-08-03",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:9650,method:"cash",note:"Импорт: 28.07-03.08 2025"},
+        {id:1700000000037,date:"2025-08-11",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:15720,method:"cash",note:"Импорт: 04.08-11.08 2025"},
+        {id:1700000000038,date:"2025-08-11",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:970,method:"cash",note:"Импорт: 04.08-11.08 2025"},
+        {id:1700000000039,date:"2025-08-11",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:23080,method:"cash",note:"Импорт: 04.08-11.08 2025"},
+        {id:1700000000040,date:"2025-08-11",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:15025,method:"cash",note:"Импорт: 04.08-11.08 2025"},
+        {id:1700000000041,date:"2025-08-17",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:12000,method:"cash",note:"Импорт: 12.08-17.08 2025"},
+        {id:1700000000042,date:"2025-08-17",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:20000,method:"cash",note:"Импорт: 12.08-17.08 2025"},
+        {id:1700000000043,date:"2025-08-17",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:10500,method:"cash",note:"Импорт: 12.08-17.08 2025"},
+        {id:1700000000044,date:"2025-08-24",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:27437,method:"cash",note:"Импорт: 18.08-24.08 2025"},
+        {id:1700000000045,date:"2025-08-24",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:6700,method:"cash",note:"Импорт: 18.08-24.08 2025"},
+        {id:1700000000046,date:"2025-08-24",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:18990,method:"cash",note:"Импорт: 18.08-24.08 2025"},
+        {id:1700000000047,date:"2025-08-31",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:12100,method:"cash",note:"Импорт: 25.08-31.08 2025"},
+        {id:1700000000048,date:"2025-08-31",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:2000,method:"cash",note:"Импорт: 25.08-31.08 2025"},
+        {id:1700000000049,date:"2025-08-31",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:8590,method:"cash",note:"Импорт: 25.08-31.08 2025"},
+        {id:1700000000050,date:"2025-08-31",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:15350,method:"cash",note:"Импорт: 25.08-31.08 2025"},
+        {id:1700000000051,date:"2025-09-07",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:7770,method:"cash",note:"Импорт: 01.09-07.09 2025"},
+        {id:1700000000052,date:"2025-09-07",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:3960,method:"cash",note:"Импорт: 01.09-07.09 2025"},
+        {id:1700000000053,date:"2025-09-07",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:22300,method:"cash",note:"Импорт: 01.09-07.09 2025"},
+        {id:1700000000054,date:"2025-09-07",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:11400,method:"cash",note:"Импорт: 01.09-07.09 2025"},
+        {id:1700000000055,date:"2025-09-15",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:16320,method:"cash",note:"Импорт: 08.09-15.09 2025"},
+        {id:1700000000056,date:"2025-09-15",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:28000,method:"cash",note:"Импорт: 08.09-15.09 2025"},
+        {id:1700000000057,date:"2025-09-15",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:18000,method:"cash",note:"Импорт: 08.09-15.09 2025"},
+        {id:1700000000058,date:"2025-09-21",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:8245,method:"cash",note:"Импорт: 16.09-21.09 2025"},
+        {id:1700000000059,date:"2025-09-21",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:3905,method:"cash",note:"Импорт: 16.09-21.09 2025"},
+        {id:1700000000060,date:"2025-09-21",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:14325,method:"cash",note:"Импорт: 16.09-21.09 2025"},
+        {id:1700000000061,date:"2025-09-21",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:11555,method:"cash",note:"Импорт: 16.09-21.09 2025"},
+        {id:1700000000062,date:"2025-09-28",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:8905,method:"cash",note:"Импорт: 22.09-28.09 2025"},
+        {id:1700000000063,date:"2025-09-28",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:14380,method:"cash",note:"Импорт: 22.09-28.09 2025"},
+        {id:1700000000064,date:"2025-09-28",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:10155,method:"cash",note:"Импорт: 22.09-28.09 2025"},
+        {id:1700000000065,date:"2025-10-05",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:8105,method:"cash",note:"Импорт: 29.09-05.10 2025"},
+        {id:1700000000066,date:"2025-10-05",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:2725,method:"cash",note:"Импорт: 29.09-05.10 2025"},
+        {id:1700000000067,date:"2025-10-05",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:16480,method:"cash",note:"Импорт: 29.09-05.10 2025"},
+        {id:1700000000068,date:"2025-10-05",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:8205,method:"cash",note:"Импорт: 29.09-05.10 2025"},
+        {id:1700000000069,date:"2025-10-12",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:5637,method:"cash",note:"Импорт: 06.10-12.10 2025"},
+        {id:1700000000070,date:"2025-10-12",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:2600,method:"cash",note:"Импорт: 06.10-12.10 2025"},
+        {id:1700000000071,date:"2025-10-12",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:16600,method:"cash",note:"Импорт: 06.10-12.10 2025"},
+        {id:1700000000072,date:"2025-10-12",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:12305,method:"cash",note:"Импорт: 06.10-12.10 2025"},
+        {id:1700000000073,date:"2025-10-19",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:4000,method:"cash",note:"Импорт: 13.10-19.10 2025"},
+        {id:1700000000074,date:"2025-10-19",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:15000,method:"cash",note:"Импорт: 13.10-19.10 2025"},
+        {id:1700000000075,date:"2025-10-19",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:9000,method:"cash",note:"Импорт: 13.10-19.10 2025"},
+        {id:1700000000076,date:"2025-10-26",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:3350,method:"cash",note:"Импорт: 20.10-26.10 2025"},
+        {id:1700000000077,date:"2025-10-26",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:1650,method:"cash",note:"Импорт: 20.10-26.10 2025"},
+        {id:1700000000078,date:"2025-10-26",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:11810,method:"cash",note:"Импорт: 20.10-26.10 2025"},
+        {id:1700000000079,date:"2025-10-26",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:8200,method:"cash",note:"Импорт: 20.10-26.10 2025"},
+        {id:1700000000080,date:"2025-11-02",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:2150,method:"cash",note:"Импорт: 27.10-2.11 2025"},
+        {id:1700000000081,date:"2025-11-02",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:19950,method:"cash",note:"Импорт: 27.10-2.11 2025"},
+        {id:1700000000082,date:"2025-11-02",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:10000,method:"cash",note:"Импорт: 27.10-2.11 2025"},
+        {id:1700000000083,date:"2025-11-15",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:20000,method:"cash",note:"Импорт: 03.11-15.11 2025"},
+        {id:1700000000084,date:"2025-11-15",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:10000,method:"cash",note:"Импорт: 03.11-15.11 2025"},
+        {id:1700000000085,date:"2025-11-23",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:16890,method:"cash",note:"Импорт: 16.11-23.11 2025"},
+        {id:1700000000086,date:"2025-11-23",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:6890,method:"cash",note:"Импорт: 16.11-23.11 2025"},
+        {id:1700000000087,date:"2025-11-30",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:14500,method:"cash",note:"Импорт: 24.11-30.11 2025"},
+        {id:1700000000088,date:"2025-11-30",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:6000,method:"cash",note:"Импорт: 24.11-30.11 2025"},
+        {id:1700000000089,date:"2025-12-07",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:16000,method:"cash",note:"Импорт: 02.12-07.12 2025"},
+        {id:1700000000090,date:"2025-12-07",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:6000,method:"cash",note:"Импорт: 02.12-07.12 2025"},
+        {id:1700000000091,date:"2025-12-13",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:14100,method:"cash",note:"Импорт: 08.12-13.12 2025"},
+        {id:1700000000092,date:"2025-12-13",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:4600,method:"cash",note:"Импорт: 08.12-13.12 2025"},
+        {id:1700000000093,date:"2025-12-21",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:14000,method:"cash",note:"Импорт: 15.12-21.12 2025"},
+        {id:1700000000094,date:"2025-12-31",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:18480,method:"cash",note:"Импорт: 22.12-31.12 2025"},
+        {id:1700000000095,date:"2025-12-31",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:5495,method:"cash",note:"Импорт: 22.12-31.12 2025"},
+        {id:1700000000096,date:"2026-01-05",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:4510,method:"cash",note:"Импорт: 01.01-05.01 2026"},
+        {id:1700000000097,date:"2026-01-05",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:15065,method:"cash",note:"Импорт: 01.01-05.01 2026"},
+        {id:1700000000098,date:"2026-01-25",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:5380,method:"cash",note:"Импорт: 19.01-25.01 2026"},
+        {id:1700000000099,date:"2026-01-25",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:2580,method:"cash",note:"Импорт: 19.01-25.01 2026"},
+        {id:1700000000100,date:"2026-02-15",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:36600,method:"cash",note:"Импорт: 29.01-15.02 2026"},
+        {id:1700000000101,date:"2026-02-15",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:10000,method:"cash",note:"Импорт: 29.01-15.02 2026"},
+        {id:1700000000102,date:"2026-02-23",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:5000,method:"cash",note:"Импорт: 16.02-23.02 2026"},
+        {id:1700000000103,date:"2026-02-23",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:26500,method:"cash",note:"Импорт: 16.02-23.02 2026"},
+        {id:1700000000104,date:"2026-02-23",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:13800,method:"cash",note:"Импорт: 16.02-23.02 2026"},
+        {id:1700000000105,date:"2026-03-01",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:10000,method:"cash",note:"Импорт: 24.02-01.03 2026"},
+        {id:1700000000106,date:"2026-03-01",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:9800,method:"cash",note:"Импорт: 24.02-01.03 2026"},
+        {id:1700000000107,date:"2026-03-08",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:11200,method:"cash",note:"Импорт: 02.03-08.03 2026"},
+        {id:1700000000108,date:"2026-03-08",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:3750,method:"cash",note:"Импорт: 02.03-08.03 2026"},
+        {id:1700000000109,date:"2026-03-15",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:16440,method:"cash",note:"Импорт: 09.03-15.03 2026"},
+        {id:1700000000110,date:"2026-03-15",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:6460,method:"cash",note:"Импорт: 09.03-15.03 2026"},
+        {id:1700000000111,date:"2026-03-22",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:4240,method:"cash",note:"Импорт: 16.03-22.03 2026"},
+        {id:1700000000112,date:"2026-03-22",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:20760,method:"cash",note:"Импорт: 16.03-22.03 2026"},
+        {id:1700000000113,date:"2026-03-22",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:9560,method:"cash",note:"Импорт: 16.03-22.03 2026"},
+        {id:1700000000114,date:"2026-03-29",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:14200,method:"cash",note:"Импорт: 23.03-29.03 2026"},
+        {id:1700000000115,date:"2026-03-29",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:7000,method:"cash",note:"Импорт: 23.03-29.03 2026"}
+    ];
+    const existing = DB.get('salaryPayments', []);
+    const existingIds = new Set(existing.map(p => p.id));
+    let added = 0;
+    importData.forEach(p => {
+        if (!existingIds.has(p.id)) {
+            existing.push(p);
+            added++;
+        }
+    });
+    if (added > 0) {
+        DB.set('salaryPayments', existing);
+        DB.set('salary_import_v1', true);
+        console.log(`Salary import: added ${added} payments from Excel`);
+    } else {
+        DB.set('salary_import_v1', true);
+    }
+}
+
 function onFirestoreReady() {
+    // One-time salary import from Excel spreadsheet
+    importSalaryPaymentsFromExcel();
+
     // Refresh UI with data from Firestore
     applyAccentColor(DB.get('accentColor', '#FFD600'));
     if (typeof loadDashboard === 'function') loadDashboard();
