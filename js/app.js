@@ -2698,8 +2698,20 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         const mgrEarned = getManagerDailyAccruals(emp, aStart, aEnd).reduce((s, a) => s + a.amount, 0);
         const earned = shiftEarned + mgrEarned;
 
-        // Period paid (within selected period)
-        const paid = allPayments.filter(p => p.employeeId === emp.id && p.date >= aStart && p.date <= aEnd).reduce((s, p) => s + (p.amount || 0), 0);
+        // Debt before period start (cumulative earned - cumulative paid BEFORE this period)
+        const prevDay = new Date(aStart + 'T00:00:00'); prevDay.setDate(prevDay.getDate() - 1);
+        const prevEnd = `${prevDay.getFullYear()}-${String(prevDay.getMonth()+1).padStart(2,'0')}-${String(prevDay.getDate()).padStart(2,'0')}`;
+        const cumEarnedBefore = allShifts.filter(s => s.employeeId === emp.id && s.date <= prevEnd && (s.shiftRole || s.employeeRole) !== 'manager')
+            .reduce((s, sh) => s + (sh.earnings?.total || 0), 0)
+            + getManagerDailyAccruals(emp, '2020-01-01', prevEnd).reduce((s, a) => s + a.amount, 0);
+        const cumPaidBefore = allPayments.filter(p => p.employeeId === emp.id && p.date <= prevEnd).reduce((s, p) => s + (p.amount || 0), 0);
+        const debtBefore = Math.max(0, cumEarnedBefore - cumPaidBefore);
+
+        // Payments made in this period
+        const rawPaid = allPayments.filter(p => p.employeeId === emp.id && p.date >= aStart && p.date <= aEnd).reduce((s, p) => s + (p.amount || 0), 0);
+
+        // Subtract previous debt from period payments (those payments cover old debt, not current period)
+        const paid = Math.max(0, rawPaid - debtBefore);
 
         // Cumulative balance: all-time earned up to end of period − all-time paid up to end of period
         const cumEarned = allShifts.filter(s => s.employeeId === emp.id && s.date <= aEnd && (s.shiftRole || s.employeeRole) !== 'manager')
