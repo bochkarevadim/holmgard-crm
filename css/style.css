@@ -3082,6 +3082,44 @@ body {
     /* --- Employee shift buttons --- */
     .btn-shift { padding: 14px; font-size: 14px; }
 
+    /* --- Director Dashboard compact --- */
+    .dash-card { padding: 14px; }
+    .dash-card-header { margin-bottom: 12px; }
+    .dash-card-header h3 { font-size: 12px; gap: 6px; letter-spacing: 0.3px; }
+    .dash-card-header h3 .material-icons-round { font-size: 16px; }
+    .revenue-amount { font-size: 24px; }
+    .revenue-change { font-size: 14px; }
+    .revenue-label { font-size: 10px; }
+    .revenue-main { gap: 14px; margin-bottom: 12px; }
+    .chart-container { height: 140px; }
+    .chart-sm { height: 120px; }
+    .dash-big-number { font-size: 32px; margin-bottom: 10px; }
+    .dashboard-period { gap: 2px; flex-wrap: wrap; }
+    .period-btn { padding: 4px 8px; font-size: 11px; }
+    .rating-period-toggle { gap: 2px; }
+    .svc-rating-btn, .rating-period-btn { padding: 4px 8px; font-size: 11px; }
+    .list-item { padding: 8px 10px; font-size: 12px; gap: 8px; }
+    .list-item-info strong { font-size: 12px; }
+    .list-item-info span { font-size: 10px; }
+    .list-item-badge { padding: 3px 8px; font-size: 10px; }
+
+    /* --- Tariffs compact --- */
+    .tariff-tabs { gap: 3px; margin-bottom: 12px; }
+    .tariff-tab { padding: 7px 12px; font-size: 12px; }
+    .tariff-card { padding: 14px; }
+    .tariff-card-header { margin-bottom: 8px; }
+    .tariff-card-header h3 { font-size: 14px; }
+    .tariff-price { font-size: 16px; }
+    .tariff-price .tariff-unit { font-size: 11px; }
+    .tariff-description { font-size: 12px; margin-bottom: 8px; }
+    .tariff-meta { gap: 10px; font-size: 11px; flex-wrap: wrap; }
+    .tariff-meta .material-icons-round { font-size: 14px; }
+    .tariff-meta .consumable-badge { font-size: 10px; padding: 2px 6px; }
+    .tariff-subcategory-btn { padding: 14px 16px; font-size: 13px; gap: 10px; }
+    .tariff-subcategory-btn .material-icons-round { font-size: 22px; }
+    .tariff-back-btn { font-size: 13px; }
+    .section-header h2 { font-size: 16px; }
+
     /* --- Finance summary cards --- */
     .finance-summary { gap: 8px; }
     .fin-card { padding: 12px; }
@@ -3223,8 +3261,23 @@ body {
 /* ===== SMALL MOBILE (< 480px) ===== */
 @media (max-width: 480px) {
     .page { padding: 12px 8px; }
-    .dash-card { padding: 14px; }
+    .dash-card { padding: 10px; }
+    .dash-card-header { margin-bottom: 8px; }
+    .revenue-amount { font-size: 20px; }
+    .revenue-change { font-size: 12px; }
+    .dash-big-number { font-size: 26px; margin-bottom: 8px; }
+    .chart-container { height: 120px; }
+    .chart-sm { height: 100px; }
+    .stock-item { padding: 8px 10px; }
+    .stock-item-value { font-size: 18px; }
+    .stock-item-header { font-size: 9px; }
     .data-table th, .data-table td { padding: 5px 6px; font-size: 11px; }
+    .tariff-card { padding: 10px; }
+    .tariff-card-header h3 { font-size: 13px; }
+    .tariff-price { font-size: 14px; }
+    .tariff-tab { padding: 6px 10px; font-size: 11px; }
+    .tariff-subcategory-btn { padding: 12px 14px; font-size: 12px; }
+    .section-header h2 { font-size: 15px; }
     .cal-day { width: 26px; height: 26px; font-size: 10px; margin: 1px auto; }
     .cal-header { font-size: 9px; padding: 1px 0; }
     .calendar-nav h3 { font-size: 13px; min-width: 0; }
