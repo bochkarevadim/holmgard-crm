@@ -2689,7 +2689,7 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
 
     const periodNames = { month: 'Текущий месяц', quarter: 'Текущий квартал', year: 'Текущий год' };
 
-    let totalFundEarned = 0, totalFundPaid = 0, totalFundDebt = 0;
+    let totalFundEarned = 0, totalFundPaid = 0;
 
     const empRows = employees.map(emp => {
         // Period earned
@@ -2706,7 +2706,6 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
 
         totalFundEarned += earned;
         totalFundPaid += paid;
-        totalFundDebt += balance > 0 ? balance : 0;
 
         const balClass = balance > 0 ? 'red' : balance < 0 ? 'green' : '';
 
@@ -2719,6 +2718,11 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         </tr>`;
     }).join('');
 
+    const totalBalance = totalFundEarned - totalFundPaid;
+    const debtLabel = totalBalance > 0 ? 'Задолженность' : totalBalance < 0 ? 'Переплата' : 'Задолженность';
+    const debtColor = totalBalance > 0 ? 'red' : totalBalance < 0 ? 'green' : '';
+    const debtCardClass = totalBalance > 0 ? 'sa-card-debt' : totalBalance < 0 ? 'sa-card-overpay' : 'sa-card-debt';
+
     contentEl.innerHTML = `
         <div class="salary-analytics-grid">
             <div class="salary-analytics-card sa-card-fund">
@@ -2729,9 +2733,9 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
                 <div class="salary-analytics-title">Выплачено</div>
                 <div class="salary-analytics-value">${formatMoney(totalFundPaid)}</div>
             </div>
-            <div class="salary-analytics-card sa-card-debt">
-                <div class="salary-analytics-title">Задолженность</div>
-                <div class="salary-analytics-value">${formatMoney(totalFundDebt)}</div>
+            <div class="salary-analytics-card ${debtCardClass}">
+                <div class="salary-analytics-title">${debtLabel}</div>
+                <div class="salary-analytics-value">${formatMoney(Math.abs(totalBalance))}</div>
             </div>
         </div>
         <div class="table-container" style="margin-top:12px;">
@@ -2744,7 +2748,7 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
                         <td colspan="2">Итого</td>
                         <td style="text-align:right;">${formatMoney(totalFundEarned)}</td>
                         <td style="text-align:right;color:var(--green);">${formatMoney(totalFundPaid)}</td>
-                        <td style="text-align:right;color:var(--${totalFundDebt > 0 ? 'red' : 'text'});">${formatMoney(totalFundDebt)}</td>
+                        <td style="text-align:right;color:var(--${totalBalance > 0 ? 'red' : totalBalance < 0 ? 'green' : 'text'});">${formatMoney(Math.abs(totalBalance))}</td>
                     </tr>
                 </tbody>
             </table>

@@ -1595,6 +1595,8 @@ body {
 .sa-card-paid .salary-analytics-value { color: var(--green); }
 .sa-card-debt { border-left: 4px solid var(--red); }
 .sa-card-debt .salary-analytics-value { color: var(--red); }
+.sa-card-overpay { border-left: 4px solid var(--green); }
+.sa-card-overpay .salary-analytics-value { color: var(--green); }
 .salary-analytics-title {
     font-size: 11px;
     font-weight: 600;
