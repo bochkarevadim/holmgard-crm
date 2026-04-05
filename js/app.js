@@ -2692,17 +2692,21 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
     let totalFundEarned = 0, totalFundPaid = 0;
 
     const empRows = employees.map(emp => {
-        // Period earned
+        // Period earned (within selected period)
         const shifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= aStart && s.date <= aEnd && (s.shiftRole || s.employeeRole) !== 'manager');
         const shiftEarned = shifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
         const mgrEarned = getManagerDailyAccruals(emp, aStart, aEnd).reduce((s, a) => s + a.amount, 0);
         const earned = shiftEarned + mgrEarned;
 
-        // Period paid
+        // Period paid (within selected period)
         const paid = allPayments.filter(p => p.employeeId === emp.id && p.date >= aStart && p.date <= aEnd).reduce((s, p) => s + (p.amount || 0), 0);
 
-        // Balance = earned - paid for this period
-        const balance = earned - paid;
+        // Cumulative balance: all-time earned up to end of period − all-time paid up to end of period
+        const cumEarned = allShifts.filter(s => s.employeeId === emp.id && s.date <= aEnd && (s.shiftRole || s.employeeRole) !== 'manager')
+            .reduce((s, sh) => s + (sh.earnings?.total || 0), 0)
+            + getManagerDailyAccruals(emp, '2020-01-01', aEnd).reduce((s, a) => s + a.amount, 0);
+        const cumPaid = allPayments.filter(p => p.employeeId === emp.id && p.date <= aEnd).reduce((s, p) => s + (p.amount || 0), 0);
+        const balance = cumEarned - cumPaid;
 
         totalFundEarned += earned;
         totalFundPaid += paid;
@@ -2718,7 +2722,16 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         </tr>`;
     }).join('');
 
-    const totalBalance = totalFundEarned - totalFundPaid;
+    // Cumulative total balance across all employees
+    const totalCumEarned = employees.reduce((s, emp) => {
+        return s + allShifts.filter(sh => sh.employeeId === emp.id && sh.date <= aEnd && (sh.shiftRole || sh.employeeRole) !== 'manager')
+            .reduce((ss, sh) => ss + (sh.earnings?.total || 0), 0)
+            + getManagerDailyAccruals(emp, '2020-01-01', aEnd).reduce((ss, a) => ss + a.amount, 0);
+    }, 0);
+    const totalCumPaid = employees.reduce((s, emp) => {
+        return s + allPayments.filter(p => p.employeeId === emp.id && p.date <= aEnd).reduce((ss, p) => ss + (p.amount || 0), 0);
+    }, 0);
+    const totalBalance = totalCumEarned - totalCumPaid;
     const debtLabel = totalBalance > 0 ? 'Задолженность' : totalBalance < 0 ? 'Переплата' : 'Задолженность';
     const debtColor = totalBalance > 0 ? 'red' : totalBalance < 0 ? 'green' : '';
     const debtCardClass = totalBalance > 0 ? 'sa-card-debt' : totalBalance < 0 ? 'sa-card-overpay' : 'sa-card-debt';
