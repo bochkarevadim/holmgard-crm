@@ -2537,6 +2537,32 @@ body {
 }
 .cert-pay-option input[type="radio"] { width: 14px; height: 14px; accent-color: var(--accent); }
 
+.cert-transfer-banks {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.cert-bank-option {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+.cert-bank-option:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+}
+.cert-bank-option input[type="radio"] { width: 0; height: 0; opacity: 0; position: absolute; }
+
 /* Certificate autocomplete */
 .cert-autocomplete-list {
     position: absolute;

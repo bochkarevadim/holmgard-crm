@@ -1154,7 +1154,7 @@ function getEmployeeMonthEarnings(employeeId) {
 
 // ===== SALARY PAYMENT HELPERS =====
 function getPaymentMethodName(method) {
-    const names = { cash: 'Наличные', card: 'Карта', sberbank: 'Сбербанк', tbank: 'Т-Банк', raiffeisen: 'Райффайзен', alfabank: 'Альфа Банк', invoice: 'По счёту', qr: 'QR' };
+    const names = { cash: 'Наличные', card: 'Карта', transfer: 'Перевод', sberbank: 'Сбербанк', tbank: 'Т-Банк', raiffeisen: 'Райффайзен', alfabank: 'Альфа Банк', invoice: 'По счёту', qr: 'QR' };
     return names[method] || method;
 }
 
@@ -3849,7 +3849,7 @@ function loadFinances(period) {
             <td style="color:var(--accent);font-weight:600">${c.number || '—'}</td>
             <td>${formatMoney(c.initialAmount || 0)}</td>
             <td>${c.buyerName || '—'}</td>
-            <td>${getPaymentMethodName(c.paymentMethod)}</td>
+            <td>${c.paymentMethod === 'transfer' && c.transferBank ? getPaymentMethodName(c.transferBank) : getPaymentMethodName(c.paymentMethod)}</td>
         </tr>`).join('');
         html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
             <td colspan="2" style="text-align:right;">Итого продано:</td>
@@ -3892,6 +3892,21 @@ function onCertTypeChange() {
     numField.placeholder = type === 'paper' ? 'БС-2026-0001' : 'ЭС-2026-0001';
 }
 
+function toggleCertTransferBanks(e) {
+    // Select the radio inside the clicked label
+    const radio = e.currentTarget.querySelector('input[type="radio"]');
+    if (radio) radio.checked = true;
+    document.getElementById('cert-transfer-banks').style.display = '';
+}
+
+// Hide transfer banks when other payment is selected
+document.addEventListener('change', (e) => {
+    if (e.target.name === 'cert-payment' && e.target.value !== 'transfer') {
+        const banks = document.getElementById('cert-transfer-banks');
+        if (banks) banks.style.display = 'none';
+    }
+});
+
 function openCertificateModal(certId) {
     const cert = certId ? DB.get('certificates', []).find(c => c.id === certId) : null;
     document.getElementById('modal-cert-title').textContent = cert ? 'Редактирование сертификата' : 'Новый сертификат';
@@ -3918,10 +3933,22 @@ function openCertificateModal(certId) {
     document.getElementById('cert-buyer-phone').value = cert ? (cert.buyerPhone || '') : '';
     document.getElementById('cert-note').value = cert ? (cert.note || '') : '';
 
-    const paymentMethod = cert ? cert.paymentMethod : 'cash';
+    const paymentMethod = cert ? cert.paymentMethod : 'card';
     document.querySelectorAll('input[name="cert-payment"]').forEach(r => {
         r.checked = r.value === paymentMethod;
     });
+
+    // Transfer banks
+    const banksEl = document.getElementById('cert-transfer-banks');
+    if (paymentMethod === 'transfer') {
+        banksEl.style.display = '';
+        const transferBank = cert ? (cert.transferBank || 'sberbank') : 'sberbank';
+        document.querySelectorAll('input[name="cert-transfer-bank"]').forEach(r => {
+            r.checked = r.value === transferBank;
+        });
+    } else {
+        banksEl.style.display = 'none';
+    }
 
     // Usage history
     const historyBlock = document.getElementById('cert-usage-history');
@@ -3956,6 +3983,8 @@ function saveCertificate(e) {
         buyerName: document.getElementById('cert-buyer-name').value.trim(),
         buyerPhone: document.getElementById('cert-buyer-phone').value.trim(),
         paymentMethod: document.querySelector('input[name="cert-payment"]:checked').value,
+        transferBank: document.querySelector('input[name="cert-payment"]:checked').value === 'transfer'
+            ? (document.querySelector('input[name="cert-transfer-bank"]:checked')?.value || 'sberbank') : null,
         note: document.getElementById('cert-note').value.trim(),
     };
 

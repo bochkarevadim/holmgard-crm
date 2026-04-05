@@ -970,7 +970,7 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Номер сертификата</label>
-                                <input type="text" id="cert-number" placeholder="ЭС-2026-0001" readonly>
+                                <input type="text" id="cert-number" placeholder="ЭС-2026-0001">
                             </div>
                             <div class="form-group">
                                 <label>Номинал (₽)</label>
@@ -1001,12 +1001,15 @@
                             <label>Способ оплаты</label>
                             <div class="cert-payment-methods">
                                 <label class="cert-pay-option"><input type="radio" name="cert-payment" value="card" checked> 💳 Карта</label>
-                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="sberbank"> 🟢 Сбер</label>
-                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="tbank"> 🟡 Т-Банк</label>
-                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="raiffeisen"> 🟡 Райф</label>
-                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="alfabank"> 🔴 Альфа</label>
+                                <label class="cert-pay-option cert-pay-transfer" onclick="toggleCertTransferBanks(event)"><input type="radio" name="cert-payment" value="transfer"> 🏦 Перевод</label>
                                 <label class="cert-pay-option"><input type="radio" name="cert-payment" value="invoice"> 📋 По счёту</label>
                                 <label class="cert-pay-option"><input type="radio" name="cert-payment" value="qr"> 📱 QR</label>
+                            </div>
+                            <div class="cert-transfer-banks" id="cert-transfer-banks" style="display:none;">
+                                <label class="cert-bank-option"><input type="radio" name="cert-transfer-bank" value="sberbank" checked> 🟢 Сбер</label>
+                                <label class="cert-bank-option"><input type="radio" name="cert-transfer-bank" value="tbank"> 🟡 Т-Банк</label>
+                                <label class="cert-bank-option"><input type="radio" name="cert-transfer-bank" value="raiffeisen"> 🟡 Райф</label>
+                                <label class="cert-bank-option"><input type="radio" name="cert-transfer-bank" value="alfabank"> 🔴 Альфа</label>
                             </div>
                         </div>
                         <div class="form-group">
