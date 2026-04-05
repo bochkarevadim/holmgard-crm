@@ -3746,27 +3746,11 @@ function loadFinances(period) {
     );
     const totalIncome = completedEvents.reduce((sum, e) => sum + (e.price || e.totalPrice || 0), 0);
 
-    // === 2. CONSUMABLES: cost of balls/grenades used ===
-    const consumablePrices = DB.get('consumablePrices', { ball: 1.5, grenade: 50, smoke: 50 });
-    let totalConsumablesCost = 0;
-    const consumableRows = [];
-    completedEvents.forEach(ev => {
-        const used = ev.consumablesUsed || {};
-        const balls = used.balls || 0;
-        const grenades = used.grenades || 0;
-        const cost = Math.round(balls * (consumablePrices.ball || 1.5) + grenades * (consumablePrices.grenade || 50));
-        if (balls > 0 || grenades > 0) {
-            totalConsumablesCost += cost;
-            consumableRows.push({ date: ev.date, title: ev.title || ev.clientName || 'Мероприятие', balls, grenades, cost });
-        }
-    });
-
-    // Also include incoming documents (purchases) as consumable expenses
+    // === 2. CONSUMABLES: only actual purchases (incoming documents) ===
     const docs = DB.get('documents', []).filter(d =>
         d.type === 'incoming' && d.date >= startDate && d.date <= endDate
     );
-    const totalDocExpenses = docs.reduce((sum, d) => sum + (d.amount || 0), 0);
-    totalConsumablesCost += totalDocExpenses;
+    const totalConsumablesCost = docs.reduce((sum, d) => sum + (d.amount || 0), 0);
 
     // === 3. SALARIES: payments made in this period ===
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
@@ -3820,30 +3804,19 @@ function loadFinances(period) {
         }).join('');
     }
 
-    // === CONSUMABLES TABLE ===
+    // === CONSUMABLES TABLE (only purchases) ===
     const consBody = document.getElementById('fin-consumables-body');
-    if (consumableRows.length === 0 && docs.length === 0) {
-        consBody.innerHTML = '<tr><td colspan="5" class="empty-state">Нет расхода расходников за период</td></tr>';
+    if (docs.length === 0) {
+        consBody.innerHTML = '<tr><td colspan="5" class="empty-state">Нет закупок за период</td></tr>';
     } else {
-        let html = consumableRows.map(r => `<tr>
-            <td>${r.date}</td>
-            <td>${r.title}</td>
-            <td>${r.balls > 0 ? r.balls + ' шт.' : '—'}</td>
-            <td>${r.grenades > 0 ? r.grenades + ' шт.' : '—'}</td>
-            <td style="color:var(--red);font-weight:600">${formatMoney(r.cost)}</td>
+        let html = docs.map(d => `<tr>
+            <td>${d.date}</td>
+            <td>${d.item || '—'}</td>
+            <td colspan="2">${d.qty || '—'} шт.</td>
+            <td style="color:var(--red);font-weight:600">${formatMoney(d.amount || 0)}</td>
         </tr>`).join('');
-        // Add document purchases
-        docs.forEach(d => {
-            html += `<tr>
-                <td>${d.date}</td>
-                <td>Закупка: ${d.item || '—'}</td>
-                <td colspan="2">${d.qty || '—'} шт.</td>
-                <td style="color:var(--red);font-weight:600">${formatMoney(d.amount || 0)}</td>
-            </tr>`;
-        });
-        // Total row
         html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
-            <td colspan="4" style="text-align:right;">Итого расходники:</td>
+            <td colspan="4" style="text-align:right;">Итого закупки:</td>
             <td style="color:var(--red);">${formatMoney(totalConsumablesCost)}</td>
         </tr>`;
         consBody.innerHTML = html;
