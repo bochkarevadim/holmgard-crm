@@ -813,12 +813,13 @@
 
             <!-- Breakdown sections (collapsible) -->
             <div class="fin-breakdown" id="fin-breakdown-income">
-                <div class="fin-breakdown-header" onclick="toggleFinSection('income')">
-                    <div class="fin-breakdown-title">
+                <div class="fin-breakdown-header">
+                    <div class="fin-breakdown-title" onclick="toggleFinSection('income')" style="cursor:pointer;flex:1;">
                         <span class="material-icons-round">event</span>
                         <span>Доходы</span>
                     </div>
-                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-income">expand_more</span>
+                    <button class="btn-sm btn-primary" onclick="openFinEntryModal('income')" style="margin-right:8px;font-size:11px;padding:4px 10px;">+ Доход</button>
+                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-income" onclick="toggleFinSection('income')" style="cursor:pointer;">expand_more</span>
                 </div>
                 <div class="fin-breakdown-content" id="fin-content-income" style="display:none;">
                     <div class="table-container">
@@ -831,12 +832,13 @@
             </div>
 
             <div class="fin-breakdown" id="fin-breakdown-consumables">
-                <div class="fin-breakdown-header" onclick="toggleFinSection('consumables')">
-                    <div class="fin-breakdown-title">
+                <div class="fin-breakdown-header">
+                    <div class="fin-breakdown-title" onclick="toggleFinSection('consumables')" style="cursor:pointer;flex:1;">
                         <span class="material-icons-round">sports_baseball</span>
                         <span>Расходы</span>
                     </div>
-                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-consumables">expand_more</span>
+                    <button class="btn-sm btn-primary" onclick="openFinEntryModal('expense')" style="margin-right:8px;font-size:11px;padding:4px 10px;">+ Расход</button>
+                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-consumables" onclick="toggleFinSection('consumables')" style="cursor:pointer;">expand_more</span>
                 </div>
                 <div class="fin-breakdown-content" id="fin-content-consumables" style="display:none;">
                     <div class="table-container">
@@ -881,6 +883,56 @@
                             <tbody id="fin-certificates-body"></tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== FINANCE ENTRY MODAL ===== -->
+        <div class="modal-overlay" id="modal-fin-entry">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2 id="modal-fin-entry-title">Добавить доход</h2>
+                    <button class="btn-close" id="modal-fin-entry-close">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="fin-entry-form">
+                        <input type="hidden" id="fin-entry-id">
+                        <input type="hidden" id="fin-entry-type" value="income">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Дата</label>
+                                <input type="date" id="fin-entry-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Сумма (₽)</label>
+                                <input type="number" id="fin-entry-amount" placeholder="0" min="1" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Описание</label>
+                            <input type="text" id="fin-entry-description" placeholder="Аренда / Продажа / Услуга..." required>
+                        </div>
+                        <div class="form-group">
+                            <label>Способ оплаты</label>
+                            <select id="fin-entry-method">
+                                <option value="cash">Наличные</option>
+                                <option value="card">Карта</option>
+                                <option value="transfer">Перевод</option>
+                                <option value="invoice">По счёту</option>
+                                <option value="qr">QR</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Комментарий</label>
+                            <textarea id="fin-entry-comment" rows="2" placeholder="Примечание..."></textarea>
+                        </div>
+                        <div class="modal-actions">
+                            <button type="button" class="btn-secondary" id="btn-cancel-fin-entry">Отмена</button>
+                            <button type="submit" class="btn-primary" id="btn-save-fin-entry">Сохранить</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>

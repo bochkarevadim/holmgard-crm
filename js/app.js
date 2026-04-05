@@ -32,7 +32,7 @@ const FIRESTORE_KEYS = new Set([
     'loyaltyPercent', 'accentColor', 'empDashOrder',
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
-    'certificates', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
+    'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
     'directorDashOrder'
 ]);
 
@@ -3766,6 +3766,60 @@ function initFinances() {
     document.getElementById('btn-cancel-salary-payment')?.addEventListener('click', () => closeModal('modal-salary-payment'));
     document.getElementById('btn-confirm-salary-payment')?.addEventListener('click', confirmSalaryPayment);
     document.getElementById('salary-pay-employee')?.addEventListener('change', function() { updateSalaryPayInfo(this.value); });
+    // Finance entry modal
+    document.getElementById('modal-fin-entry-close')?.addEventListener('click', () => closeModal('modal-fin-entry'));
+    document.getElementById('btn-cancel-fin-entry')?.addEventListener('click', () => closeModal('modal-fin-entry'));
+    document.getElementById('fin-entry-form')?.addEventListener('submit', saveFinEntry);
+}
+
+function openFinEntryModal(type, entryId) {
+    const entry = entryId ? DB.get('finEntries', []).find(e => e.id === entryId) : null;
+    document.getElementById('modal-fin-entry-title').textContent = entry
+        ? (type === 'income' ? 'Редактировать доход' : 'Редактировать расход')
+        : (type === 'income' ? 'Добавить доход' : 'Добавить расход');
+    document.getElementById('fin-entry-id').value = entry ? entry.id : '';
+    document.getElementById('fin-entry-type').value = type;
+    document.getElementById('fin-entry-date').value = entry ? entry.date : todayLocal();
+    document.getElementById('fin-entry-amount').value = entry ? entry.amount : '';
+    document.getElementById('fin-entry-description').value = entry ? entry.description : '';
+    document.getElementById('fin-entry-method').value = entry ? (entry.method || 'cash') : 'cash';
+    document.getElementById('fin-entry-comment').value = entry ? (entry.comment || '') : '';
+    openModal('modal-fin-entry');
+}
+
+function saveFinEntry(e) {
+    e.preventDefault();
+    const entries = DB.get('finEntries', []);
+    const id = document.getElementById('fin-entry-id').value;
+    const data = {
+        type: document.getElementById('fin-entry-type').value,
+        date: document.getElementById('fin-entry-date').value,
+        amount: parseFloat(document.getElementById('fin-entry-amount').value) || 0,
+        description: document.getElementById('fin-entry-description').value.trim(),
+        method: document.getElementById('fin-entry-method').value,
+        comment: document.getElementById('fin-entry-comment').value.trim(),
+    };
+    if (id) {
+        const idx = entries.findIndex(e => e.id === parseInt(id));
+        if (idx >= 0) entries[idx] = { ...entries[idx], ...data };
+    } else {
+        data.id = Date.now();
+        entries.push(data);
+    }
+    DB.set('finEntries', entries);
+    closeModal('modal-fin-entry');
+    loadFinances();
+    showToast(data.type === 'income' ? 'Доход добавлен' : 'Расход добавлен');
+}
+
+function deleteFinEntry(entryId) {
+    showConfirm('Удалить запись?', 'Это действие нельзя отменить', () => {
+        let entries = DB.get('finEntries', []);
+        entries = entries.filter(e => e.id !== entryId);
+        DB.set('finEntries', entries);
+        loadFinances();
+        showToast('Запись удалена');
+    });
 }
 
 function loadFinances(period) {
@@ -3795,11 +3849,18 @@ function loadFinances(period) {
     );
     const totalIncome = completedEvents.reduce((sum, e) => sum + (e.price || e.totalPrice || 0), 0);
 
+    // === 1b. MANUAL INCOME/EXPENSE entries ===
+    const allFinEntries = DB.get('finEntries', []);
+    const periodIncomeEntries = allFinEntries.filter(e => e.type === 'income' && e.date >= startDate && e.date <= endDate);
+    const periodExpenseEntries = allFinEntries.filter(e => e.type === 'expense' && e.date >= startDate && e.date <= endDate);
+    const totalManualIncome = periodIncomeEntries.reduce((s, e) => s + (e.amount || 0), 0);
+    const totalManualExpense = periodExpenseEntries.reduce((s, e) => s + (e.amount || 0), 0);
+
     // === 2. CONSUMABLES: only actual purchases (incoming documents) ===
     const docs = DB.get('documents', []).filter(d =>
         d.type === 'incoming' && d.date >= startDate && d.date <= endDate
     );
-    const totalConsumablesCost = docs.reduce((sum, d) => sum + (d.amount || 0) + (d.delivery || 0), 0);
+    const totalConsumablesCost = docs.reduce((sum, d) => sum + (d.amount || 0) + (d.delivery || 0), 0) + totalManualExpense;
 
     // === 3. SALARIES: payments made in this period ===
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
@@ -3823,10 +3884,11 @@ function loadFinances(period) {
     const totalCertIncome = periodCerts.reduce((sum, c) => sum + (c.initialAmount || 0), 0);
 
     const totalExpenses = totalConsumablesCost + periodSalariesPaid;
-    const totalBalance = totalIncome + totalCertIncome - totalExpenses;
+    const totalAllIncome = totalIncome + totalCertIncome + totalManualIncome;
+    const totalBalance = totalAllIncome - totalExpenses;
 
     // === UPDATE CARDS ===
-    document.getElementById('fin-income').textContent = formatMoney(totalIncome);
+    document.getElementById('fin-income').textContent = formatMoney(totalIncome + totalManualIncome);
     document.getElementById('fin-cert-income').textContent = formatMoney(totalCertIncome);
     document.getElementById('fin-consumables').textContent = formatMoney(totalConsumablesCost);
     document.getElementById('fin-salaries').textContent = formatMoney(periodSalariesPaid);
@@ -3835,12 +3897,12 @@ function loadFinances(period) {
     balEl.textContent = (totalBalance >= 0 ? '+' : '') + formatMoney(totalBalance);
     balEl.className = 'fin-card-value ' + (totalBalance > 0 ? 'green' : totalBalance < 0 ? 'red' : '');
 
-    // === EVENTS TABLE ===
+    // === EVENTS TABLE (events + manual income) ===
     const evtBody = document.getElementById('fin-events-body');
-    if (completedEvents.length === 0) {
-        evtBody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет мероприятий за период</td></tr>';
+    if (completedEvents.length === 0 && periodIncomeEntries.length === 0) {
+        evtBody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет доходов за период</td></tr>';
     } else {
-        evtBody.innerHTML = completedEvents.slice().sort((a, b) => b.date.localeCompare(a.date)).map(ev => {
+        let incomeHtml = completedEvents.slice().sort((a, b) => b.date.localeCompare(a.date)).map(ev => {
             const methodName = ev.paymentDetails ? getPaymentMethodName(ev.paymentDetails.method) : '—';
             return `<tr>
                 <td>${ev.date}</td>
@@ -3851,12 +3913,24 @@ function loadFinances(period) {
                 <td>${methodName}</td>
             </tr>`;
         }).join('');
+        // Manual income entries
+        incomeHtml += periodIncomeEntries.sort((a, b) => b.date.localeCompare(a.date)).map(e => `<tr style="background:rgba(255,215,0,0.08);">
+            <td>${e.date}</td>
+            <td colspan="2">${e.description}${e.comment ? ' <span style="color:var(--text-secondary);font-size:11px;">(' + e.comment + ')</span>' : ''}</td>
+            <td>—</td>
+            <td style="color:var(--green);font-weight:600">${formatMoney(e.amount)}</td>
+            <td>${getPaymentMethodName(e.method)}
+                <button class="btn-icon" onclick="openFinEntryModal('income',${e.id})" title="Редактировать"><span class="material-icons-round" style="font-size:14px;">edit</span></button>
+                <button class="btn-icon" onclick="deleteFinEntry(${e.id})" title="Удалить"><span class="material-icons-round" style="font-size:14px;">delete</span></button>
+            </td>
+        </tr>`).join('');
+        evtBody.innerHTML = incomeHtml;
     }
 
-    // === CONSUMABLES TABLE (only purchases) ===
+    // === CONSUMABLES TABLE (purchases + manual expenses) ===
     const consBody = document.getElementById('fin-consumables-body');
-    if (docs.length === 0) {
-        consBody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет закупок за период</td></tr>';
+    if (docs.length === 0 && periodExpenseEntries.length === 0) {
+        consBody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет расходов за период</td></tr>';
     } else {
         let html = docs.map(d => {
             const delivery = d.delivery || 0;
@@ -3871,13 +3945,21 @@ function loadFinances(period) {
                 <td style="color:var(--red);font-weight:600">${formatMoney(total)}</td>
             </tr>`;
         }).join('');
-        const totalDelivery = docs.reduce((s, d) => s + (d.delivery || 0), 0);
-        const grandTotal = totalConsumablesCost + totalDelivery;
+        // Manual expense entries
+        html += periodExpenseEntries.sort((a, b) => b.date.localeCompare(a.date)).map(e => `<tr style="background:rgba(255,82,82,0.08);">
+            <td>${e.date}</td>
+            <td>${e.description}${e.comment ? ' <span style="color:var(--text-secondary);font-size:11px;">(' + e.comment + ')</span>' : ''}</td>
+            <td>—</td>
+            <td style="color:var(--red);font-weight:600">${formatMoney(e.amount)}</td>
+            <td>—</td>
+            <td>
+                <button class="btn-icon" onclick="openFinEntryModal('expense',${e.id})" title="Редактировать"><span class="material-icons-round" style="font-size:14px;">edit</span></button>
+                <button class="btn-icon" onclick="deleteFinEntry(${e.id})" title="Удалить"><span class="material-icons-round" style="font-size:14px;">delete</span></button>
+            </td>
+        </tr>`).join('');
         html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
-            <td colspan="3" style="text-align:right;">Итого:</td>
-            <td>${formatMoney(totalConsumablesCost)}</td>
-            <td>${totalDelivery > 0 ? formatMoney(totalDelivery) : '—'}</td>
-            <td style="color:var(--red);">${formatMoney(grandTotal)}</td>
+            <td colspan="5" style="text-align:right;">Итого расходы:</td>
+            <td style="color:var(--red);">${formatMoney(totalConsumablesCost)}</td>
         </tr>`;
         consBody.innerHTML = html;
     }
