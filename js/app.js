@@ -2726,17 +2726,17 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
 
     contentEl.innerHTML = `
         <div class="salary-analytics-grid">
-            <div class="salary-analytics-card">
-                <div class="salary-analytics-title">Фонд ЗП (${periodNames[salaryAnalyticsPeriod]})</div>
+            <div class="salary-analytics-card sa-card-fund">
+                <div class="salary-analytics-title">Фонд ЗП</div>
                 <div class="salary-analytics-value">${formatMoney(totalFundEarned)}</div>
             </div>
-            <div class="salary-analytics-card">
+            <div class="salary-analytics-card sa-card-paid">
                 <div class="salary-analytics-title">Выплачено</div>
-                <div class="salary-analytics-value green">${formatMoney(totalFundPaid)}</div>
+                <div class="salary-analytics-value">${formatMoney(totalFundPaid)}</div>
             </div>
-            <div class="salary-analytics-card">
-                <div class="salary-analytics-title">Общая задолженность</div>
-                <div class="salary-analytics-value ${totalFundDebt > 0 ? 'red' : ''}">${formatMoney(totalFundDebt)}</div>
+            <div class="salary-analytics-card sa-card-debt">
+                <div class="salary-analytics-title">Задолженность</div>
+                <div class="salary-analytics-value">${formatMoney(totalFundDebt)}</div>
             </div>
         </div>
         <div class="table-container" style="margin-top:12px;">
@@ -2808,16 +2808,48 @@ function loadEmployees() {
             else break;
         }
 
-        // Build merged day rows: one row per day combining shift + manager
-        const mgrByDate = {};
-        mgrAccruals.forEach(a => { mgrByDate[a.date] = a.amount; });
-        const allDates = new Set();
-        empShifts.forEach(s => allDates.add(s.date));
-        mgrAccruals.forEach(a => allDates.add(a.date));
-        const sortedDates = [...allDates].sort((a, b) => b.localeCompare(a)); // newest first
+        // Build merged timeline: shifts + manager accruals + payments, last 30 days
+        const now30 = moscowNow();
+        const date30ago = new Date(now30); date30ago.setDate(date30ago.getDate() - 30);
+        const start30 = `${date30ago.getFullYear()}-${String(date30ago.getMonth()+1).padStart(2,'0')}-${String(date30ago.getDate()).padStart(2,'0')}`;
 
-        const dayRows = sortedDates.map(date => {
-            const shift = empShifts.find(s => s.date === date);
+        // All shifts for this employee (not limited to period)
+        const allEmpShifts = allShifts.filter(s => s.employeeId === emp.id && (s.shiftRole || s.employeeRole) !== 'manager').sort((a, b) => a.date.localeCompare(b.date));
+        const allMgrAccruals = getManagerDailyAccruals(emp, '2020-01-01', endDate);
+        const allEmpPayments = allPayments.filter(p => p.employeeId === emp.id);
+
+        const mgrByDate = {};
+        allMgrAccruals.forEach(a => { mgrByDate[a.date] = a.amount; });
+
+        // Build timeline entries: shifts/accruals + payments
+        const timeline = [];
+        const shiftDates = new Set();
+        allEmpShifts.forEach(s => shiftDates.add(s.date));
+        allMgrAccruals.forEach(a => shiftDates.add(a.date));
+        [...shiftDates].forEach(date => {
+            timeline.push({ type: 'accrual', date });
+        });
+        allEmpPayments.forEach(p => {
+            timeline.push({ type: 'payment', date: p.date, time: p.time, amount: p.amount, method: p.method, note: p.note });
+        });
+        timeline.sort((a, b) => b.date.localeCompare(a.date) || (a.type === 'payment' ? -1 : 1));
+
+        // Split: last 30 days visible, rest hidden
+        const recentTimeline = timeline.filter(t => t.date >= start30);
+        const olderTimeline = timeline.filter(t => t.date < start30);
+
+        const buildRow = (entry) => {
+            if (entry.type === 'payment') {
+                const dateF = new Date(entry.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                return `<tr style="background:rgba(76,175,80,0.18);">
+                    <td>${dateF}</td>
+                    <td colspan="7" style="color:var(--green);font-weight:700;">💰 Выплата ${formatMoney(entry.amount)} — ${getPaymentMethodName(entry.method)}${entry.note ? ' (' + entry.note + ')' : ''}</td>
+                    <td style="color:var(--green);font-weight:700;">${formatMoney(entry.amount)}</td>
+                    <td></td>
+                </tr>`;
+            }
+            const date = entry.date;
+            const shift = allEmpShifts.find(s => s.date === date);
             const mgrAmount = mgrByDate[date] || 0;
             const dateF = new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
@@ -2834,7 +2866,6 @@ function loadEmployees() {
                 const [eh, em] = (shift.endTime || '0:0').split(':').map(Number);
                 hours = (((eh * 60 + em) - (sh * 60 + sm)) / 60).toFixed(1) + 'ч';
                 base = shift.earnings?.base || 0;
-                // Split bonuses by event role (bonusType on each bonus entry)
                 (shift.eventBonuses || []).forEach(b => {
                     if (b.bonusType === 'admin') adminBonus += (b.amount || 0);
                     else instrBonus += (b.amount || 0);
@@ -2844,7 +2875,6 @@ function loadEmployees() {
             }
 
             const dayTotal = base + instrBonus + adminBonus + mgrAmount;
-            // Check paid status — shift and manager both paid for this day
             const shiftPaid = shiftId ? paidIds.has(shiftId) : true;
             const mgrPaid = mgrAmount > 0 ? paidIds.has('mgr_' + date) : true;
             const isPaid = (shiftId || mgrAmount > 0) && shiftPaid && mgrPaid;
@@ -2862,14 +2892,11 @@ function loadEmployees() {
                 <td style="font-weight:700">${formatMoney(dayTotal)}</td>
                 <td>${hasComment ? '<span class="material-icons-round" style="font-size:16px;color:var(--accent);">comment</span>' : ''}</td>
             </tr>`;
-        }).join('');
+        };
 
-        const hasData = sortedDates.length > 0;
-
-        const paymentRows = empPayments.slice().reverse().map(p => `<tr>
-            <td>${p.date}</td><td>${p.time}</td><td style="color:var(--green);font-weight:700">${formatMoney(p.amount)}</td>
-            <td>${getPaymentMethodName(p.method)}</td><td>${p.note || '—'}</td>
-        </tr>`).join('');
+        const dayRows = recentTimeline.map(buildRow).join('');
+        const olderRows = olderTimeline.map(buildRow).join('');
+        const hasData = timeline.length > 0;
 
         return `<div class="emp-dash-card" data-emp-id="${emp.id}">
             <div class="emp-dash-card-header" onclick="toggleEmpCard(${emp.id})">
@@ -2879,15 +2906,7 @@ function loadEmployees() {
                 <div class="emp-dash-card-stats">
                     <div class="emp-dash-stat">
                         <span class="emp-dash-stat-label">К выплате</span>
-                        <span class="emp-dash-stat-value">${formatMoney(earned)}</span>
-                    </div>
-                    <div class="emp-dash-stat">
-                        <span class="emp-dash-stat-label">Выплачено</span>
-                        <span class="emp-dash-stat-value green">${formatMoney(paid)}</span>
-                    </div>
-                    <div class="emp-dash-stat">
-                        <span class="emp-dash-stat-label">${balance >= 0 ? 'Задолженность' : 'Переплата'}</span>
-                        <span class="emp-dash-stat-value ${balance > 0 ? 'red' : balance < 0 ? 'green' : ''}">${formatMoney(Math.abs(balance))}</span>
+                        <span class="emp-dash-stat-value ${balance > 0 ? 'red' : ''}">${formatMoney(balance > 0 ? balance : 0)}</span>
                     </div>
                     <div class="emp-dash-stat">
                         <span class="emp-dash-stat-label">Должность</span>
@@ -2909,20 +2928,26 @@ function loadEmployees() {
                         <span class="material-icons-round">delete</span>
                     </button>
                 </div>
-                <div class="emp-dash-section-title">Начисления${mgrTotal > 0 ? ` <span style="font-weight:400;font-size:12px;color:var(--text-secondary);">(менеджер: ${formatMoney(mgrTotal)} за ${mgrAccruals.length} дн.)</span>` : ''}</div>
+                <div class="emp-dash-section-title">Начисления (30 дней)${mgrTotal > 0 ? ` <span style="font-weight:400;font-size:12px;color:var(--text-secondary);">(менеджер: ${formatMoney(mgrTotal)} за ${mgrAccruals.length} дн.)</span>` : ''}</div>
                 ${hasData ? `<div class="table-container"><table class="data-table">
                     <thead><tr><th>Дата</th><th>Начало</th><th>Конец</th><th>Часы</th><th>Ставка</th><th>Бонус инстр.</th><th>Бонус адм.</th><th>Менеджер</th><th>Итого</th><th></th></tr></thead>
                     <tbody>${dayRows}</tbody>
-                </table></div>` : '<p class="empty-state-text">Нет начислений за период</p>'}
-                ${empPayments.length ? `<div class="emp-dash-section-title" style="margin-top:16px;">Выплаты</div>
-                <div class="table-container"><table class="data-table">
-                    <thead><tr><th>Дата</th><th>Время</th><th>Сумма</th><th>Способ</th><th>Примечание</th></tr></thead>
-                    <tbody>${paymentRows}</tbody>
-                </table></div>` : ''}
+                    <tbody id="emp-older-rows-${emp.id}" style="display:none;">${olderRows}</tbody>
+                </table></div>
+                ${olderTimeline.length > 0 ? `<button class="btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="toggleOlderRows(${emp.id}, this)">Показать ранние записи (${olderTimeline.length})</button>` : ''}` : '<p class="empty-state-text">Нет начислений за период</p>'}
             </div>
         </div>`;
     }).join('');
 
+}
+
+function toggleOlderRows(empId, btn) {
+    const tbody = document.getElementById('emp-older-rows-' + empId);
+    if (!tbody) return;
+    const isHidden = tbody.style.display === 'none';
+    tbody.style.display = isHidden ? '' : 'none';
+    btn.textContent = isHidden ? 'Скрыть ранние записи' : btn.textContent;
+    if (!isHidden) btn.textContent = btn.textContent.replace('Скрыть', 'Показать');
 }
 
 function showShiftComment(comment) {

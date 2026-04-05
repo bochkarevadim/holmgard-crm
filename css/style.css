@@ -1589,6 +1589,12 @@ body {
     border-radius: var(--radius);
     padding: 16px;
 }
+.sa-card-fund { border-left: 4px solid var(--accent); }
+.sa-card-fund .salary-analytics-value { color: var(--accent); }
+.sa-card-paid { border-left: 4px solid var(--green); }
+.sa-card-paid .salary-analytics-value { color: var(--green); }
+.sa-card-debt { border-left: 4px solid var(--red); }
+.sa-card-debt .salary-analytics-value { color: var(--red); }
 .salary-analytics-title {
     font-size: 11px;
     font-weight: 600;
