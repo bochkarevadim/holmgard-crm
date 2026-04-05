@@ -2701,33 +2701,28 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         // Period paid
         const paid = allPayments.filter(p => p.employeeId === emp.id && p.date >= aStart && p.date <= aEnd).reduce((s, p) => s + (p.amount || 0), 0);
 
-        // All-time balance (carry-over)
-        const allTimeEarned = allShifts.filter(s => s.employeeId === emp.id && (s.shiftRole || s.employeeRole) !== 'manager')
-            .reduce((s, sh) => s + (sh.earnings?.total || 0), 0)
-            + getManagerDailyAccruals(emp, '2020-01-01', globalEndDate).reduce((s, a) => s + a.amount, 0);
-        const allTimePaid = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
-        const balance = allTimeEarned - allTimePaid;
+        // Balance = earned - paid for this period
+        const balance = earned - paid;
 
         totalFundEarned += earned;
         totalFundPaid += paid;
         totalFundDebt += balance > 0 ? balance : 0;
 
         const balClass = balance > 0 ? 'red' : balance < 0 ? 'green' : '';
-        const balLabel = balance > 0 ? 'Долг' : balance < 0 ? 'Переплата' : '0';
 
         return `<tr>
             <td><strong>${emp.firstName} ${emp.lastName}</strong></td>
             <td>${getRoleName(emp.role)}</td>
             <td style="text-align:right;">${formatMoney(earned)}</td>
-            <td style="text-align:right;color:var(--success);">${formatMoney(paid)}</td>
-            <td style="text-align:right;" class="${balClass}"><strong>${balance !== 0 ? (balance > 0 ? '' : '+') + formatMoney(Math.abs(balance)) : '—'}</strong></td>
+            <td style="text-align:right;color:var(--green);">${formatMoney(paid)}</td>
+            <td style="text-align:right;color:var(--${balance > 0 ? 'red' : balance < 0 ? 'green' : 'text'});"><strong>${balance !== 0 ? formatMoney(Math.abs(balance)) : '—'}</strong></td>
         </tr>`;
     }).join('');
 
     contentEl.innerHTML = `
         <div class="salary-analytics-grid">
             <div class="salary-analytics-card sa-card-fund">
-                <div class="salary-analytics-title">Фонд ЗП</div>
+                <div class="salary-analytics-title">Начислено</div>
                 <div class="salary-analytics-value">${formatMoney(totalFundEarned)}</div>
             </div>
             <div class="salary-analytics-card sa-card-paid">
@@ -2748,8 +2743,8 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
                     <tr style="border-top:2px solid var(--border);font-weight:700;">
                         <td colspan="2">Итого</td>
                         <td style="text-align:right;">${formatMoney(totalFundEarned)}</td>
-                        <td style="text-align:right;color:var(--success);">${formatMoney(totalFundPaid)}</td>
-                        <td style="text-align:right;" class="${totalFundDebt > 0 ? 'red' : ''}">${formatMoney(totalFundDebt)}</td>
+                        <td style="text-align:right;color:var(--green);">${formatMoney(totalFundPaid)}</td>
+                        <td style="text-align:right;color:var(--${totalFundDebt > 0 ? 'red' : 'text'});">${formatMoney(totalFundDebt)}</td>
                     </tr>
                 </tbody>
             </table>
