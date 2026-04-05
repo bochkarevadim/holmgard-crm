@@ -1154,7 +1154,7 @@ function getEmployeeMonthEarnings(employeeId) {
 
 // ===== SALARY PAYMENT HELPERS =====
 function getPaymentMethodName(method) {
-    const names = { cash: 'Наличные', sberbank: 'Сбербанк', tbank: 'Т-Банк', alfabank: 'Альфа Банк' };
+    const names = { cash: 'Наличные', card: 'Карта', sberbank: 'Сбербанк', tbank: 'Т-Банк', raiffeisen: 'Райффайзен', alfabank: 'Альфа Банк', invoice: 'По счёту', qr: 'QR' };
     return names[method] || method;
 }
 
@@ -3897,31 +3897,50 @@ function initCertificates() {
     document.getElementById('certificate-form').addEventListener('submit', saveCertificate);
 }
 
-function generateCertNumber() {
+function generateCertNumber(type) {
+    const prefix = type === 'paper' ? 'БС' : 'ЭС';
     const certs = DB.get('certificates', []);
     const year = new Date().getFullYear();
     let maxNum = 0;
     certs.forEach(c => {
-        const match = c.number && c.number.match(/HP-\d+-(\d+)/);
-        if (match) maxNum = Math.max(maxNum, parseInt(match[1]) || 0);
+        const match = c.number && c.number.match(/(ЭС|БС|HP)-\d+-(\d+)/);
+        if (match) maxNum = Math.max(maxNum, parseInt(match[2]) || 0);
     });
-    return `HP-${year}-${String(maxNum + 1).padStart(4, '0')}`;
+    return `${prefix}-${year}-${String(maxNum + 1).padStart(4, '0')}`;
+}
+
+function onCertTypeChange() {
+    const type = document.querySelector('input[name="cert-type"]:checked').value;
+    const numField = document.getElementById('cert-number');
+    // Only regenerate if number matches auto-generated pattern
+    if (!numField.value || /^(ЭС|БС|HP)-\d+-\d+$/.test(numField.value)) {
+        numField.value = generateCertNumber(type);
+    }
+    numField.placeholder = type === 'paper' ? 'БС-2026-0001' : 'ЭС-2026-0001';
 }
 
 function openCertificateModal(certId) {
     const cert = certId ? DB.get('certificates', []).find(c => c.id === certId) : null;
     document.getElementById('modal-cert-title').textContent = cert ? 'Редактирование сертификата' : 'Новый сертификат';
     document.getElementById('cert-id').value = cert ? cert.id : '';
-    document.getElementById('cert-number').value = cert ? cert.number : generateCertNumber();
+
+    // Set cert type
+    const certType = cert ? (cert.certType || 'electronic') : 'electronic';
+    document.querySelectorAll('input[name="cert-type"]').forEach(r => {
+        r.checked = r.value === certType;
+    });
+
+    document.getElementById('cert-number').value = cert ? cert.number : generateCertNumber(certType);
+    document.getElementById('cert-number').placeholder = certType === 'paper' ? 'БС-2026-0001' : 'ЭС-2026-0001';
     document.getElementById('cert-amount').value = cert ? cert.initialAmount : '';
 
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-    const nextYear = new Date(today); nextYear.setFullYear(nextYear.getFullYear() + 1);
-    const nextYearStr = `${nextYear.getFullYear()}-${String(nextYear.getMonth()+1).padStart(2,'0')}-${String(nextYear.getDate()).padStart(2,'0')}`;
+    const sixMonths = new Date(today); sixMonths.setMonth(sixMonths.getMonth() + 6);
+    const sixMonthsStr = `${sixMonths.getFullYear()}-${String(sixMonths.getMonth()+1).padStart(2,'0')}-${String(sixMonths.getDate()).padStart(2,'0')}`;
 
     document.getElementById('cert-date').value = cert ? cert.createdDate : todayStr;
-    document.getElementById('cert-expiry').value = cert ? cert.expiryDate : nextYearStr;
+    document.getElementById('cert-expiry').value = cert ? cert.expiryDate : sixMonthsStr;
     document.getElementById('cert-buyer-name').value = cert ? (cert.buyerName || '') : '';
     document.getElementById('cert-buyer-phone').value = cert ? (cert.buyerPhone || '') : '';
     document.getElementById('cert-note').value = cert ? (cert.note || '') : '';
@@ -3956,6 +3975,7 @@ function saveCertificate(e) {
     const initialAmount = parseFloat(document.getElementById('cert-amount').value) || 0;
 
     const data = {
+        certType: document.querySelector('input[name="cert-type"]:checked').value,
         number: document.getElementById('cert-number').value.trim(),
         initialAmount: initialAmount,
         createdDate: document.getElementById('cert-date').value,
@@ -4039,14 +4059,16 @@ function loadCertificates() {
     // Table
     const tbody = document.getElementById('cert-table-body');
     if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Нет сертификатов</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Нет сертификатов</td></tr>';
         return;
     }
 
     tbody.innerHTML = filtered.map(c => {
         const statusClass = c.status === 'active' ? 'cert-status-active' : c.status === 'used' ? 'cert-status-used' : 'cert-status-expired';
         const statusName = c.status === 'active' ? 'Активен' : c.status === 'used' ? 'Использован' : 'Просрочен';
+        const typeName = c.certType === 'paper' ? '📄' : '💻';
         return `<tr>
+            <td style="font-size:18px;text-align:center" title="${c.certType === 'paper' ? 'Бумажный' : 'Электронный'}">${typeName}</td>
             <td style="font-weight:600;color:var(--accent)">${c.number || '—'}</td>
             <td>${c.createdDate || '—'}</td>
             <td>${formatMoney(c.initialAmount || 0)}</td>

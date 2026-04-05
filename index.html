@@ -933,6 +933,7 @@
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th>Тип</th>
                             <th>№</th>
                             <th>Дата</th>
                             <th>Номинал</th>
@@ -959,10 +960,17 @@
                 <div class="modal-body">
                     <form id="certificate-form">
                         <input type="hidden" id="cert-id">
+                        <div class="form-group">
+                            <label>Тип сертификата</label>
+                            <div class="cert-type-selector">
+                                <label class="cert-type-option"><input type="radio" name="cert-type" value="electronic" checked onchange="onCertTypeChange()"> 💻 Электронный</label>
+                                <label class="cert-type-option"><input type="radio" name="cert-type" value="paper" onchange="onCertTypeChange()"> 📄 Бумажный</label>
+                            </div>
+                        </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Номер сертификата</label>
-                                <input type="text" id="cert-number" placeholder="HP-2026-0001">
+                                <input type="text" id="cert-number" placeholder="ЭС-2026-0001" readonly>
                             </div>
                             <div class="form-group">
                                 <label>Номинал (₽)</label>
@@ -992,10 +1000,13 @@
                         <div class="form-group">
                             <label>Способ оплаты</label>
                             <div class="cert-payment-methods">
-                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="cash" checked> 💵 Наличные</label>
-                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="sberbank"> 🟢 Сбербанк</label>
+                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="card" checked> 💳 Карта</label>
+                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="sberbank"> 🟢 Сбер</label>
                                 <label class="cert-pay-option"><input type="radio" name="cert-payment" value="tbank"> 🟡 Т-Банк</label>
+                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="raiffeisen"> 🟡 Райф</label>
                                 <label class="cert-pay-option"><input type="radio" name="cert-payment" value="alfabank"> 🔴 Альфа</label>
+                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="invoice"> 📋 По счёту</label>
+                                <label class="cert-pay-option"><input type="radio" name="cert-payment" value="qr"> 📱 QR</label>
                             </div>
                         </div>
                         <div class="form-group">
