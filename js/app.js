@@ -3131,7 +3131,7 @@ function loadEmployees() {
             const shiftPaid = shiftId ? paidIds.has(shiftId) : true;
             const mgrPaid = mgrAmount > 0 ? paidIds.has('mgr_' + date) : true;
             const isPaid = (shiftId || mgrAmount > 0) && shiftPaid && mgrPaid;
-            const rowStyle = isPaid ? 'background:rgba(76,175,80,0.12);' : '';
+            const rowStyle = '';
 
             return `<tr style="${rowStyle}cursor:pointer;" onclick="${hasComment ? `showShiftComment('${commentEsc}')` : ''}" title="${hasComment ? 'Нажмите — комментарий к смене' : ''}">
                 <td>${dateF}</td>
