@@ -2378,7 +2378,7 @@ function navigateTo(page) {
 }
 
 // ===== DASHBOARD =====
-let revenuePeriodType = 'today';
+let revenuePeriodType = 'month';
 let revenuePeriodValue = null;
 
 function toggleRevenuePeriodType(type) {

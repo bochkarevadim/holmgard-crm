@@ -512,9 +512,9 @@
                     <div class="dash-card-header">
                         <h3><span class="material-icons-round">trending_up</span> Выручка</h3>
                         <div class="dashboard-period">
-                            <button class="period-btn active" data-period="today" onclick="toggleRevenuePeriodType('today')">День</button>
+                            <button class="period-btn" data-period="today" onclick="toggleRevenuePeriodType('today')">День</button>
                             <button class="period-btn" data-period="week" onclick="toggleRevenuePeriodType('week')">Неделя</button>
-                            <button class="period-btn" data-period="month" onclick="toggleRevenuePeriodType('month')">Месяц</button>
+                            <button class="period-btn active" data-period="month" onclick="toggleRevenuePeriodType('month')">Месяц</button>
                             <button class="period-btn" data-period="year" onclick="toggleRevenuePeriodType('year')">Год</button>
                             <select id="revenue-period-selector" class="period-selector" style="display:none;" onchange="onRevenuePeriodSelect(this.value)"></select>
                         </div>
