@@ -1395,10 +1395,14 @@ function openSalaryPaymentModal(preselectedEmployeeId) {
     } else {
         document.getElementById('salary-pay-info').style.display = 'none';
     }
+    document.getElementById('salary-pay-edit-id').value = '';
+    document.getElementById('salary-pay-date').value = todayLocal();
     document.getElementById('salary-pay-amount').value = '';
     document.getElementById('salary-pay-note').value = '';
     const cashRadio = document.querySelector('input[name="salary-pay-method"][value="cash"]');
     if (cashRadio) cashRadio.checked = true;
+    document.querySelector('#modal-salary-payment .modal-header h2').textContent = 'Выплата зарплаты';
+    document.getElementById('btn-confirm-salary-payment').innerHTML = '<span class="material-icons-round">send</span> Выплатить';
     openModal('modal-salary-payment');
 }
 
@@ -1423,31 +1427,72 @@ function updateSalaryPayInfo(employeeId) {
 }
 
 function confirmSalaryPayment() {
+    const editId = document.getElementById('salary-pay-edit-id').value;
     const employeeId = parseInt(document.getElementById('salary-pay-employee').value);
     if (!employeeId) { showToast('Выберите сотрудника'); return; }
     const amount = parseFloat(document.getElementById('salary-pay-amount').value);
     if (!amount || amount <= 0) { showToast('Введите сумму'); return; }
     const method = document.querySelector('input[name="salary-pay-method"]:checked')?.value || 'cash';
     const note = document.getElementById('salary-pay-note').value.trim();
+    const date = document.getElementById('salary-pay-date').value || todayLocal();
     const employees = DB.get('employees', []);
     const emp = employees.find(e => e.id === employeeId);
     if (!emp) return;
-    const payment = {
-        id: Date.now(),
-        date: todayLocal(),
-        time: moscowTimeStr(),
-        employeeId, employeeName: emp.firstName + ' ' + emp.lastName,
-        amount, method, note
-    };
     const payments = DB.get('salaryPayments', []);
-    payments.push(payment);
+    if (editId) {
+        const idx = payments.findIndex(p => String(p.id) === String(editId));
+        if (idx >= 0) {
+            payments[idx].employeeId = employeeId;
+            payments[idx].employeeName = emp.firstName + ' ' + emp.lastName;
+            payments[idx].amount = amount;
+            payments[idx].method = method;
+            payments[idx].note = note;
+            payments[idx].date = date;
+        }
+        showToast(`Выплата обновлена: ${formatMoney(amount)} — ${emp.firstName}`);
+    } else {
+        payments.push({
+            id: Date.now(),
+            date,
+            time: moscowTimeStr(),
+            employeeId, employeeName: emp.firstName + ' ' + emp.lastName,
+            amount, method, note
+        });
+        showToast(`Выплата ${formatMoney(amount)} — ${emp.firstName} (${getPaymentMethodName(method)})`);
+    }
     DB.set('salaryPayments', payments);
     closeModal('modal-salary-payment');
-    showToast(`Выплата ${formatMoney(amount)} — ${emp.firstName} (${getPaymentMethodName(method)})`);
     const empPage = document.getElementById('page-employees');
     if (empPage && empPage.classList.contains('active')) loadEmployees();
     const finPage = document.getElementById('page-finances');
     if (finPage && finPage.classList.contains('active')) loadFinances(document.querySelector('.fin-tab.active')?.dataset.fin || 'receipts');
+}
+
+function editSalaryPayment(paymentId) {
+    const payments = DB.get('salaryPayments', []);
+    const p = payments.find(pay => String(pay.id) === String(paymentId));
+    if (!p) return;
+    openSalaryPaymentModal(p.employeeId);
+    document.getElementById('salary-pay-edit-id').value = p.id;
+    document.getElementById('salary-pay-date').value = p.date;
+    document.getElementById('salary-pay-amount').value = p.amount;
+    document.getElementById('salary-pay-note').value = p.note || '';
+    const methodRadio = document.querySelector(`input[name="salary-pay-method"][value="${p.method}"]`);
+    if (methodRadio) methodRadio.checked = true;
+    document.querySelector('#modal-salary-payment .modal-header h2').textContent = 'Редактировать выплату';
+    document.getElementById('btn-confirm-salary-payment').innerHTML = '<span class="material-icons-round">save</span> Сохранить';
+}
+
+function deleteSalaryPayment(paymentId) {
+    if (!confirm('Удалить эту выплату?')) return;
+    const payments = DB.get('salaryPayments', []);
+    const idx = payments.findIndex(p => String(p.id) === String(paymentId));
+    if (idx >= 0) {
+        payments.splice(idx, 1);
+        DB.set('salaryPayments', payments);
+        showToast('Выплата удалена');
+        loadEmployees();
+    }
 }
 
 // ===== EMPLOYEE NAVIGATION =====
@@ -2857,9 +2902,14 @@ function getSalaryPeriodRange() {
     return { aStart, aEnd };
 }
 
+const SALARY_PAYMENTS_CUTOFF = '2026-03-14'; // Payments before this date are not counted in debt/overpay
+
 function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate) {
     const contentEl = document.getElementById('salary-analytics-content');
     if (!contentEl) return;
+
+    // Filter out payments before cutoff for balance calculations
+    allPayments = allPayments.filter(p => p.date >= SALARY_PAYMENTS_CUTOFF);
 
     const now = moscowNow();
     const { aStart, aEnd } = getSalaryPeriodRange();
@@ -2907,7 +2957,6 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
             <td>${getRoleName(emp.role)}</td>
             <td style="text-align:right;">${formatMoney(earned)}</td>
             <td style="text-align:right;color:var(--green);">${formatMoney(paid)}</td>
-            <td style="text-align:right;color:var(--${balance > 0 ? 'red' : balance < 0 ? 'green' : 'text'});"><strong>${balance !== 0 ? formatMoney(Math.abs(balance)) : '—'}</strong></td>
         </tr>`;
     }).join('');
 
@@ -2943,14 +2992,13 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         <div class="table-container" style="margin-top:12px;">
             <table class="data-table">
                 <thead><tr>
-                    <th>Сотрудник</th><th>Должность</th><th style="text-align:right;">Начислено</th><th style="text-align:right;">Выплачено</th><th style="text-align:right;">Баланс</th>
+                    <th>Сотрудник</th><th>Должность</th><th style="text-align:right;">Начислено</th><th style="text-align:right;">Выплачено</th>
                 </tr></thead>
                 <tbody>${empRows}
                     <tr style="border-top:2px solid var(--border);font-weight:700;">
                         <td colspan="2">Итого</td>
                         <td style="text-align:right;">${formatMoney(totalFundEarned)}</td>
                         <td style="text-align:right;color:var(--green);">${formatMoney(totalFundPaid)}</td>
-                        <td style="text-align:right;color:var(--${totalBalance > 0 ? 'red' : totalBalance < 0 ? 'green' : 'text'});">${formatMoney(Math.abs(totalBalance))}</td>
                     </tr>
                 </tbody>
             </table>
@@ -2964,12 +3012,13 @@ function loadEmployees() {
     if (!container) return;
 
     const allShifts = DB.get('shifts', []).filter(s => s.endTime && s.earnings);
-    const allPayments = DB.get('salaryPayments', []);
+    const allPaymentsRaw = DB.get('salaryPayments', []);
+    const allPayments = allPaymentsRaw.filter(p => p.date >= SALARY_PAYMENTS_CUTOFF);
     // Always current month
     const { startDate, endDate } = getDateRangeForPeriod('month');
 
     // ===== SALARY ANALYTICS SUMMARY =====
-    renderSalaryAnalytics(employees, allShifts, allPayments, endDate);
+    renderSalaryAnalytics(employees, allShifts, allPaymentsRaw, endDate);
 
     container.innerHTML = employees.map(emp => {
         // Regular shift earnings (exclude manager-role shifts to avoid double counting)
@@ -3017,7 +3066,7 @@ function loadEmployees() {
         // All shifts for this employee (not limited to period)
         const allEmpShifts = allShifts.filter(s => s.employeeId === emp.id && (s.shiftRole || s.employeeRole) !== 'manager').sort((a, b) => a.date.localeCompare(b.date));
         const allMgrAccruals = getManagerDailyAccruals(emp, '2020-01-01', endDate);
-        const allEmpPayments = allPayments.filter(p => p.employeeId === emp.id);
+        const allEmpPayments = allPaymentsRaw.filter(p => p.employeeId === emp.id);
 
         const mgrByDate = {};
         allMgrAccruals.forEach(a => { mgrByDate[a.date] = a.amount; });
@@ -3031,7 +3080,7 @@ function loadEmployees() {
             timeline.push({ type: 'accrual', date });
         });
         allEmpPayments.forEach(p => {
-            timeline.push({ type: 'payment', date: p.date, time: p.time, amount: p.amount, method: p.method, note: p.note });
+            timeline.push({ type: 'payment', date: p.date, time: p.time, amount: p.amount, method: p.method, note: p.note, paymentId: p.id });
         });
         timeline.sort((a, b) => b.date.localeCompare(a.date) || (a.type === 'payment' ? -1 : 1));
 
@@ -3046,7 +3095,10 @@ function loadEmployees() {
                     <td>${dateF}</td>
                     <td colspan="7" style="color:var(--green);font-weight:700;">💰 Выплата ${formatMoney(entry.amount)} — ${getPaymentMethodName(entry.method)}${entry.note ? ' (' + entry.note + ')' : ''}</td>
                     <td style="color:var(--green);font-weight:700;">${formatMoney(entry.amount)}</td>
-                    <td></td>
+                    <td>
+                        <button class="btn-action" onclick="editSalaryPayment(${entry.paymentId})" title="Редактировать" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">edit</span></button>
+                        <button class="btn-action danger" onclick="deleteSalaryPayment(${entry.paymentId})" title="Удалить" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">delete</span></button>
+                    </td>
                 </tr>`;
             }
             const date = entry.date;
@@ -3111,7 +3163,7 @@ function loadEmployees() {
                     </div>
                     <div class="emp-dash-stat">
                         <span class="emp-dash-stat-label">Должность</span>
-                        <span class="emp-dash-stat-value" style="font-size:13px;">${getRoleName(emp.role)}${mgrAccruals.length > 0 ? ' + Менеджер' : ''}</span>
+                        <span class="emp-dash-stat-value" style="font-size:13px;">${getRoleName(emp.role)}${(emp.allowedShiftRoles || []).includes('manager') ? ' + Менеджер' : ''}</span>
                     </div>
                 </div>
                 <span class="material-icons-round emp-dash-chevron">expand_more</span>

@@ -2158,6 +2158,7 @@
             </button>
         </div>
         <div class="modal-body">
+            <input type="hidden" id="salary-pay-edit-id" value="">
             <div class="form-group">
                 <label>Сотрудник</label>
                 <select id="salary-pay-employee"></select>
@@ -2166,6 +2167,10 @@
                 <div class="salary-pay-stat"><span>Начислено (месяц):</span><strong id="salary-pay-earned">0 ₽</strong></div>
                 <div class="salary-pay-stat"><span>Выплачено:</span><strong id="salary-pay-already-paid">0 ₽</strong></div>
                 <div class="salary-pay-stat"><span>Задолженность:</span><strong id="salary-pay-debt" style="color:var(--red)">0 ₽</strong></div>
+            </div>
+            <div class="form-group">
+                <label>Дата</label>
+                <input type="date" id="salary-pay-date">
             </div>
             <div class="form-group">
                 <label>Сумма (₽)</label>
