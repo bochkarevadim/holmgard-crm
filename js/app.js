@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1'
+    'directorDashOrder', 'salary_import_v1', 'deletedSalaryPaymentIds'
 ]);
 
 const DB = {
@@ -1387,7 +1387,7 @@ function getEmployeeEarningsForPeriod(employeeId, period) {
 
 function getEmployeePaymentsForPeriod(employeeId, period) {
     const { startDate, endDate } = getDateRangeForPeriod(period);
-    const payments = DB.get('salaryPayments', []).filter(p =>
+    const payments = getActiveSalaryPayments().filter(p =>
         p.employeeId === employeeId && p.date >= startDate && p.date <= endDate
     );
     const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -1395,7 +1395,7 @@ function getEmployeePaymentsForPeriod(employeeId, period) {
 }
 
 function getEmployeeTotalPaid(employeeId) {
-    return DB.get('salaryPayments', [])
+    return getActiveSalaryPayments()
         .filter(p => p.employeeId === employeeId)
         .reduce((sum, p) => sum + (p.amount || 0), 0);
 }
@@ -1435,7 +1435,7 @@ function updateSalaryPayInfo(employeeId) {
     const mgrAccruals = emp ? getManagerDailyAccruals(emp, effStart, endDate) : [];
     const mgrTotal = mgrAccruals.reduce((s, a) => s + a.amount, 0);
     const earned = shiftEarned + mgrTotal;
-    const paid = DB.get('salaryPayments', []).filter(p => p.employeeId === empIdNum && p.date >= effStart && p.date <= endDate).reduce((s, p) => s + (p.amount || 0), 0);
+    const paid = getActiveSalaryPayments().filter(p => p.employeeId === empIdNum && p.date >= effStart && p.date <= endDate).reduce((s, p) => s + (p.amount || 0), 0);
     const balance = earned - paid;
     document.getElementById('salary-pay-earned').textContent = formatMoney(earned);
     document.getElementById('salary-pay-already-paid').textContent = formatMoney(paid);
@@ -1505,14 +1505,21 @@ function editSalaryPayment(paymentId) {
 
 function deleteSalaryPayment(paymentId) {
     if (!confirm('Удалить эту выплату?')) return;
-    const payments = DB.get('salaryPayments', []);
-    const idx = payments.findIndex(p => String(p.id) === String(paymentId));
-    if (idx >= 0) {
-        payments.splice(idx, 1);
-        DB.set('salaryPayments', payments);
-        showToast('Выплата удалена');
-        loadEmployees();
+    const payments = DB.get('salaryPayments', []).filter(p => String(p.id) !== String(paymentId));
+    DB.set('salaryPayments', payments);
+    // Tombstone — чтобы платёж не вернулся из импорта/синка
+    const tombs = DB.get('deletedSalaryPaymentIds', []);
+    if (!tombs.includes(String(paymentId))) {
+        tombs.push(String(paymentId));
+        DB.set('deletedSalaryPaymentIds', tombs);
     }
+    showToast('Выплата удалена');
+    loadEmployees();
+}
+
+function getActiveSalaryPayments() {
+    const tombs = new Set((DB.get('deletedSalaryPaymentIds', []) || []).map(String));
+    return DB.get('salaryPayments', []).filter(p => !tombs.has(String(p.id)));
 }
 
 // ===== EMPLOYEE NAVIGATION =====
@@ -3059,7 +3066,7 @@ function loadEmployees() {
     if (!container) return;
 
     const allShifts = DB.get('shifts', []).filter(s => s.endTime && s.earnings);
-    const allPayments = DB.get('salaryPayments', []);
+    const allPayments = getActiveSalaryPayments();
     // Always current month
     const { startDate, endDate } = getDateRangeForPeriod('month');
 
