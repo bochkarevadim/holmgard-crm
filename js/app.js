@@ -2902,14 +2902,17 @@ function getSalaryPeriodRange() {
     return { aStart, aEnd };
 }
 
-const SALARY_PAYMENTS_CUTOFF = '2026-03-14'; // Payments before this date are not counted in debt/overpay
+// All salaries paid through this date — balance starts from 0 the next day
+// Both earnings and payments before this date are excluded from balance calculations
+const SALARY_BALANCE_START = '2026-04-06'; // Earnings & payments counted from this date onward
 
 function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate) {
     const contentEl = document.getElementById('salary-analytics-content');
     if (!contentEl) return;
 
-    // Filter out payments before cutoff for balance calculations
-    allPayments = allPayments.filter(p => p.date >= SALARY_PAYMENTS_CUTOFF);
+    // Filter both earnings and payments: only count from balance start date
+    allShifts = allShifts.filter(s => s.date >= SALARY_BALANCE_START);
+    allPayments = allPayments.filter(p => p.date >= SALARY_BALANCE_START);
 
     const now = moscowNow();
     const { aStart, aEnd } = getSalaryPeriodRange();
@@ -2925,12 +2928,12 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         const mgrEarned = getManagerDailyAccruals(emp, aStart, aEnd).reduce((s, a) => s + a.amount, 0);
         const earned = shiftEarned + mgrEarned;
 
-        // Debt before period start (cumulative earned - cumulative paid BEFORE this period)
+        // Debt before period start (cumulative earned - cumulative paid BEFORE this period, from balance start)
         const prevDay = new Date(aStart + 'T00:00:00'); prevDay.setDate(prevDay.getDate() - 1);
         const prevEnd = `${prevDay.getFullYear()}-${String(prevDay.getMonth()+1).padStart(2,'0')}-${String(prevDay.getDate()).padStart(2,'0')}`;
         const cumEarnedBefore = allShifts.filter(s => s.employeeId === emp.id && s.date <= prevEnd && (s.shiftRole || s.employeeRole) !== 'manager')
             .reduce((s, sh) => s + (sh.earnings?.total || 0), 0)
-            + getManagerDailyAccruals(emp, '2020-01-01', prevEnd).reduce((s, a) => s + a.amount, 0);
+            + getManagerDailyAccruals(emp, SALARY_BALANCE_START, prevEnd).reduce((s, a) => s + a.amount, 0);
         const cumPaidBefore = allPayments.filter(p => p.employeeId === emp.id && p.date <= prevEnd).reduce((s, p) => s + (p.amount || 0), 0);
         const debtBefore = Math.max(0, cumEarnedBefore - cumPaidBefore);
 
@@ -2940,10 +2943,10 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         // Subtract previous debt from period payments (those payments cover old debt, not current period)
         const paid = Math.max(0, rawPaid - debtBefore);
 
-        // Cumulative balance: all-time earned up to end of period − all-time paid up to end of period
+        // Cumulative balance: earned from balance start to end of period − paid from balance start to end of period
         const cumEarned = allShifts.filter(s => s.employeeId === emp.id && s.date <= aEnd && (s.shiftRole || s.employeeRole) !== 'manager')
             .reduce((s, sh) => s + (sh.earnings?.total || 0), 0)
-            + getManagerDailyAccruals(emp, '2020-01-01', aEnd).reduce((s, a) => s + a.amount, 0);
+            + getManagerDailyAccruals(emp, SALARY_BALANCE_START, aEnd).reduce((s, a) => s + a.amount, 0);
         const cumPaid = allPayments.filter(p => p.employeeId === emp.id && p.date <= aEnd).reduce((s, p) => s + (p.amount || 0), 0);
         const balance = cumEarned - cumPaid;
 
@@ -2960,11 +2963,11 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         </tr>`;
     }).join('');
 
-    // Cumulative total balance across all employees
+    // Cumulative total balance across all employees (from balance start)
     const totalCumEarned = employees.reduce((s, emp) => {
         return s + allShifts.filter(sh => sh.employeeId === emp.id && sh.date <= aEnd && (sh.shiftRole || sh.employeeRole) !== 'manager')
             .reduce((ss, sh) => ss + (sh.earnings?.total || 0), 0)
-            + getManagerDailyAccruals(emp, '2020-01-01', aEnd).reduce((ss, a) => ss + a.amount, 0);
+            + getManagerDailyAccruals(emp, SALARY_BALANCE_START, aEnd).reduce((ss, a) => ss + a.amount, 0);
     }, 0);
     const totalCumPaid = employees.reduce((s, emp) => {
         return s + allPayments.filter(p => p.employeeId === emp.id && p.date <= aEnd).reduce((ss, p) => ss + (p.amount || 0), 0);
@@ -3013,7 +3016,7 @@ function loadEmployees() {
 
     const allShifts = DB.get('shifts', []).filter(s => s.endTime && s.earnings);
     const allPaymentsRaw = DB.get('salaryPayments', []);
-    const allPayments = allPaymentsRaw.filter(p => p.date >= SALARY_PAYMENTS_CUTOFF);
+    const allPayments = allPaymentsRaw.filter(p => p.date >= SALARY_BALANCE_START);
     // Always current month
     const { startDate, endDate } = getDateRangeForPeriod('month');
 
@@ -3032,19 +3035,17 @@ function loadEmployees() {
         const shiftEarned = empShifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
         const earned = shiftEarned + mgrTotal;
         const paid = empPayments.reduce((s, p) => s + (p.amount || 0), 0);
-        // Balance with carry-over: all-time earned - all-time paid
-        const allTimeEarnedEmp = allShifts.filter(s => s.employeeId === emp.id && (s.shiftRole || s.employeeRole) !== 'manager')
+        // Balance from SALARY_BALANCE_START: earned - paid (both filtered)
+        const allTimeEarnedEmp = allShifts.filter(s => s.employeeId === emp.id && s.date >= SALARY_BALANCE_START && (s.shiftRole || s.employeeRole) !== 'manager')
             .reduce((s, sh) => s + (sh.earnings?.total || 0), 0)
-            + getManagerDailyAccruals(emp, '2020-01-01', endDate).reduce((s, a) => s + a.amount, 0);
+            + getManagerDailyAccruals(emp, SALARY_BALANCE_START, endDate).reduce((s, a) => s + a.amount, 0);
         const allTimePaidEmp = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
-        const balance = allTimeEarnedEmp - allTimePaidEmp; // positive = debt, negative = overpay (carries over)
+        const balance = allTimeEarnedEmp - allTimePaidEmp; // positive = debt, negative = overpay
 
-        // Determine which accrual rows are "paid" (green)
-        // All-time paid for this employee to determine paid coverage
+        // Determine paid coverage from balance start
         const allTimePaid = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
-        // All-time accruals chronologically to determine coverage
-        const allTimeShifts = DB.get('shifts', []).filter(s => s.employeeId === emp.id && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager').sort((a, b) => a.date.localeCompare(b.date));
-        const allTimeMgr = getManagerDailyAccruals(emp, '2020-01-01', endDate).sort((a, b) => a.date.localeCompare(b.date));
+        const allTimeShifts = DB.get('shifts', []).filter(s => s.employeeId === emp.id && s.date >= SALARY_BALANCE_START && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager').sort((a, b) => a.date.localeCompare(b.date));
+        const allTimeMgr = getManagerDailyAccruals(emp, SALARY_BALANCE_START, endDate).sort((a, b) => a.date.localeCompare(b.date));
         // Merge all accruals chronologically
         const allAccruals = [];
         allTimeShifts.forEach(s => allAccruals.push({ date: s.date, amount: s.earnings?.total || 0, id: s.id }));
