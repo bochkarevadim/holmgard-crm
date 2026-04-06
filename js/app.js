@@ -420,6 +420,23 @@ function runDataMigrations() {
         console.log('Migration v3: removed gazebo time, updated balls & shop');
     }
 
+    // Migration v4: kidball tariffs use kidsBallsPerPerson (0.50 шары)
+    if (DB.get('tariffs_version') !== 'v4') {
+        let tariffs = DB.get('tariffs', []);
+        tariffs.forEach(t => {
+            if (t.category === 'services' && t.sheetCategory === 'Кидбол') {
+                if (!t.kidsBallsPerPerson) {
+                    // Default: безлимитные шары → ставим 300 на чел.
+                    t.kidsBallsPerPerson = 300;
+                }
+                t.ballsPerPerson = 0;
+            }
+        });
+        DB.set('tariffs', tariffs);
+        DB.set('tariffs_version', 'v4');
+        console.log('Migration v4: kidball tariffs got kidsBallsPerPerson');
+    }
+
 }
 
 // ===== STATE =====
@@ -1744,10 +1761,16 @@ function completeEventPayment() {
     if (evt.tariffId) {
         const tariff = tariffs.find(t => t.id === evt.tariffId);
         if (tariff) {
-            const balls = (tariff.ballsPerPerson || 0) * (evt.participants || 1);
-            if (isKidball) totalKidsBalls += balls; else totalBalls += balls;
-            totalGrenades += (tariff.grenadesPerPerson || 0) * (evt.participants || 1);
-            totalSmokes += (tariff.smokesPerPerson || 0) * (evt.participants || 1);
+            const ppl = (evt.participants || 1);
+            const kbpp = tariff.kidsBallsPerPerson || 0;
+            const bpp = tariff.ballsPerPerson || 0;
+            if (kbpp > 0) {
+                totalKidsBalls += kbpp * ppl;
+            } else if (bpp > 0) {
+                if (isKidball) totalKidsBalls += bpp * ppl; else totalBalls += bpp * ppl;
+            }
+            totalGrenades += (tariff.grenadesPerPerson || 0) * ppl;
+            totalSmokes += (tariff.smokesPerPerson || 0) * ppl;
         }
     }
 
@@ -1757,10 +1780,16 @@ function completeEventPayment() {
             const opt = tariffs.find(t => t.id === optId);
             if (opt) {
                 const qty = evt.optionQuantities?.[optId] || 1;
-                const balls = (opt.ballsPerPerson || 0) * qty * (evt.participants || 1);
-                if (isKidball) totalKidsBalls += balls; else totalBalls += balls;
-                totalGrenades += (opt.grenadesPerPerson || 0) * qty * (evt.participants || 1);
-                totalSmokes += (opt.smokesPerPerson || 0) * qty * (evt.participants || 1);
+                const ppl = (evt.participants || 1);
+                const kbpp = opt.kidsBallsPerPerson || 0;
+                const bpp = opt.ballsPerPerson || 0;
+                if (kbpp > 0) {
+                    totalKidsBalls += kbpp * qty * ppl;
+                } else if (bpp > 0) {
+                    if (isKidball) totalKidsBalls += bpp * qty * ppl; else totalBalls += bpp * qty * ppl;
+                }
+                totalGrenades += (opt.grenadesPerPerson || 0) * qty * ppl;
+                totalSmokes += (opt.smokesPerPerson || 0) * qty * ppl;
             }
         });
     }
@@ -2079,9 +2108,11 @@ function loadTariffs(category = 'services', subcategory = null) {
             <div class="tariff-meta">
                 ${t.duration ? `<span><span class="material-icons-round">timer</span> ${t.duration} мин</span>` : ''}
                 ${t.minPeople ? `<span><span class="material-icons-round">group</span> от ${t.minPeople} чел.</span>` : ''}
-                ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров</span>` : ''}
+                ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров 0.68</span>` : ''}
+                ${t.kidsBallsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.kidsBallsPerPerson} шаров 0.50</span>` : ''}
                 ${t.grenadesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">brightness_7</span> ${t.grenadesPerPerson} гранат</span>` : ''}
                 ${t.smokesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">cloud</span> ${t.smokesPerPerson} дым</span>` : ''}
+                ${t.freePrice ? `<span class="consumable-badge"><span class="material-icons-round">edit</span> свободная цена</span>` : ''}
             </div>
         </div>
     `).join('');
@@ -5387,9 +5418,11 @@ function loadDirectorTariffs(subcategory = undefined) {
                 ${t.duration ? `<span><span class="material-icons-round">timer</span> ${t.duration} мин</span>` : ''}
                 ${t.minPeople ? `<span><span class="material-icons-round">group</span> от ${t.minPeople} чел.</span>` : ''}
                 ${t.age ? `<span><span class="material-icons-round">cake</span> ${t.age} лет</span>` : ''}
-                ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров</span>` : ''}
+                ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров 0.68</span>` : ''}
+                ${t.kidsBallsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.kidsBallsPerPerson} шаров 0.50</span>` : ''}
                 ${t.grenadesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">brightness_7</span> ${t.grenadesPerPerson} гранат</span>` : ''}
                 ${t.smokesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">cloud</span> ${t.smokesPerPerson} дым</span>` : ''}
+                ${t.freePrice ? `<span class="consumable-badge"><span class="material-icons-round">edit</span> свободная цена</span>` : ''}
             </div>
             <div class="tariff-card-actions">
                 <button class="btn-action" title="Редактировать">
@@ -5419,20 +5452,32 @@ function openTariffModal(id = null) {
         document.getElementById('modal-tariff-title').textContent = 'Редактировать тариф';
         document.getElementById('tariff-id').value = tariff.id;
         document.getElementById('tariff-category').value = tariff.category;
+        document.getElementById('tariff-sheet-category').value = tariff.sheetCategory || '';
         document.getElementById('tariff-service-id').value = tariff.serviceId || '';
         document.getElementById('tariff-name').value = tariff.name;
         document.getElementById('tariff-price').value = tariff.price || '';
         document.getElementById('tariff-unit').value = tariff.unit || '';
+        document.getElementById('tariff-free-price').checked = !!tariff.freePrice;
         document.getElementById('tariff-duration').value = tariff.duration || '';
         document.getElementById('tariff-min-people').value = tariff.minPeople || '';
         document.getElementById('tariff-age').value = tariff.age || '';
         document.getElementById('tariff-included').value = tariff.included || '';
         document.getElementById('tariff-description').value = tariff.description || '';
         document.getElementById('tariff-balls').value = tariff.ballsPerPerson || '';
+        document.getElementById('tariff-kids-balls').value = tariff.kidsBallsPerPerson || '';
         document.getElementById('tariff-grenades').value = tariff.grenadesPerPerson || '';
+        document.getElementById('tariff-smokes').value = tariff.smokesPerPerson || '';
         document.getElementById('btn-delete-tariff').style.display = 'inline-flex';
     } else {
         document.getElementById('modal-tariff-title').textContent = 'Новый тариф';
+        document.getElementById('tariff-sheet-category').value = dirTariffSubcategory || '';
+    }
+
+    // Populate categories datalist
+    const dl = document.getElementById('tariff-sheet-category-list');
+    if (dl) {
+        const cats = [...new Set(DB.get('tariffs', []).map(t => t.sheetCategory).filter(Boolean))];
+        dl.innerHTML = cats.map(c => `<option value="${c}">`).join('');
     }
 
     openModal('modal-tariff');
@@ -5445,18 +5490,26 @@ function saveTariff(e) {
 
     const data = {
         category: document.getElementById('tariff-category').value,
+        sheetCategory: document.getElementById('tariff-sheet-category').value.trim(),
         serviceId: document.getElementById('tariff-service-id').value.trim(),
         name: document.getElementById('tariff-name').value.trim(),
         price: parseFloat(document.getElementById('tariff-price').value) || 0,
         unit: document.getElementById('tariff-unit').value.trim() || 'чел',
+        freePrice: document.getElementById('tariff-free-price').checked,
         duration: parseInt(document.getElementById('tariff-duration').value) || 0,
         minPeople: parseInt(document.getElementById('tariff-min-people').value) || 0,
         age: document.getElementById('tariff-age').value.trim(),
         included: document.getElementById('tariff-included').value.trim(),
         description: document.getElementById('tariff-description').value.trim(),
         ballsPerPerson: parseInt(document.getElementById('tariff-balls').value) || 0,
+        kidsBallsPerPerson: parseInt(document.getElementById('tariff-kids-balls').value) || 0,
         grenadesPerPerson: parseInt(document.getElementById('tariff-grenades').value) || 0,
+        smokesPerPerson: parseInt(document.getElementById('tariff-smokes').value) || 0,
     };
+    if (data.category === 'services' && !data.sheetCategory) {
+        showToast('Укажите категорию (например: Пейнтбол)', 'error');
+        return;
+    }
 
     if (id) {
         const idx = tariffs.findIndex(t => t.id === parseInt(id));

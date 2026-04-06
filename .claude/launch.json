@@ -1,11 +1,1 @@
-{
-  "version": "0.0.1",
-  "configurations": [
-    {
-      "name": "holmgard-crm",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8080", "--directory", "/Users/vadimbockarev/Downloads/holmgard-crm"],
-      "port": 8080
-    }
-  ]
-}
+{"version":"0.0.1","configurations":[{"name":"crm","runtimeExecutable":"/usr/bin/python3","runtimeArgs":["-m","http.server","8090","-d","/Users/vadimbockarev/Downloads/holmgard-crm"],"port":8090}]}

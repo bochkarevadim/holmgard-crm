@@ -1330,7 +1330,7 @@
                         <input type="hidden" id="tariff-id">
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Категория</label>
+                                <label>Тип</label>
                                 <select id="tariff-category">
                                     <option value="services">Услуга</option>
                                     <option value="optionsForGame">Опция к игре</option>
@@ -1338,23 +1338,34 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>ID (англ.)</label>
-                                <input type="text" id="tariff-service-id" placeholder="например: pb_mission">
+                                <label>Категория</label>
+                                <input type="text" id="tariff-sheet-category" list="tariff-sheet-category-list" placeholder="напр. Пейнтбол">
+                                <datalist id="tariff-sheet-category-list"></datalist>
                             </div>
                         </div>
                         <div class="form-group">
                             <label>Название</label>
                             <input type="text" id="tariff-name" placeholder="Название тарифа" required>
                         </div>
+                        <div class="form-group">
+                            <label>ID (англ., необязательно)</label>
+                            <input type="text" id="tariff-service-id" placeholder="например: pb_mission">
+                        </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Цена (₽)</label>
-                                <input type="number" id="tariff-price" placeholder="0" required>
+                                <input type="number" id="tariff-price" placeholder="0">
                             </div>
                             <div class="form-group">
                                 <label>Ед. измерения</label>
                                 <input type="text" id="tariff-unit" placeholder="чел / шт / аренда">
                             </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" id="tariff-free-price">
+                                <span>Свободная цена (вводится вручную при добавлении)</span>
+                            </label>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
@@ -1370,14 +1381,25 @@
                             <label>Возраст</label>
                             <input type="text" id="tariff-age" placeholder="напр. 6-80">
                         </div>
+                        <div class="form-section-title" style="font-size:13px;color:var(--text-muted,#888);margin:8px 0 4px;font-weight:600;">Расходники на 1 чел.</div>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Шаров на 1 чел.</label>
+                                <label>Шары 0.68 (пейнтбол)</label>
                                 <input type="number" id="tariff-balls" placeholder="0" min="0">
                             </div>
                             <div class="form-group">
-                                <label>Гранат на 1 чел.</label>
+                                <label>Шары 0.50 (кидбол)</label>
+                                <input type="number" id="tariff-kids-balls" placeholder="0" min="0">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Гранат</label>
                                 <input type="number" id="tariff-grenades" placeholder="0" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Дымов</label>
+                                <input type="number" id="tariff-smokes" placeholder="0" min="0">
                             </div>
                         </div>
                         <div class="form-group">
