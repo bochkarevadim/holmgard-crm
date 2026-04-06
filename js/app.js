@@ -670,6 +670,56 @@ function getHistoricalAccrualSum(empId, startDate, endDate) {
         .reduce((s, a) => s + (a.amount || 0), 0);
 }
 
+// Открыть карточку с неоплаченными начислениями для сотрудника (FIFO)
+function showUnpaidAccrualsModal(empId) {
+    const emp = DB.get('employees', []).find(e => e.id === empId);
+    if (!emp) return;
+    const START = '2020-01-01';
+    const today = todayLocal();
+    // Собрать все начисления
+    const accruals = [];
+    DB.get('shifts', [])
+        .filter(s => s.employeeId === empId && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager')
+        .forEach(s => accruals.push({ date: s.date, amount: s.earnings.total || 0, type: 'Смена', note: s.earnings.bonusDetail || '' }));
+    getManagerDailyAccruals(emp, START, today).forEach(a => accruals.push({ date: a.date, amount: a.amount, type: 'Менеджер', note: '' }));
+    DB.get('historicalAccruals', [])
+        .filter(a => a.employeeId === empId)
+        .forEach(a => accruals.push({ date: a.date, amount: a.amount || 0, type: 'Историческое', note: a.note || '' }));
+    // Сортировка хронологически (старые → новые)
+    accruals.sort((a, b) => a.date.localeCompare(b.date));
+    // Сумма всех выплат
+    let paidPool = getActiveSalaryPayments()
+        .filter(p => p.employeeId === empId)
+        .reduce((s, p) => s + (p.amount || 0), 0);
+    // FIFO: выплаты гасят начисления с конца (новые) — нет, обычно с начала. Гасим с начала.
+    const unpaid = [];
+    for (const a of accruals) {
+        if (paidPool >= a.amount) {
+            paidPool -= a.amount;
+        } else {
+            const remaining = a.amount - paidPool;
+            paidPool = 0;
+            unpaid.push({ ...a, amount: remaining });
+        }
+    }
+    const total = unpaid.reduce((s, a) => s + a.amount, 0);
+    document.getElementById('unpaid-accruals-title').textContent = 'Не выплачено: ' + emp.name;
+    document.getElementById('unpaid-accruals-total').textContent = formatMoney(total);
+    const list = document.getElementById('unpaid-accruals-list');
+    if (!unpaid.length) {
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-secondary);">Нет неоплаченных начислений</div>';
+    } else {
+        list.innerHTML = '<table class="data-table"><thead><tr><th>Дата</th><th>Тип</th><th style="text-align:right;">Сумма</th></tr></thead><tbody>' +
+            unpaid.map(a => `<tr><td>${a.date.split('-').reverse().join('.')}</td><td>${a.type}${a.note ? '<br><small style="color:var(--text-secondary)">' + a.note + '</small>' : ''}</td><td style="text-align:right;">${formatMoney(a.amount)}</td></tr>`).join('') +
+            '</tbody></table>';
+    }
+    openModal('modal-unpaid-accruals');
+}
+document.addEventListener('DOMContentLoaded', () => {
+    const c = document.getElementById('modal-unpaid-accruals-close');
+    if (c) c.addEventListener('click', () => closeModal('modal-unpaid-accruals'));
+});
+
 function onFirestoreReady() {
     // One-time salary import from Excel spreadsheet
     importSalaryPaymentsFromExcel();
@@ -3218,9 +3268,9 @@ function loadEmployees() {
                     <h3>${emp.firstName} ${emp.lastName}</h3>
                 </div>
                 <div class="emp-dash-card-stats">
-                    <div class="emp-dash-stat">
+                    <div class="emp-dash-stat" onclick="event.stopPropagation(); showUnpaidAccrualsModal(${emp.id})" style="cursor:pointer;" title="Показать неоплаченные начисления">
                         <span class="emp-dash-stat-label">К выплате</span>
-                        <span class="emp-dash-stat-value ${balance > 0 ? 'red' : ''}">${formatMoney(balance > 0 ? balance : 0)}</span>
+                        <span class="emp-dash-stat-value ${balance > 0 ? 'red' : ''}" style="text-decoration:underline dotted;">${formatMoney(balance > 0 ? balance : 0)}</span>
                     </div>
                     <div class="emp-dash-stat">
                         <span class="emp-dash-stat-label">Должность</span>

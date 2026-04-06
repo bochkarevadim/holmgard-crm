@@ -2284,11 +2284,29 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="modal-unpaid-accruals">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h2 id="unpaid-accruals-title">Неоплаченные начисления</h2>
+            <button class="btn-close" id="modal-unpaid-accruals-close">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div id="unpaid-accruals-list" style="max-height:60vh;overflow-y:auto;"></div>
+            <div style="display:flex;justify-content:space-between;padding:12px 0;border-top:1px solid var(--border);margin-top:8px;font-weight:600;">
+                <span>Итого к выплате:</span>
+                <span id="unpaid-accruals-total" style="color:var(--red)">0 ₽</span>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="js/auth.js?v=3"></script>
 <script src="js/gcal.js?v=16"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=55"></script>
+<script src="js/app.js?v=56"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
