@@ -1411,11 +1411,14 @@ function updateSalaryPayInfo(employeeId) {
     const empIdNum = parseInt(employeeId);
     const emp = DB.get('employees', []).find(e => e.id === empIdNum);
     const { startDate, endDate } = getDateRangeForPeriod('month');
-    const shiftEarned = getEmployeeEarningsForPeriod(empIdNum, 'month').totalEarned;
-    const mgrAccruals = emp ? getManagerDailyAccruals(emp, startDate, endDate) : [];
+    // Respect SALARY_BALANCE_START: only count from that date
+    const effStart = startDate > SALARY_BALANCE_START ? startDate : SALARY_BALANCE_START;
+    const allShifts = DB.get('shifts', []).filter(s => s.employeeId === empIdNum && s.date >= effStart && s.date <= endDate && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager');
+    const shiftEarned = allShifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
+    const mgrAccruals = emp ? getManagerDailyAccruals(emp, effStart, endDate) : [];
     const mgrTotal = mgrAccruals.reduce((s, a) => s + a.amount, 0);
     const earned = shiftEarned + mgrTotal;
-    const paid = getEmployeePaymentsForPeriod(empIdNum, 'month').totalPaid;
+    const paid = DB.get('salaryPayments', []).filter(p => p.employeeId === empIdNum && p.date >= effStart && p.date <= endDate).reduce((s, p) => s + (p.amount || 0), 0);
     const balance = earned - paid;
     document.getElementById('salary-pay-earned').textContent = formatMoney(earned);
     document.getElementById('salary-pay-already-paid').textContent = formatMoney(paid);
