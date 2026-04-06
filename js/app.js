@@ -3483,6 +3483,74 @@ function renderCalendar() {
     renderUpcomingEventsTable(events);
 }
 
+function openExportEventsModal() {
+    const now = moscowNow();
+    const first = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+    const last = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(new Date(now.getFullYear(), now.getMonth()+1, 0).getDate()).padStart(2,'0')}`;
+    document.getElementById('export-events-from').value = first;
+    document.getElementById('export-events-to').value = last;
+    document.getElementById('export-events-status').value = '';
+    openModal('modal-export-events');
+}
+
+function exportEventsCSV() {
+    const from = document.getElementById('export-events-from').value;
+    const to = document.getElementById('export-events-to').value;
+    const status = document.getElementById('export-events-status').value;
+    if (!from || !to) { showToast('Укажите период'); return; }
+
+    const events = DB.get('events', []).filter(e =>
+        e.date && e.date >= from && e.date <= to && (status ? e.status === status : true)
+    ).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+
+    const tariffs = DB.get('tariffs', []);
+    const occasionNames = { corporate: 'Корпоратив', birthday: 'День рождения', friends: 'Встреча друзей', bachelor: 'Мальчишник', personal: 'Личный праздник', active: 'Активный отдых' };
+    const channelNames = { wa: 'WhatsApp', tg: 'Telegram', vk: 'VK' };
+    const prepayNames = { qr: 'QR', cash: 'Наличные' };
+
+    const headers = ['Дата','Время','Статус','Тип','Тариф','Название','Клиент','Телефон','Связь','Повод','Участников','Стоимость','Предоплата','Способ предоплаты','Скидка','Сертификат','Комментарий'];
+    const rows = events.map(e => {
+        const tariff = e.tariffId ? tariffs.find(t => t.id === e.tariffId) : null;
+        return [
+            e.date || '',
+            e.time || '',
+            getStatusName(e.status) || '',
+            e.type || '',
+            tariff ? tariff.name : (e.tariffName || ''),
+            e.title || '',
+            e.clientName || '',
+            e.clientPhone || '',
+            channelNames[e.channel] || '',
+            occasionNames[e.occasion] || '',
+            e.participants || 0,
+            e.price || 0,
+            e.prepayment || 0,
+            prepayNames[e.prepaymentMethod] || '',
+            e.discount || 0,
+            e.certificateAmount || 0,
+            (e.comment || '').replace(/\r?\n/g, ' ')
+        ];
+    });
+
+    const escape = (v) => {
+        const s = String(v == null ? '' : v);
+        return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const csv = '\uFEFF' + [headers, ...rows].map(r => r.map(escape).join(';')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `events_${from}_${to}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    closeModal('modal-export-events');
+    showToast(`Экспортировано: ${events.length}`);
+}
+
 function renderUpcomingEventsTable(events) {
     const tbody = document.getElementById('month-events-tbody');
     if (!tbody) return;

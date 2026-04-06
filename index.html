@@ -736,7 +736,13 @@
                 </div>
             </div>
 
-            <div class="emp-dash-section-title" style="margin-top:24px;">Ближайшие мероприятия</div>
+            <div class="emp-dash-section-title" style="margin-top:24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <span>Ближайшие мероприятия</span>
+                <button class="btn-primary" style="padding:8px 14px;font-size:13px;" onclick="openExportEventsModal()">
+                    <span class="material-icons-round" style="font-size:16px;">file_download</span>
+                    Экспорт событий
+                </button>
+            </div>
                 <div class="table-container">
                     <table class="data-table" id="month-events-table">
                         <thead>
@@ -1317,6 +1323,46 @@
         </div>
 
         <!-- ===== TARIFF MODAL ===== -->
+        <!-- ===== EXPORT EVENTS MODAL ===== -->
+        <div class="modal-overlay" id="modal-export-events">
+            <div class="modal modal-sm">
+                <div class="modal-header">
+                    <h2>Экспорт событий</h2>
+                    <button class="btn-close" onclick="closeModal('modal-export-events')">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>С даты</label>
+                            <input type="date" id="export-events-from">
+                        </div>
+                        <div class="form-group">
+                            <label>По дату</label>
+                            <input type="date" id="export-events-to">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Статус</label>
+                        <select id="export-events-status">
+                            <option value="">Все</option>
+                            <option value="new">Новые</option>
+                            <option value="confirmed">Подтверждённые</option>
+                            <option value="completed">Завершённые</option>
+                            <option value="cancelled">Отменённые</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="closeModal('modal-export-events')">Отмена</button>
+                        <button type="button" class="btn-primary" onclick="exportEventsCSV()">
+                            <span class="material-icons-round">download</span> Скачать CSV
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="modal-overlay" id="modal-tariff">
             <div class="modal">
                 <div class="modal-header">
