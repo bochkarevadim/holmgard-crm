@@ -762,10 +762,30 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
                 console.log('[GCal] Imported external event:', imported.title, imported.date);
             }
 
-            DB.set('events', events);
+            // === DETECT REMOTE DELETIONS ===
+            // Если CRM-событие было замаплено в GCal, но в выгрузке его нет —
+            // значит его удалили в Google Calendar → удаляем и из CRM.
+            const gcalIdsPresent = new Set(gcalEvents.map(e => e.id));
+            const fromStr = new Date(timeMin).toISOString().slice(0, 10);
+            const toStr = new Date(timeMax).toISOString().slice(0, 10);
+            let deleted = 0;
+            const kept = [];
+            for (const ev of events) {
+                if (!ev.date || ev.date < fromStr || ev.date > toStr) { kept.push(ev); continue; }
+                const gcalId = map[String(ev.id)] || ev.gcalEventId;
+                if (!gcalId) { kept.push(ev); continue; }
+                if (gcalIdsPresent.has(gcalId)) { kept.push(ev); continue; }
+                // Замапленного события в GCal нет — удалено извне
+                delete map[String(ev.id)];
+                deleted++;
+                console.log('[GCal] Remote delete → removing from CRM:', ev.title, ev.date);
+            }
+            const finalEvents = deleted > 0 ? kept : events;
+
+            DB.set('events', finalEvents);
             setEventMap(map);
             updateStatus('connected');
-            return { added, updated, total: gcalEvents.length };
+            return { added, updated, deleted, total: gcalEvents.length };
         } catch (err) {
             console.error('[GCal] Pull error:', err);
             updateStatus('error');
@@ -799,8 +819,11 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
             const from = new Date(now); from.setDate(from.getDate() - 7);
             const to = new Date(now); to.setDate(to.getDate() + 180);
             const result = await pullEvents(from.toISOString(), to.toISOString());
-            if (result.added > 0) {
-                showToast(`📅 Google Calendar: +${result.added} новых мероприятий`);
+            if (result.added > 0 || result.deleted > 0) {
+                const parts = [];
+                if (result.added > 0) parts.push(`+${result.added}`);
+                if (result.deleted > 0) parts.push(`−${result.deleted}`);
+                showToast(`📅 Google Calendar: ${parts.join(' / ')}`);
                 // Re-render calendar if visible
                 if (typeof renderCalendar === 'function') {
                     const schedPage = document.getElementById('page-schedule');
@@ -871,6 +894,7 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
             let msg = `Синхронизация: +${pullResult.added} из GCal`;
             if (pushed > 0) msg += `, ${pushed} в GCal`;
             if (pullResult.updated > 0) msg += `, ${pullResult.updated} обновл.`;
+            if (pullResult.deleted > 0) msg += `, −${pullResult.deleted} удал.`;
             showToast(msg);
             return { ...pullResult, pushed };
         } catch (err) {
