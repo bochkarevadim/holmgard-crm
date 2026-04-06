@@ -1378,17 +1378,28 @@ function getManagerDailyAccruals(emp, startDate, endDate) {
 
 function getEmployeeEarningsForPeriod(employeeId, period) {
     const { startDate, endDate } = getDateRangeForPeriod(period);
+    // Clip to SALARY_BALANCE_START: всё до 06.04.2026 считается уже закрытым
+    const effStart = startDate < SALARY_BALANCE_START ? SALARY_BALANCE_START : startDate;
+    if (effStart > endDate) return { shifts: [], totalEarned: 0, shiftCount: 0 };
     const shifts = DB.get('shifts', []).filter(s =>
-        s.employeeId === employeeId && s.date >= startDate && s.date <= endDate && s.endTime && s.earnings
+        s.employeeId === employeeId && s.date >= effStart && s.date <= endDate && s.endTime && s.earnings
+        && (s.shiftRole || s.employeeRole) !== 'manager'
     );
-    const totalEarned = shifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
+    let totalEarned = shifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
+    // Add manager daily accruals in range
+    const emp = DB.get('employees', []).find(e => e.id === employeeId);
+    if (emp) {
+        const mgr = getManagerDailyAccruals(emp, effStart, endDate).reduce((s, a) => s + a.amount, 0);
+        totalEarned += mgr;
+    }
     return { shifts, totalEarned, shiftCount: shifts.length };
 }
 
 function getEmployeePaymentsForPeriod(employeeId, period) {
     const { startDate, endDate } = getDateRangeForPeriod(period);
+    const effStart = startDate < SALARY_BALANCE_START ? SALARY_BALANCE_START : startDate;
     const payments = getActiveSalaryPayments().filter(p =>
-        p.employeeId === employeeId && p.date >= startDate && p.date <= endDate
+        p.employeeId === employeeId && p.date >= effStart && p.date <= endDate
     );
     const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
     return { payments, totalPaid };
@@ -2967,13 +2978,16 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
 
     let totalFundEarned = 0, totalFundPaid = 0;
 
+    // Clip period start to balance start — до 06.04.2026 всё считается закрытым
+    const effAStart = aStart < SALARY_BALANCE_START ? SALARY_BALANCE_START : aStart;
+
     const empRows = employees.map(emp => {
         const histAdj = getHistoricalAdjustment(emp.id, allShifts, allPayments);
 
-        // Period earned (within selected period)
-        const shifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= aStart && s.date <= aEnd && (s.shiftRole || s.employeeRole) !== 'manager');
+        // Period earned (within selected period, clipped to balance start)
+        const shifts = allShifts.filter(s => s.employeeId === emp.id && s.date >= effAStart && s.date <= aEnd && (s.shiftRole || s.employeeRole) !== 'manager');
         const shiftEarned = shifts.reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
-        const mgrEarned = getManagerDailyAccruals(emp, aStart, aEnd).reduce((s, a) => s + a.amount, 0);
+        const mgrEarned = getManagerDailyAccruals(emp, effAStart, aEnd).reduce((s, a) => s + a.amount, 0);
         const earned = shiftEarned + mgrEarned;
 
         // Debt before period start (cumulative earned - cumulative paid BEFORE this period)
@@ -2986,8 +3000,8 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         const cumPaidBefore = allPayments.filter(p => p.employeeId === emp.id && p.date <= prevEnd).reduce((s, p) => s + (p.amount || 0), 0);
         const debtBefore = Math.max(0, cumEarnedBefore - cumPaidBefore);
 
-        // Payments made in this period
-        const rawPaid = allPayments.filter(p => p.employeeId === emp.id && p.date >= aStart && p.date <= aEnd).reduce((s, p) => s + (p.amount || 0), 0);
+        // Payments made in this period (clipped)
+        const rawPaid = allPayments.filter(p => p.employeeId === emp.id && p.date >= effAStart && p.date <= aEnd).reduce((s, p) => s + (p.amount || 0), 0);
 
         // Subtract previous debt from period payments (those payments cover old debt, not current period)
         const paid = Math.max(0, rawPaid - debtBefore);
