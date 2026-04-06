@@ -507,7 +507,9 @@ function startAutoCloseTimer() {
 // Called from auth.js after Firestore is ready and user is authenticated
 // === ONE-TIME SALARY IMPORT FROM EXCEL ===
 function importSalaryPaymentsFromExcel() {
-    if (DB.get('salary_import_v1', false)) return; // already imported
+    const v1Done = DB.get('salary_import_v1', false);
+    const v2Done = DB.get('salary_import_v2', false);
+    if (v1Done && v2Done) return;
     const importData = [
         {id:1700000000001,date:"2025-05-25",time:"12:00",employeeId:3,employeeName:"Елена Бундзен",amount:19550,method:"cash",note:"Импорт: 19.05-25.05 2025"},
         {id:1700000000002,date:"2025-05-25",time:"12:00",employeeId:5,employeeName:"Ольга Гусакова",amount:5550,method:"cash",note:"Импорт: 19.05-25.05 2025"},
@@ -625,26 +627,28 @@ function importSalaryPaymentsFromExcel() {
         {id:1700000000114,date:"2026-03-29",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:14200,method:"cash",note:"Импорт: 23.03-29.03 2026"},
         {id:1700000000115,date:"2026-03-29",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:7000,method:"cash",note:"Импорт: 23.03-29.03 2026"}
     ];
-    // Dedupe by id
-    const seenIds = new Set();
-    let existing = DB.get('salaryPayments', []).filter(p => {
-        if (seenIds.has(p.id)) return false;
-        seenIds.add(p.id); return true;
-    });
-    let added = 0;
-    importData.forEach(p => {
-        if (!seenIds.has(p.id)) {
-            existing.push(p);
-            seenIds.add(p.id);
-            added++;
-        }
-    });
-    DB.set('salaryPayments', existing);
-    DB.set('salary_import_v1', true);
-    if (added > 0) console.log(`Salary import: added ${added} payments from Excel`);
+    if (!v1Done) {
+        // Dedupe by id
+        const seenIds = new Set();
+        let existing = DB.get('salaryPayments', []).filter(p => {
+            if (seenIds.has(p.id)) return false;
+            seenIds.add(p.id); return true;
+        });
+        let added = 0;
+        importData.forEach(p => {
+            if (!seenIds.has(p.id)) {
+                existing.push(p);
+                seenIds.add(p.id);
+                added++;
+            }
+        });
+        DB.set('salaryPayments', existing);
+        DB.set('salary_import_v1', true);
+        if (added > 0) console.log(`Salary import: added ${added} payments from Excel`);
+    }
 
     // === v2: Виртуальные начисления (historicalAccruals), синхронные выплатам ===
-    if (!DB.get('salary_import_v2', false)) {
+    if (!v2Done) {
         const accruals = importData.map(p => ({
             id: 'h' + p.id,
             employeeId: p.employeeId,
