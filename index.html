@@ -448,6 +448,16 @@
             </a>
         </nav>
         <div class="sidebar-footer">
+            <div style="display:flex;gap:8px;padding:0 16px 12px;">
+                <button class="btn-quick-action income" onclick="openFinEntryModal('income');document.getElementById('sidebar').classList.remove('open');" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border-radius:12px;border:none;background:rgba(76,175,80,0.15);color:var(--green);font-weight:600;font-size:13px;cursor:pointer;">
+                    <span class="material-icons-round" style="font-size:18px;">add_circle</span>
+                    Доход
+                </button>
+                <button class="btn-quick-action expense" onclick="openFinEntryModal('expense');document.getElementById('sidebar').classList.remove('open');" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border-radius:12px;border:none;background:rgba(244,67,54,0.12);color:var(--red);font-weight:600;font-size:13px;cursor:pointer;">
+                    <span class="material-icons-round" style="font-size:18px;">remove_circle</span>
+                    Расход
+                </button>
+            </div>
             <button class="btn-logout-sidebar" id="director-logout">
                 <span class="material-icons-round">logout</span>
                 <span class="nav-label">Выйти</span>
@@ -2381,7 +2391,7 @@
 <script src="js/gcal.js?v=16"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=62"></script>
+<script src="js/app.js?v=63"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
