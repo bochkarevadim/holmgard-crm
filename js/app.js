@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'deletedSalaryPaymentIds', 'historicalAccruals'
 ]);
 
 const DB = {
@@ -751,8 +751,9 @@ function importSalaryPaymentsFromExcel() {
         {id:1800000000117,date:"2026-04-05",time:"12:00",employeeId:2,employeeName:"Савелий Данилов",amount:11480,method:"cash",note:"Импорт: 30.03-05.04 2026"},
         {id:1800000000118,date:"2026-04-05",time:"12:00",employeeId:4,employeeName:"Дмитрий Князев",amount:5540,method:"cash",note:"Импорт: 30.03-05.04 2026"}
     ];
-    // 1. Полностью заменить historicalAccruals
-    DB.set('historicalAccruals', importAccruals);
+    // 1. Заменить historicalAccruals до CUTOFF, сохранить после
+    const existingHistAfterCutoff = DB.get('historicalAccruals', []).filter(a => a.date > CUTOFF);
+    DB.set('historicalAccruals', [...importAccruals, ...existingHistAfterCutoff]);
     // 2. Удалить salaryPayments <= CUTOFF, добавить новые
     const existingPayments = DB.get('salaryPayments', []).filter(p => p.date > CUTOFF);
     const mergedPayments = [...existingPayments, ...importPayments];
@@ -767,6 +768,28 @@ function importSalaryPaymentsFromExcel() {
     DB.set('salary_import_v2', true);
     DB.set('salary_import_v3', true);
     console.log('Salary import v3: ' + importAccruals.length + ' accruals, ' + importPayments.length + ' payments. Old data up to ' + CUTOFF + ' replaced.');
+}
+
+// v4: Пересчитать earnings для смен после CUTOFF (если потеряны/неполные)
+function migrateV4RestorePostCutoffAccruals() {
+    if (DB.get('salary_import_v4', false)) return;
+    const CUTOFF = '2026-04-05';
+    const shifts = DB.get('shifts', []);
+    let fixed = 0;
+    shifts.forEach(s => {
+        if (s.date > CUTOFF && s.endTime) {
+            // Пересчитать earnings если они отсутствуют или нулевые но есть eventBonuses
+            if (!s.earnings || (s.earnings.total === 0 && s.eventBonuses && s.eventBonuses.length > 0)) {
+                s.earnings = calculateShiftEarnings(s);
+                fixed++;
+            }
+        }
+    });
+    if (fixed > 0) {
+        DB.set('shifts', shifts);
+        console.log('Salary import v4: recalculated earnings for ' + fixed + ' shifts after ' + CUTOFF);
+    }
+    DB.set('salary_import_v4', true);
 }
 
 // Сумма исторических виртуальных начислений по сотруднику в диапазоне
@@ -829,6 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function onFirestoreReady() {
     // One-time salary import from Excel spreadsheet
     importSalaryPaymentsFromExcel();
+    migrateV4RestorePostCutoffAccruals();
 
     // Refresh UI with data from Firestore
     applyAccentColor(DB.get('accentColor', '#FFD600'));
