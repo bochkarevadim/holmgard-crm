@@ -2609,13 +2609,17 @@ function loadTariffs(category = 'services', subcategory = null) {
             </div>
             <p class="tariff-description">${t.description || '—'}</p>
             <div class="tariff-meta">
+                ${t.slug ? `<span><span class="material-icons-round">tag</span> ${t.slug}</span>` : ''}
                 ${t.duration ? `<span><span class="material-icons-round">timer</span> ${t.duration} мин</span>` : ''}
                 ${t.minPeople ? `<span><span class="material-icons-round">group</span> от ${t.minPeople} чел.</span>` : ''}
-                ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров 0.68</span>` : ''}
-                ${t.kidsBallsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.kidsBallsPerPerson} шаров 0.50</span>` : ''}
-                ${t.grenadesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">brightness_7</span> ${t.grenadesPerPerson} гранат</span>` : ''}
-                ${t.smokesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">cloud</span> ${t.smokesPerPerson} дым</span>` : ''}
-                ${t.freePrice ? `<span class="consumable-badge"><span class="material-icons-round">edit</span> свободная цена</span>` : ''}
+                ${t.ageRange ? `<span><span class="material-icons-round">child_care</span> ${t.ageRange} лет</span>` : ''}
+                ${(t.ballsPerPerson || t.kidsBallsPerPerson || t.grenadesPerPerson || t.smokesPerPerson || t.freePrice) ? `<div class="tariff-consumables">
+                    ${t.ballsPerPerson ? `<span class="consumable-badge balls">${t.ballsPerPerson} шаров 0.68</span>` : ''}
+                    ${t.kidsBallsPerPerson ? `<span class="consumable-badge balls">${t.kidsBallsPerPerson} шаров 0.50</span>` : ''}
+                    ${t.grenadesPerPerson ? `<span class="consumable-badge grenades">${t.grenadesPerPerson} гранат</span>` : ''}
+                    ${t.smokesPerPerson ? `<span class="consumable-badge smokes">${t.smokesPerPerson} дым</span>` : ''}
+                    ${t.freePrice ? `<span class="consumable-badge">свободная цена</span>` : ''}
+                </div>` : ''}
             </div>
         </div>
     `).join('');
@@ -6004,11 +6008,13 @@ function loadDirectorTariffs(subcategory = undefined) {
                 ${t.duration ? `<span><span class="material-icons-round">timer</span> ${t.duration} мин</span>` : ''}
                 ${t.minPeople ? `<span><span class="material-icons-round">group</span> от ${t.minPeople} чел.</span>` : ''}
                 ${t.age ? `<span><span class="material-icons-round">cake</span> ${t.age} лет</span>` : ''}
-                ${t.ballsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.ballsPerPerson} шаров 0.68</span>` : ''}
-                ${t.kidsBallsPerPerson ? `<span class="consumable-badge balls"><span class="material-icons-round">radio_button_unchecked</span> ${t.kidsBallsPerPerson} шаров 0.50</span>` : ''}
-                ${t.grenadesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">brightness_7</span> ${t.grenadesPerPerson} гранат</span>` : ''}
-                ${t.smokesPerPerson ? `<span class="consumable-badge grenades"><span class="material-icons-round">cloud</span> ${t.smokesPerPerson} дым</span>` : ''}
-                ${t.freePrice ? `<span class="consumable-badge"><span class="material-icons-round">edit</span> свободная цена</span>` : ''}
+                ${(t.ballsPerPerson || t.kidsBallsPerPerson || t.grenadesPerPerson || t.smokesPerPerson || t.freePrice) ? `<div class="tariff-consumables">
+                    ${t.ballsPerPerson ? `<span class="consumable-badge balls">${t.ballsPerPerson} шаров 0.68</span>` : ''}
+                    ${t.kidsBallsPerPerson ? `<span class="consumable-badge balls">${t.kidsBallsPerPerson} шаров 0.50</span>` : ''}
+                    ${t.grenadesPerPerson ? `<span class="consumable-badge grenades">${t.grenadesPerPerson} гранат</span>` : ''}
+                    ${t.smokesPerPerson ? `<span class="consumable-badge smokes">${t.smokesPerPerson} дым</span>` : ''}
+                    ${t.freePrice ? `<span class="consumable-badge">свободная цена</span>` : ''}
+                </div>` : ''}
             </div>
             <div class="tariff-card-actions">
                 <button class="btn-action" title="Редактировать">
