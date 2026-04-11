@@ -938,6 +938,40 @@ function updatePinDots() {
     });
 }
 
+// Восстановление сессии после выгрузки из памяти (мобильные)
+function tryRestoreSession() {
+    try {
+        const savedId = localStorage.getItem('hp_session_user_id');
+        if (!savedId) return false;
+        const employees = DB.get('employees', []);
+        const user = employees.find(e => String(e.id) === savedId);
+        if (!user) { localStorage.removeItem('hp_session_user_id'); return false; }
+        // Проверяем Firebase email
+        const firebaseEmail = sessionStorage.getItem('hp_firebase_email');
+        if (firebaseEmail && user.email && user.email.toLowerCase() !== firebaseEmail.toLowerCase()) {
+            localStorage.removeItem('hp_session_user_id');
+            return false;
+        }
+        if (user.blocked) { localStorage.removeItem('hp_session_user_id'); return false; }
+        currentUser = user;
+        if (user.role === 'director') {
+            showScreen('app-screen');
+            document.getElementById('director-name').textContent = user.firstName + ' ' + user.lastName;
+            navigateTo('dashboard');
+        } else {
+            showScreen('employee-screen');
+            setupEmployeeScreen(user);
+            empNavigateTo('emp-dashboard');
+        }
+        if (typeof GCalSync !== 'undefined') {
+            setTimeout(async () => {
+                if (!GCalSync.isConnected()) await GCalSync.init();
+            }, 2000);
+        }
+        return true;
+    } catch(e) { return false; }
+}
+
 function attemptLogin() {
     const employees = DB.get('employees', []);
     const user = employees.find(e => e.pin === currentPin);
@@ -956,6 +990,8 @@ function attemptLogin() {
             return;
         }
         currentUser = user;
+        // Сохраняем сессию для восстановления после выгрузки из памяти
+        try { localStorage.setItem('hp_session_user_id', String(user.id)); } catch(e) {}
         showToast(`Добро пожаловать, ${user.firstName}!`);
         if (user.role === 'director') {
             showScreen('app-screen');
@@ -995,6 +1031,7 @@ function showScreen(id) {
 function logout() {
     currentUser = null;
     currentPin = '';
+    try { localStorage.removeItem('hp_session_user_id'); } catch(e) {}
     if (shiftTimerInterval) { clearInterval(shiftTimerInterval); shiftTimerInterval = null; }
     updatePinDots();
     // Firebase signOut — onAuthStateChanged will show firebase-login-screen

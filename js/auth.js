@@ -95,12 +95,18 @@ var FirebaseAuth = (function() {
                 }
             }
 
+            // Notify app that data is ready (for UI refresh)
+            if (typeof onFirestoreReady === 'function') onFirestoreReady();
+
+            // Попытка восстановить сессию (после выгрузки из памяти на мобильных)
+            if (typeof tryRestoreSession === 'function' && tryRestoreSession()) {
+                hideFirebaseLogin();
+                return;
+            }
+
             // Show PIN screen
             hideFirebaseLogin();
             showPinScreen();
-
-            // Notify app that data is ready (for UI refresh)
-            if (typeof onFirestoreReady === 'function') onFirestoreReady();
         } else {
             // User is signed out
             sessionStorage.removeItem('hp_firebase_email');
