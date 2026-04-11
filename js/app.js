@@ -454,6 +454,109 @@ let autoCloseInterval = null;
 let empSalaryPeriod = 'month';
 let dirSalaryPeriod = 'month';
 
+// ===== FIX MISSING WRITEOFFS FOR COMPLETED EVENTS =====
+function fixMissingWriteoffs() {
+    const events = DB.get('events', []);
+    const docs = DB.get('documents', []);
+    const tariffs = DB.get('tariffs', []);
+    const existingEventIds = new Set(docs.filter(d => d.type === 'writeoff' && d.eventId).map(d => String(d.eventId)));
+    let stockChanged = false;
+    const stock = DB.get('stock', {});
+    let addedDocs = 0;
+
+    events.forEach(evt => {
+        if (evt.status !== 'completed') return;
+        if (existingEventIds.has(String(evt.id))) return; // уже есть документы-списания
+        // Если consumablesUsed уже записан но документов нет — пересоздадим документы (без повторного списания со склада)
+
+        let totalBalls, totalKidsBalls, totalGrenades, totalSmokes;
+        const alreadyDeducted = !!evt.consumablesUsed;
+
+        if (alreadyDeducted) {
+            // Склад уже списан, просто восстанавливаем документы
+            totalBalls = evt.consumablesUsed.balls || 0;
+            totalKidsBalls = evt.consumablesUsed.kidsBalls || 0;
+            totalGrenades = evt.consumablesUsed.grenades || 0;
+            totalSmokes = evt.consumablesUsed.smokes || 0;
+        } else {
+            // Пересчитать расходники и списать со склада
+            totalBalls = 0; totalKidsBalls = 0; totalGrenades = 0; totalSmokes = 0;
+            const isKidball = evt.type === 'kidball' || (evt.title || '').toLowerCase().includes('кидбол');
+            if (evt.tariffId) {
+                const tariff = tariffs.find(t => t.id === evt.tariffId);
+                if (tariff) {
+                    const ppl = evt.participants || 1;
+                    const kbpp = tariff.kidsBallsPerPerson || 0;
+                    const bpp = tariff.ballsPerPerson || 0;
+                    if (kbpp > 0) totalKidsBalls += kbpp * ppl;
+                    else if (bpp > 0) { if (isKidball) totalKidsBalls += bpp * ppl; else totalBalls += bpp * ppl; }
+                    totalGrenades += (tariff.grenadesPerPerson || 0) * ppl;
+                    totalSmokes += (tariff.smokesPerPerson || 0) * ppl;
+                }
+            }
+            if (evt.selectedOptions && evt.selectedOptions.length > 0) {
+                evt.selectedOptions.forEach(optId => {
+                    const opt = tariffs.find(t => t.id === optId);
+                    if (opt) {
+                        const qty = evt.optionQuantities?.[optId] || 1;
+                        const ppl = evt.participants || 1;
+                        const kbpp = opt.kidsBallsPerPerson || 0;
+                        const bpp = opt.ballsPerPerson || 0;
+                        if (kbpp > 0) totalKidsBalls += kbpp * qty * ppl;
+                        else if (bpp > 0) { if (isKidball) totalKidsBalls += bpp * qty * ppl; else totalBalls += bpp * qty * ppl; }
+                        totalGrenades += (opt.grenadesPerPerson || 0) * qty * ppl;
+                        totalSmokes += (opt.smokesPerPerson || 0) * qty * ppl;
+                    }
+                });
+            }
+            // Списать со склада
+            if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0 || totalSmokes > 0) {
+                stock.balls = Math.max(0, (stock.balls || 0) - totalBalls);
+                stock.kidsBalls = Math.max(0, (stock.kidsBalls || 0) - totalKidsBalls);
+                stock.grenades = Math.max(0, (stock.grenades || 0) - totalGrenades);
+                stock.smokes = Math.max(0, (stock.smokes || 0) - totalSmokes);
+                stockChanged = true;
+            }
+            evt.consumablesUsed = { balls: totalBalls, kidsBalls: totalKidsBalls, grenades: totalGrenades, smokes: totalSmokes };
+        }
+
+        if (totalBalls === 0 && totalKidsBalls === 0 && totalGrenades === 0 && totalSmokes === 0) return;
+
+        // Создать документы-списания
+        const evtDate = evt.date || todayLocal();
+        const evtName = evt.title || 'Мероприятие';
+        const writeoffItems = [
+            { item: 'Пейнтбольные шары 0.68', qty: totalBalls },
+            { item: 'Детские пейнтбольные шары 0.50', qty: totalKidsBalls },
+            { item: 'Гранаты', qty: totalGrenades },
+            { item: 'Дымы', qty: totalSmokes }
+        ];
+        writeoffItems.forEach(wi => {
+            if (wi.qty > 0) {
+                docs.push({
+                    id: Date.now() + Math.random(),
+                    type: 'writeoff',
+                    date: evtDate,
+                    item: wi.item,
+                    qty: wi.qty,
+                    amount: 0,
+                    delivery: 0,
+                    comment: `Авто (восст.): ${evtName} (${evt.participants || 0} чел.)`,
+                    eventId: evt.id
+                });
+                addedDocs++;
+            }
+        });
+    });
+
+    if (addedDocs > 0) {
+        DB.set('documents', docs);
+        DB.set('events', events);
+        if (stockChanged) DB.set('stock', stock);
+        console.log('fixMissingWriteoffs: created ' + addedDocs + ' writeoff documents');
+    }
+}
+
 // ===== AUTO-CLOSE SHIFTS AT 23:23 =====
 function autoCloseStaleShifts() {
     // Close any open shifts from previous days (forgotten shifts)
@@ -867,6 +970,9 @@ function onFirestoreReady() {
             console.log('Startup dedup: removed ' + removed + ' duplicate events');
         }
     }
+
+    // Восстановить пропущенные списания для завершённых мероприятий
+    fixMissingWriteoffs();
 
     // Auto-close forgotten shifts from previous days
     autoCloseStaleShifts();
@@ -2296,10 +2402,12 @@ function completeEventPayment() {
 
     // Build toast message
     let toastMsg = receiptPrinted ? 'Заказ выполнен! Чек пробит ✓' : 'Заказ выполнен! Не забудьте пробить чек на кассе';
-    if (totalBalls > 0 || totalGrenades > 0) {
+    if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0 || totalSmokes > 0) {
         const parts = [];
-        if (totalBalls > 0) parts.push(`${totalBalls} шаров`);
+        if (totalBalls > 0) parts.push(`${totalBalls} шаров 0.68`);
+        if (totalKidsBalls > 0) parts.push(`${totalKidsBalls} шаров 0.50`);
         if (totalGrenades > 0) parts.push(`${totalGrenades} гранат`);
+        if (totalSmokes > 0) parts.push(`${totalSmokes} дымов`);
         toastMsg += ` | Списано: ${parts.join(', ')}`;
     }
     showToast(toastMsg);
