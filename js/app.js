@@ -1788,6 +1788,67 @@ function deleteAccrual(accrualId) {
     loadEmployees();
 }
 
+// ===== EDIT SHIFT EARNINGS (директор) =====
+function editShiftEarnings(shiftId) {
+    const shifts = DB.get('shifts', []);
+    const shift = shifts.find(s => s.id === shiftId);
+    if (!shift) return;
+    const e = shift.earnings || {};
+    const base = e.base || 0;
+    const instrBonus = (shift.eventBonuses || []).filter(b => b.bonusType !== 'admin').reduce((s, b) => s + (b.amount || 0), 0);
+    const adminBonus = (shift.eventBonuses || []).filter(b => b.bonusType === 'admin').reduce((s, b) => s + (b.amount || 0), 0);
+    const total = e.total || (base + instrBonus + adminBonus);
+
+    document.getElementById('edit-shift-id').value = shiftId;
+    document.getElementById('edit-shift-base').value = base;
+    document.getElementById('edit-shift-instr-bonus').value = instrBonus;
+    document.getElementById('edit-shift-admin-bonus').value = adminBonus;
+    document.getElementById('edit-shift-total').textContent = formatMoney(total);
+    document.getElementById('edit-shift-info').textContent = `${shift.date} | ${shift.startTime || '?'} — ${shift.endTime || '?'}`;
+    recalcShiftTotal();
+    openModal('modal-edit-shift');
+}
+
+function recalcShiftTotal() {
+    const base = parseInt(document.getElementById('edit-shift-base').value) || 0;
+    const instr = parseInt(document.getElementById('edit-shift-instr-bonus').value) || 0;
+    const admin = parseInt(document.getElementById('edit-shift-admin-bonus').value) || 0;
+    document.getElementById('edit-shift-total').textContent = formatMoney(base + instr + admin);
+}
+
+function saveShiftEarnings() {
+    const shiftId = parseInt(document.getElementById('edit-shift-id').value);
+    const base = parseInt(document.getElementById('edit-shift-base').value) || 0;
+    const instrBonus = parseInt(document.getElementById('edit-shift-instr-bonus').value) || 0;
+    const adminBonus = parseInt(document.getElementById('edit-shift-admin-bonus').value) || 0;
+    const total = base + instrBonus + adminBonus;
+    const shifts = DB.get('shifts', []);
+    const shift = shifts.find(s => s.id === shiftId);
+    if (!shift) return;
+    shift.earnings = { ...shift.earnings, base, total };
+    // Rebuild eventBonuses
+    shift.eventBonuses = [];
+    if (instrBonus > 0) shift.eventBonuses.push({ bonusType: 'instructor', amount: instrBonus });
+    if (adminBonus > 0) shift.eventBonuses.push({ bonusType: 'admin', amount: adminBonus });
+    DB.set('shifts', shifts);
+    closeModal('modal-edit-shift');
+    showToast('Начисление за смену обновлено');
+    loadEmployees();
+}
+
+function editMgrDailyRate(empId) {
+    const rules = DB.get('salaryRules', {});
+    const current = (rules.manager || {}).dailyRate || 360;
+    const newRate = prompt('Дневная ставка менеджера (₽):', current);
+    if (newRate === null) return;
+    const rate = parseInt(newRate);
+    if (isNaN(rate) || rate < 0) { showToast('Неверная сумма', 'error'); return; }
+    rules.manager = { ...(rules.manager || {}), dailyRate: rate };
+    DB.set('salaryRules', rules);
+    showToast(`Ставка менеджера: ${formatMoney(rate)}/день`);
+    loadEmployees();
+}
+
 // ===== EMPLOYEE NAVIGATION =====
 function initEmployeeNavigation() {
     document.querySelectorAll('[data-emp-page]').forEach(item => {
@@ -3453,6 +3514,8 @@ function loadEmployees() {
             const isPaid = (shiftId || mgrAmount > 0) && shiftPaid && mgrPaid;
             const rowStyle = '';
 
+            const editBtns = (shiftId ? `<button class="btn-action" onclick="event.stopPropagation();editShiftEarnings(${shiftId})" title="Редактировать начисление" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">edit</span></button>` : '')
+                + (mgrAmount > 0 ? `<button class="btn-action" onclick="event.stopPropagation();editMgrDailyRate(${emp.id})" title="Ставка менеджера" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">tune</span></button>` : '');
             return `<tr style="${rowStyle}cursor:pointer;" onclick="${hasComment ? `showShiftComment('${commentEsc}')` : ''}" title="${hasComment ? 'Нажмите — комментарий к смене' : ''}">
                 <td>${dateF}</td>
                 <td>${startTime}</td>
@@ -3463,7 +3526,7 @@ function loadEmployees() {
                 <td style="color:var(--green)">${adminBonus > 0 ? formatMoney(adminBonus) : '—'}</td>
                 <td style="color:var(--accent)">${mgrAmount > 0 ? formatMoney(mgrAmount) : '—'}</td>
                 <td style="font-weight:700">${formatMoney(dayTotal)}</td>
-                <td>${hasComment ? '<span class="material-icons-round" style="font-size:16px;color:var(--accent);">comment</span>' : ''}</td>
+                <td>${editBtns}${hasComment ? '<span class="material-icons-round" style="font-size:16px;color:var(--accent);">comment</span>' : ''}</td>
             </tr>`;
         };
 
@@ -4391,6 +4454,10 @@ function initFinances() {
     document.getElementById('modal-accrual-close')?.addEventListener('click', () => closeModal('modal-accrual'));
     document.getElementById('btn-cancel-accrual')?.addEventListener('click', () => closeModal('modal-accrual'));
     document.getElementById('btn-confirm-accrual')?.addEventListener('click', confirmAccrual);
+    // Shift earnings edit modal
+    document.getElementById('modal-edit-shift-close')?.addEventListener('click', () => closeModal('modal-edit-shift'));
+    document.getElementById('btn-cancel-edit-shift')?.addEventListener('click', () => closeModal('modal-edit-shift'));
+    document.getElementById('btn-confirm-edit-shift')?.addEventListener('click', saveShiftEarnings);
     // Finance entry modal
     document.getElementById('modal-fin-entry-close')?.addEventListener('click', () => closeModal('modal-fin-entry'));
     document.getElementById('btn-cancel-fin-entry')?.addEventListener('click', () => closeModal('modal-fin-entry'));
