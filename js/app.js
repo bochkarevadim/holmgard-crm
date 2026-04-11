@@ -1710,6 +1710,84 @@ function getActiveSalaryPayments() {
     return DB.get('salaryPayments', []).filter(p => !tombs.has(String(p.id)));
 }
 
+// ===== ACCRUAL CRUD =====
+function openAccrualModal(preselectedEmployeeId, editId) {
+    const employees = DB.get('employees', []).filter(e => e.role !== 'director');
+    const sel = document.getElementById('accrual-employee');
+    sel.innerHTML = employees.map(e => `<option value="${e.id}">${e.firstName} ${e.lastName}</option>`).join('');
+    document.getElementById('accrual-edit-id').value = '';
+    document.getElementById('accrual-date').value = todayLocal();
+    document.getElementById('accrual-amount').value = '';
+    document.getElementById('accrual-note').value = '';
+    if (preselectedEmployeeId) sel.value = preselectedEmployeeId;
+    document.querySelector('#modal-accrual .modal-header h2').textContent = 'Добавить начисление';
+    document.querySelector('#btn-confirm-accrual').innerHTML = '<span class="material-icons-round">add</span> Добавить';
+    if (editId) {
+        const acc = DB.get('historicalAccruals', []).find(a => a.id === editId);
+        if (acc) {
+            document.getElementById('accrual-edit-id').value = acc.id;
+            sel.value = acc.employeeId;
+            document.getElementById('accrual-date').value = acc.date;
+            document.getElementById('accrual-amount').value = acc.amount;
+            document.getElementById('accrual-note').value = (acc.note || '').replace('Историческое начисление: ', '');
+            document.querySelector('#modal-accrual .modal-header h2').textContent = 'Редактировать начисление';
+            document.querySelector('#btn-confirm-accrual').innerHTML = '<span class="material-icons-round">save</span> Сохранить';
+        }
+    }
+    openModal('modal-accrual');
+}
+
+function confirmAccrual() {
+    const empId = parseInt(document.getElementById('accrual-employee').value);
+    const amount = parseInt(document.getElementById('accrual-amount').value);
+    const date = document.getElementById('accrual-date').value;
+    const note = document.getElementById('accrual-note').value.trim();
+    const editId = document.getElementById('accrual-edit-id').value;
+    if (!empId || !amount || amount <= 0) { showToast('Укажите сотрудника и сумму', 'error'); return; }
+    if (!date) { showToast('Укажите дату', 'error'); return; }
+    const emp = DB.get('employees', []).find(e => e.id === empId);
+    const empName = emp ? `${emp.firstName} ${emp.lastName}` : '';
+    let accruals = DB.get('historicalAccruals', []);
+    if (editId) {
+        const idx = accruals.findIndex(a => a.id === editId);
+        if (idx !== -1) {
+            accruals[idx].date = date;
+            accruals[idx].amount = amount;
+            accruals[idx].note = note ? 'Историческое начисление: ' + note : '';
+            accruals[idx].employeeId = empId;
+            accruals[idx].employeeName = empName;
+        }
+        showToast('Начисление обновлено');
+    } else {
+        accruals.push({
+            id: 'h' + Date.now(),
+            employeeId: empId,
+            employeeName: empName,
+            date: date,
+            amount: amount,
+            note: note ? 'Историческое начисление: ' + note : ''
+        });
+        showToast('Начисление добавлено');
+    }
+    DB.set('historicalAccruals', accruals);
+    closeModal('modal-accrual');
+    loadEmployees();
+}
+
+function editAccrual(accrualId) {
+    const acc = DB.get('historicalAccruals', []).find(a => a.id === accrualId);
+    if (!acc) return;
+    openAccrualModal(acc.employeeId, accrualId);
+}
+
+function deleteAccrual(accrualId) {
+    if (!confirm('Удалить это начисление?')) return;
+    const accruals = DB.get('historicalAccruals', []).filter(a => a.id !== accrualId);
+    DB.set('historicalAccruals', accruals);
+    showToast('Начисление удалено');
+    loadEmployees();
+}
+
 // ===== EMPLOYEE NAVIGATION =====
 function initEmployeeNavigation() {
     document.querySelectorAll('[data-emp-page]').forEach(item => {
@@ -3288,13 +3366,25 @@ function loadEmployees() {
         const mgrByDate = {};
         allMgrAccruals.forEach(a => { mgrByDate[a.date] = a.amount; });
 
-        // Build timeline entries: shifts/accruals + payments
+        // Historical accruals for this employee
+        const empHistAccruals = DB.get('historicalAccruals', []).filter(a => a.employeeId === emp.id);
+        const histByDate = {};
+        empHistAccruals.forEach(a => {
+            if (!histByDate[a.date]) histByDate[a.date] = [];
+            histByDate[a.date].push(a);
+        });
+
+        // Build timeline entries: shifts/accruals + historical + payments
         const timeline = [];
         const shiftDates = new Set();
         allEmpShifts.forEach(s => shiftDates.add(s.date));
         allMgrAccruals.forEach(a => shiftDates.add(a.date));
         [...shiftDates].forEach(date => {
             timeline.push({ type: 'accrual', date });
+        });
+        // Add historical accrual entries (separate rows)
+        empHistAccruals.forEach(a => {
+            timeline.push({ type: 'historical', date: a.date, amount: a.amount, note: a.note || '', histId: a.id });
         });
         allEmpPayments.forEach(p => {
             timeline.push({ type: 'payment', date: p.date, time: p.time, amount: p.amount, method: p.method, note: p.note, paymentId: p.id });
@@ -3315,6 +3405,19 @@ function loadEmployees() {
                     <td>
                         <button class="btn-action" onclick="editSalaryPayment(${entry.paymentId})" title="Редактировать" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">edit</span></button>
                         <button class="btn-action danger" onclick="deleteSalaryPayment(${entry.paymentId})" title="Удалить" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">delete</span></button>
+                    </td>
+                </tr>`;
+            }
+            if (entry.type === 'historical') {
+                const dateF = new Date(entry.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const noteShort = entry.note.replace('Историческое начисление: ', '');
+                return `<tr style="background:rgba(33,150,243,0.10);">
+                    <td>${dateF}</td>
+                    <td colspan="7" style="color:var(--accent);font-weight:600;">📋 Начисление${noteShort ? ' — ' + noteShort : ''}</td>
+                    <td style="font-weight:700;">${formatMoney(entry.amount)}</td>
+                    <td>
+                        <button class="btn-action" onclick="editAccrual('${entry.histId}')" title="Редактировать" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">edit</span></button>
+                        <button class="btn-action danger" onclick="deleteAccrual('${entry.histId}')" title="Удалить" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">delete</span></button>
                     </td>
                 </tr>`;
             }
@@ -3390,6 +3493,10 @@ function loadEmployees() {
                     <button class="btn-primary" onclick="openSalaryPaymentModal(${emp.id})">
                         <span class="material-icons-round">account_balance_wallet</span>
                         Выплатить зарплату
+                    </button>
+                    <button class="btn-secondary" onclick="openAccrualModal(${emp.id})">
+                        <span class="material-icons-round">add_circle</span>
+                        Добавить начисление
                     </button>
                     <button class="btn-action" onclick="openEmployeeModal('${emp.id}')" title="Редактировать">
                         <span class="material-icons-round">edit</span>
@@ -4280,6 +4387,10 @@ function initFinances() {
     document.getElementById('btn-cancel-salary-payment')?.addEventListener('click', () => closeModal('modal-salary-payment'));
     document.getElementById('btn-confirm-salary-payment')?.addEventListener('click', confirmSalaryPayment);
     document.getElementById('salary-pay-employee')?.addEventListener('change', function() { updateSalaryPayInfo(this.value); });
+    // Accrual modal
+    document.getElementById('modal-accrual-close')?.addEventListener('click', () => closeModal('modal-accrual'));
+    document.getElementById('btn-cancel-accrual')?.addEventListener('click', () => closeModal('modal-accrual'));
+    document.getElementById('btn-confirm-accrual')?.addEventListener('click', confirmAccrual);
     // Finance entry modal
     document.getElementById('modal-fin-entry-close')?.addEventListener('click', () => closeModal('modal-fin-entry'));
     document.getElementById('btn-cancel-fin-entry')?.addEventListener('click', () => closeModal('modal-fin-entry'));
