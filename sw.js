@@ -1,4 +1,4 @@
-const CACHE_NAME = 'holmgard-crm-v9';
+const CACHE_NAME = 'holmgard-crm-v10';
 const ASSETS_TO_CACHE = [
     '/holmgard-crm/',
     '/holmgard-crm/index.html',
@@ -7,6 +7,7 @@ const ASSETS_TO_CACHE = [
     '/holmgard-crm/js/auth.js',
     '/holmgard-crm/js/gcal.js',
     '/holmgard-crm/js/gsheets.js',
+    '/holmgard-crm/js/sales-history.js',
     '/holmgard-crm/img/icon-192x192.png',
     '/holmgard-crm/img/icon-512x512.png',
     '/holmgard-crm/manifest.json'

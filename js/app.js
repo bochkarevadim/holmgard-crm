@@ -3001,15 +3001,32 @@ function calculateRevenue(period) {
 
     const currentRevenue = events
         .filter(e => e.date >= startDate && e.date <= endDate && e.status === 'completed' && (e.price || 0) > 0)
-        .reduce((sum, e) => sum + (e.price || 0), 0);
+        .reduce((sum, e) => sum + (e.price || 0), 0)
+        + getHistoricalSalesSum(startDate, endDate);
 
     const prevRevenue = events
         .filter(e => e.date >= prevStartDate && e.date <= prevEndDate && e.status === 'completed' && (e.price || 0) > 0)
-        .reduce((sum, e) => sum + (e.price || 0), 0);
+        .reduce((sum, e) => sum + (e.price || 0), 0)
+        + getHistoricalSalesSum(prevStartDate, prevEndDate);
 
     const change = prevRevenue > 0 ? Math.round((currentRevenue / prevRevenue - 1) * 100) : (currentRevenue > 0 ? 100 : 0);
 
     return { currentRevenue, prevRevenue, change };
+}
+
+// Исторические продажи из Excel (только для аналитики директора)
+function getHistoricalSalesSum(startDate, endDate) {
+    if (typeof HISTORICAL_SALES_DATA === 'undefined') return 0;
+    return HISTORICAL_SALES_DATA
+        .filter(s => !s.y && s.d >= startDate && s.d <= endDate)
+        .reduce((sum, s) => sum + (s.a || 0), 0);
+}
+
+function getHistoricalSalesForDate(dateStr) {
+    if (typeof HISTORICAL_SALES_DATA === 'undefined') return 0;
+    return HISTORICAL_SALES_DATA
+        .filter(s => s.d === dateStr && !s.y)
+        .reduce((sum, s) => sum + (s.a || 0), 0);
 }
 
 function getMonthlyRevenueData(year) {
@@ -3025,6 +3042,24 @@ function getMonthlyRevenueData(year) {
             }
         }
     });
+    // Добавить исторические продажи
+    if (typeof HISTORICAL_SALES_DATA !== 'undefined') {
+        HISTORICAL_SALES_DATA.forEach(s => {
+            if (s.y) {
+                // Годовая сводка — распределить по 12 месяцам
+                if (parseInt(s.d.split('-')[0]) === year) {
+                    const perMonth = Math.round((s.a || 0) / 12);
+                    for (let i = 0; i < 12; i++) monthly[i] += perMonth;
+                }
+            } else {
+                const parts = s.d.split('-');
+                if (parseInt(parts[0]) === year) {
+                    const monthIdx = parseInt(parts[1]) - 1;
+                    if (monthIdx >= 0 && monthIdx < 12) monthly[monthIdx] += s.a || 0;
+                }
+            }
+        });
+    }
     return monthly;
 }
 
@@ -3064,6 +3099,11 @@ function loadRevenue() {
                 else if (e.date === yestStr) prevData[hour - 8] += e.price;
             }
         });
+        // Historical sales distributed to 12:00 slot for daily view
+        const hToday = getHistoricalSalesForDate(todayStr);
+        const hYest = getHistoricalSalesForDate(yestStr);
+        if (hToday > 0) currentData[4] += hToday; // 12:00
+        if (hYest > 0) prevData[4] += hYest;
         currentLabel = 'Сегодня'; prevLabel = 'Вчера';
     } else if (period === 'week') {
         // Daily: Mon–Sun selected week vs prev week
@@ -3087,6 +3127,8 @@ function loadRevenue() {
                 if (e.date === d1s) currentData[i] += e.price;
                 if (e.date === d2s) prevData[i] += e.price;
             });
+            currentData[i] += getHistoricalSalesForDate(d1s);
+            prevData[i] += getHistoricalSalesForDate(d2s);
         }
         currentLabel = 'Эта неделя'; prevLabel = 'Прошлая неделя';
     } else if (period === 'month') {
@@ -3107,6 +3149,16 @@ function loadRevenue() {
             if (y === selY && m === selM - 1 && day <= maxDays) currentData[day - 1] += e.price;
             if (y === prevM.getFullYear() && m === prevM.getMonth() && day <= maxDays) prevData[day - 1] += e.price;
         });
+        // Historical sales per day
+        if (typeof HISTORICAL_SALES_DATA !== 'undefined') {
+            HISTORICAL_SALES_DATA.forEach(s => {
+                if (s.y) return;
+                const parts = s.d.split('-');
+                const y = parseInt(parts[0]), m = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
+                if (y === selY && m === selM - 1 && day <= maxDays) currentData[day - 1] += s.a || 0;
+                if (y === prevM.getFullYear() && m === prevM.getMonth() && day <= maxDays) prevData[day - 1] += s.a || 0;
+            });
+        }
         const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
         currentLabel = monthNames[selM - 1]; prevLabel = monthNames[prevM.getMonth()];
     } else {
