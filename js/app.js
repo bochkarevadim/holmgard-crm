@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'bonus_recalc_v8', 'bonus_recalc_v8b', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'bonus_recalc_v8', 'bonus_recalc_v8b', 'bonus_recalc_v8c', 'deletedSalaryPaymentIds', 'historicalAccruals'
 ]);
 
 const DB = {
@@ -1060,7 +1060,7 @@ function migrateV7CleanupPreAprilBonuses() {
 // v8: Полный пересчёт бонусов за мероприятия с 1 апреля
 // Удаляет все evtbonus_ дубли, пересчитывает и создаёт заново
 function migrateV8RecalcEventBonuses() {
-    if (DB.get('bonus_recalc_v8b', false)) return;
+    if (DB.get('bonus_recalc_v8c', false)) return;
     const events = DB.get('events', []);
     if (events.length === 0) return;
 
@@ -1142,8 +1142,8 @@ function migrateV8RecalcEventBonuses() {
     DB.set('events', events);
     DB.set('shifts', shifts);
     DB.set('historicalAccruals', accruals);
-    DB.set('bonus_recalc_v8b', true);
-    console.log(`Bonus recalc v8b: removed ${removedDupes} dupes, created ${created} bonuses`);
+    DB.set('bonus_recalc_v8c', true);
+    console.log(`Bonus recalc v8c: removed ${removedDupes} old, created ${created} bonuses`);
 }
 
 // Сумма исторических виртуальных начислений по сотруднику в диапазоне
@@ -1841,13 +1841,13 @@ function calculateEventRevenueBySources(event, sources) {
         }
     }
 
-    // Options for game (price × qty × participants)
+    // Options for game (price × qty, same as in event price calculation)
     if (sources.includes('optionsForGame') && event.selectedOptions) {
         event.selectedOptions.forEach(optId => {
             const opt = tariffs.find(t => String(t.id) === String(optId) && t.category === 'optionsForGame');
             if (opt) {
                 const qty = event.optionQuantities?.[optId] || 1;
-                total += (opt.price || 0) * qty * (event.participants || 1);
+                total += (opt.price || 0) * qty;
             }
         });
     }
