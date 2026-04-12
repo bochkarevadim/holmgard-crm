@@ -901,7 +901,6 @@ function migrateV5FixMissingEventBonuses() {
     if (DB.get('salary_import_v5b', false)) return;
     const events = DB.get('events', []);
     if (events.length === 0) return; // данные ещё не загружены
-    const events = DB.get('events', []);
     const shifts = DB.get('shifts', []);
     const accruals = DB.get('historicalAccruals', []);
     let addedCount = 0;
