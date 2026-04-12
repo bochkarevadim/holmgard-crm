@@ -491,7 +491,10 @@
                 </button>
             </div>
             <div class="dashboard-grid" id="dashboard-grid">
-                <div class="stock-row dash-sortable" data-card-id="stock">
+                <div class="stock-row dash-sortable" data-card-id="stock" style="position:relative;">
+                    <button class="btn-icon" onclick="openStockInventoryModal()" title="Инвентаризация" style="position:absolute;top:4px;right:4px;z-index:1;">
+                        <span class="material-icons-round" style="font-size:18px;">edit</span>
+                    </button>
                     <div class="stock-item">
                         <div class="stock-item-header"><span class="material-icons-round">sports_baseball</span> Шары 0,68</div>
                         <div class="stock-item-value" id="stock-balls">0</div>
@@ -2294,6 +2297,25 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="modal-stock-inventory">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h2>Инвентаризация склада</h2>
+            <button class="btn-close" onclick="closeModal('modal-stock-inventory')"><span class="material-icons-round">close</span></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group"><label>Шары 0,68</label><input type="number" id="inv-balls" class="form-control" min="0"></div>
+            <div class="form-group"><label>Шары 0,50</label><input type="number" id="inv-kids-balls" class="form-control" min="0"></div>
+            <div class="form-group"><label>Гранаты</label><input type="number" id="inv-grenades" class="form-control" min="0"></div>
+            <div class="form-group"><label>Дымы</label><input type="number" id="inv-smokes" class="form-control" min="0"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal('modal-stock-inventory')">Отмена</button>
+            <button class="btn-primary" onclick="saveStockInventory()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="modal-unpaid-accruals">
     <div class="modal modal-sm">
         <div class="modal-header">
@@ -2392,7 +2414,7 @@
 <script src="js/gcal.js?v=16"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=67"></script>
+<script src="js/app.js?v=68"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
