@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'stock_recalc_v6', 'deletedSalaryPaymentIds', 'historicalAccruals'
 ]);
 
 const DB = {
@@ -954,6 +954,30 @@ function migrateV5FixMissingEventBonuses() {
     DB.set('salary_import_v5', true);
 }
 
+// v6: Пересчитать склад по всем документам (после бага с гранатами/дымами × ppl)
+function migrateV6RecalcStock() {
+    if (DB.get('stock_recalc_v6', false)) return;
+    const docs = DB.get('documents', []);
+    const stock = { balls: 0, kidsBalls: 0, grenades: 0, smokes: 0 };
+    const keyMap = {
+        'Пейнтбольные шары 0.68': 'balls',
+        'Детские пейнтбольные шары 0.50': 'kidsBalls',
+        'Гранаты': 'grenades',
+        'Дымы': 'smokes'
+    };
+    docs.forEach(d => {
+        const k = keyMap[d.item];
+        if (!k || !d.qty) return;
+        if (d.type === 'incoming') stock[k] += d.qty;
+        else if (d.type === 'outgoing' || d.type === 'writeoff') stock[k] -= d.qty;
+    });
+    // Не допускать отрицательных значений
+    Object.keys(stock).forEach(k => { if (stock[k] < 0) stock[k] = 0; });
+    DB.set('stock', stock);
+    DB.set('stock_recalc_v6', true);
+    console.log('Stock recalc v6:', JSON.stringify(stock));
+}
+
 // Сумма исторических виртуальных начислений по сотруднику в диапазоне
 function getHistoricalAccrualSum(empId, startDate, endDate) {
     return DB.get('historicalAccruals', [])
@@ -1016,6 +1040,7 @@ function onFirestoreReady() {
     importSalaryPaymentsFromExcel();
     migrateV4RestorePostCutoffAccruals();
     migrateV5FixMissingEventBonuses();
+    migrateV6RecalcStock();
 
     // Refresh UI with data from Firestore
     applyAccentColor(DB.get('accentColor', '#FFD600'));
@@ -5392,13 +5417,17 @@ function loadDocuments(tab = 'incoming') {
     `).join('') || `<tr><td colspan="6" class="empty-state">Нет документов</td></tr>`;
 }
 
+let _saveDoc_oldData = null; // Хранит старые данные документа для коррекции склада при редактировании
+
 function openDocumentModal(id = null) {
     const form = document.getElementById('document-form');
     form.reset();
     document.getElementById('doc-id').value = '';
+    _saveDoc_oldData = null;
     if (id) {
         const doc = DB.get('documents', []).find(d => String(d.id) === String(id));
         if (!doc) return;
+        _saveDoc_oldData = { item: doc.item, qty: doc.qty, type: doc.type };
         document.getElementById('modal-document-title').textContent = 'Редактировать документ';
         document.getElementById('doc-id').value = doc.id;
         document.getElementById('doc-type').value = doc.type;
@@ -5450,13 +5479,29 @@ function saveDocument(e) {
     }
     DB.set('documents', docs);
 
-    // Auto-update stock when saving incoming/outgoing document for consumables
+    // Auto-update stock when saving document for consumables
     const stockKeyMap = {
         'Пейнтбольные шары 0.68': 'balls',
         'Детские пейнтбольные шары 0.50': 'kidsBalls',
         'Гранаты': 'grenades',
         'Дымы': 'smokes'
     };
+
+    // При редактировании — сначала вернуть старое количество на склад
+    if (id && _saveDoc_oldData) {
+        const oldKey = stockKeyMap[_saveDoc_oldData.item];
+        if (oldKey && _saveDoc_oldData.qty > 0) {
+            const stock = DB.get('stock', {});
+            if (_saveDoc_oldData.type === 'incoming') {
+                stock[oldKey] = Math.max(0, (stock[oldKey] || 0) - _saveDoc_oldData.qty);
+            } else if (_saveDoc_oldData.type === 'outgoing' || _saveDoc_oldData.type === 'writeoff') {
+                stock[oldKey] = (stock[oldKey] || 0) + _saveDoc_oldData.qty;
+            }
+            DB.set('stock', stock);
+        }
+    }
+
+    // Применить новое количество
     const stockKey = stockKeyMap[data.item];
     if (stockKey && data.qty > 0) {
         const stock = DB.get('stock', {});
