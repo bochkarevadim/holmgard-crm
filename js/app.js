@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'deletedSalaryPaymentIds', 'historicalAccruals'
 ]);
 
 const DB = {
@@ -981,6 +981,82 @@ function migrateV6RecalcStock() {
     console.log('Stock recalc v6:', JSON.stringify(stock));
 }
 
+// v7: Удалить автоматические evtbonus_ начисления до 31 марта (покрыты Excel-импортом)
+// + пересоздать бонусы за мероприятия с 1 апреля если их нет
+function migrateV7CleanupPreAprilBonuses() {
+    if (DB.get('salary_cleanup_v7', false)) return;
+    const events = DB.get('events', []);
+    if (events.length === 0) return; // данные ещё не загружены
+
+    const CUTOFF = '2026-03-31';
+    const accruals = DB.get('historicalAccruals', []);
+
+    // 1. Удалить evtbonus_ начисления до 31 марта включительно
+    const before = accruals.length;
+    const cleaned = accruals.filter(a => {
+        if (a.id && String(a.id).startsWith('evtbonus_') && a.date && a.date <= CUTOFF) {
+            return false; // удалить
+        }
+        return true;
+    });
+    const removed = before - cleaned.length;
+
+    // 2. Пересоздать бонусы за мероприятия с 1 апреля если их нет
+    const shifts = DB.get('shifts', []);
+    let added = 0;
+
+    events.forEach(evt => {
+        if (evt.status !== 'completed' || !evt.bonuses) return;
+        if (!evt.date || evt.date <= CUTOFF) return; // только после 31 марта
+
+        const eventId = evt.id;
+        const eventDate = evt.date;
+        const evtTitle = evt.title || 'Мероприятие';
+        const instrIds = evt.assignedInstructors || evt.instructors || [];
+        const adminIds = evt.assignedAdmins || evt.admins || [];
+        const perInstr = evt.bonuses.perInstructor || 0;
+        const perAdm = evt.bonuses.perAdmin || 0;
+
+        const creditIfMissing = (empId, amount, bonusType) => {
+            if (!empId || amount <= 0) return;
+            // Проверить на смене
+            const hasOnShift = shifts.some(s =>
+                s.employeeId === empId && s.eventBonuses &&
+                s.eventBonuses.some(b => String(b.eventId) === String(eventId) && b.bonusType === bonusType)
+            );
+            if (hasOnShift) return;
+            // Проверить в начислениях
+            const hasAccrual = cleaned.some(a =>
+                a.employeeId === empId && a.id && String(a.id).startsWith('evtbonus_' + eventId + '_' + empId)
+            );
+            if (hasAccrual) return;
+            // Создать
+            const emps = DB.get('employees', []);
+            const emp = emps.find(e => e.id === empId);
+            const empName = emp ? (emp.firstName + ' ' + emp.lastName) : '';
+            const roleName = bonusType === 'instructor' ? 'инструктор' : 'администратор';
+            cleaned.push({
+                id: 'evtbonus_' + eventId + '_' + empId + '_' + Date.now() + '_' + Math.random(),
+                employeeId: empId,
+                employeeName: empName,
+                date: eventDate,
+                amount: amount,
+                note: `Бонус за мероприятие "${evtTitle}" (${roleName})`
+            });
+            added++;
+        };
+
+        instrIds.forEach(id => creditIfMissing(id, perInstr, 'instructor'));
+        adminIds.forEach(id => creditIfMissing(id, perAdm, 'admin'));
+    });
+
+    if (removed > 0 || added > 0) {
+        DB.set('historicalAccruals', cleaned);
+        console.log(`Salary cleanup v7: removed ${removed} pre-April evtbonus, added ${added} post-April bonuses`);
+    }
+    DB.set('salary_cleanup_v7', true);
+}
+
 // Сумма исторических виртуальных начислений по сотруднику в диапазоне
 function getHistoricalAccrualSum(empId, startDate, endDate) {
     return DB.get('historicalAccruals', [])
@@ -1044,6 +1120,7 @@ function onFirestoreReady() {
     migrateV4RestorePostCutoffAccruals();
     migrateV5FixMissingEventBonuses();
     migrateV6RecalcStock();
+    migrateV7CleanupPreAprilBonuses();
 
     // Refresh UI with data from Firestore
     applyAccentColor(DB.get('accentColor', '#FFD600'));
@@ -1774,6 +1851,8 @@ function getDateRangeForPeriod(period) {
 // Calculate manager daily accruals for a given period
 // Returns array of { date, amount } for each day the employee was a manager
 function getManagerDailyAccruals(emp, startDate, endDate) {
+    // До 31 марта 2026 включительно менеджерская ставка покрыта историческим импортом из Excel
+    const MGR_AUTO_START = '2026-04-01';
     const roles = emp.allowedShiftRoles || getDefaultAllowedRoles(emp.role);
     const isManager = roles.includes('manager');
     const managerSince = emp.managerSince; // date string YYYY-MM-DD
@@ -1786,9 +1865,9 @@ function getManagerDailyAccruals(emp, startDate, endDate) {
     const mgrRule = rules.manager || { dailyRate: 360 };
     const dailyRate = mgrRule.dailyRate || 360;
 
-    // Determine effective range
-    // managerUntil is exclusive (the day they stopped being manager, NOT paid)
-    const effectiveStart = managerSince && managerSince > startDate ? managerSince : startDate;
+    // Determine effective range — не раньше MGR_AUTO_START
+    const floorStart = startDate < MGR_AUTO_START ? MGR_AUTO_START : startDate;
+    const effectiveStart = managerSince && managerSince > floorStart ? managerSince : floorStart;
     let mgrLastDay = endDate;
     if (managerUntil) {
         // Day before managerUntil is the last paid day
