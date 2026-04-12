@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'bonus_recalc_v8', 'bonus_recalc_v8b', 'bonus_recalc_v8c', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'bonus_recalc_v8', 'bonus_recalc_v8b', 'bonus_recalc_v8c', 'bonus_recalc_v8d', 'price_recalc_v9', 'deletedSalaryPaymentIds', 'historicalAccruals'
 ]);
 
 const DB = {
@@ -1060,7 +1060,7 @@ function migrateV7CleanupPreAprilBonuses() {
 // v8: Полный пересчёт бонусов за мероприятия с 1 апреля
 // Удаляет все evtbonus_ дубли, пересчитывает и создаёт заново
 function migrateV8RecalcEventBonuses() {
-    if (DB.get('bonus_recalc_v8c', false)) return;
+    if (DB.get('bonus_recalc_v8d', false)) return;
     const events = DB.get('events', []);
     if (events.length === 0) return;
 
@@ -1142,8 +1142,8 @@ function migrateV8RecalcEventBonuses() {
     DB.set('events', events);
     DB.set('shifts', shifts);
     DB.set('historicalAccruals', accruals);
-    DB.set('bonus_recalc_v8c', true);
-    console.log(`Bonus recalc v8c: removed ${removedDupes} old, created ${created} bonuses`);
+    DB.set('bonus_recalc_v8d', true);
+    console.log(`Bonus recalc v8d: removed ${removedDupes} old, created ${created} bonuses`);
 }
 
 // Сумма исторических виртуальных начислений по сотруднику в диапазоне
@@ -1151,6 +1151,65 @@ function getHistoricalAccrualSum(empId, startDate, endDate) {
     return DB.get('historicalAccruals', [])
         .filter(a => a.employeeId === empId && a.date >= startDate && a.date <= endDate)
         .reduce((s, a) => s + (a.amount || 0), 0);
+}
+
+// v9: Пересчитать event.price для всех мероприятий с учётом опций
+function migrateV9RecalcEventPrices() {
+    if (DB.get('price_recalc_v9', false)) return;
+    const events = DB.get('events', []);
+    if (events.length === 0) return;
+    const tariffs = DB.get('tariffs', []);
+    let fixed = 0;
+
+    events.forEach(evt => {
+        if (!evt.tariffId) return;
+        const tariff = tariffs.find(t => String(t.id) === String(evt.tariffId));
+        if (!tariff) return;
+
+        let serviceCost = tariff.price * (evt.participants || 1);
+        let optionsCost = 0;
+
+        if (evt.optionQuantities) {
+            Object.entries(evt.optionQuantities).forEach(([optId, qty]) => {
+                if (qty <= 0) return;
+                const opt = tariffs.find(t => String(t.id) === String(optId));
+                if (!opt) return;
+                if (opt.serviceId === 'Shop') {
+                    optionsCost += qty; // shop: value is already roubles
+                } else {
+                    optionsCost += opt.price * qty;
+                }
+            });
+        } else if (evt.selectedOptions) {
+            evt.selectedOptions.forEach(optId => {
+                const opt = tariffs.find(t => String(t.id) === String(optId));
+                if (opt) optionsCost += opt.price;
+            });
+        }
+
+        const subtotal = serviceCost + optionsCost;
+        let discountAmount = 0;
+        if (evt.discountType === 'percent' && evt.discount > 0) {
+            discountAmount = subtotal * evt.discount / 100;
+        } else if (evt.discountType === 'certificate' && evt.certificateAmount > 0) {
+            discountAmount = evt.certificateAmount;
+        }
+        const correctPrice = subtotal - discountAmount;
+
+        if (evt.price !== correctPrice) {
+            console.log(`v9: Event "${evt.title}" ${evt.date}: ${evt.price} → ${correctPrice}`);
+            evt.price = correctPrice;
+            evt.totalPrice = correctPrice;
+            evt.toPay = correctPrice - (evt.prepayment || 0);
+            fixed++;
+        }
+    });
+
+    if (fixed > 0) {
+        DB.set('events', events);
+        console.log(`Price recalc v9: fixed ${fixed} event prices`);
+    }
+    DB.set('price_recalc_v9', true);
 }
 
 // Открыть карточку с неоплаченными начислениями для сотрудника (FIFO)
@@ -1210,6 +1269,7 @@ function onFirestoreReady() {
     migrateV5FixMissingEventBonuses();
     migrateV6RecalcStock();
     migrateV7CleanupPreAprilBonuses();
+    migrateV9RecalcEventPrices();
     migrateV8RecalcEventBonuses();
 
     // Refresh UI with data from Firestore
@@ -4753,6 +4813,9 @@ function openEventModal(id = null, completing = false) {
         toggleDiscountType();
     }
 
+    // Always recalculate total to keep price in sync with options
+    recalcEventTotal();
+
     // Show/hide complete button and total summary
     const completeBtn = document.getElementById('btn-complete-event');
     const totalBlock = document.getElementById('evt-total-block');
@@ -4760,7 +4823,6 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('modal-event-title').textContent = 'Выполнить заказ';
         if (completeBtn) completeBtn.style.display = 'inline-flex';
         if (totalBlock) totalBlock.style.display = 'block';
-        recalcEventTotal();
     } else {
         if (completeBtn) completeBtn.style.display = 'none';
         if (totalBlock) totalBlock.style.display = 'none';
