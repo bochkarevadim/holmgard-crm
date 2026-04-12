@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'bonus_recalc_v8', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'bonus_recalc_v8', 'bonus_recalc_v8b', 'deletedSalaryPaymentIds', 'historicalAccruals'
 ]);
 
 const DB = {
@@ -1057,9 +1057,10 @@ function migrateV7CleanupPreAprilBonuses() {
     DB.set('salary_cleanup_v7', true);
 }
 
-// v8: Пересчитать все бонусы за мероприятия с 1 апреля (исправление tariffId string/number + fallback)
+// v8: Полный пересчёт бонусов за мероприятия с 1 апреля
+// Удаляет все evtbonus_ дубли, пересчитывает и создаёт заново
 function migrateV8RecalcEventBonuses() {
-    if (DB.get('bonus_recalc_v8', false)) return;
+    if (DB.get('bonus_recalc_v8b', false)) return;
     const events = DB.get('events', []);
     if (events.length === 0) return;
 
@@ -1069,8 +1070,25 @@ function migrateV8RecalcEventBonuses() {
     const adminRule = salaryRules.admin || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
     const shifts = DB.get('shifts', []);
     let accruals = DB.get('historicalAccruals', []);
-    let changed = false;
 
+    // 1. Удалить ВСЕ evtbonus_ начисления после CUTOFF (будут пересозданы с правильными суммами)
+    const beforeCount = accruals.length;
+    accruals = accruals.filter(a => {
+        if (a.id && String(a.id).startsWith('evtbonus_') && a.date && a.date > CUTOFF) return false;
+        return true;
+    });
+    const removedDupes = beforeCount - accruals.length;
+
+    // 2. Убрать eventBonuses со смен после CUTOFF (тоже пересоздадим)
+    shifts.forEach(s => {
+        if (s.date && s.date > CUTOFF && s.eventBonuses && s.eventBonuses.length > 0) {
+            s.eventBonuses = [];
+            if (s.endTime) s.earnings = calculateShiftEarnings(s);
+        }
+    });
+
+    // 3. Пересчитать бонусы для каждого завершённого мероприятия после CUTOFF
+    let created = 0;
     events.forEach(evt => {
         if (evt.status !== 'completed' || !evt.date || evt.date <= CUTOFF) return;
         const eventId = evt.id;
@@ -1079,7 +1097,6 @@ function migrateV8RecalcEventBonuses() {
         const instrIds = evt.assignedInstructors || evt.instructors || [];
         const adminIds = evt.assignedAdmins || evt.admins || [];
 
-        // Пересчитать правильные суммы бонусов
         const instrRevenue = calculateEventRevenueBySources(evt, instrRule.bonusSources || ['services', 'optionsForGame']);
         const adminRevenue = calculateEventRevenueBySources(evt, adminRule.bonusSources || ['services', 'optionsForGame', 'options']);
         const instrBonusTotal = Math.round(instrRevenue * (instrRule.bonusPercent || 5) / 100);
@@ -1088,72 +1105,45 @@ function migrateV8RecalcEventBonuses() {
         const perAdmin = adminIds.length > 0 ? Math.round(adminBonusTotal / adminIds.length) : 0;
 
         // Обновить bonuses в событии
-        if (!evt.bonuses || evt.bonuses.perInstructor !== perInstructor || evt.bonuses.perAdmin !== perAdmin) {
-            evt.bonuses = { instructorTotal: instrBonusTotal, adminTotal: adminBonusTotal, perInstructor, perAdmin };
-            changed = true;
-        }
+        evt.bonuses = { instructorTotal: instrBonusTotal, adminTotal: adminBonusTotal, perInstructor, perAdmin };
 
-        // Обновить бонусы на сменах
-        const updateShiftBonus = (empId, amount, bonusType) => {
-            for (const s of shifts) {
-                if (s.employeeId !== empId || !s.eventBonuses) continue;
-                const bIdx = s.eventBonuses.findIndex(b => String(b.eventId) === String(eventId) && b.bonusType === bonusType);
-                if (bIdx >= 0 && s.eventBonuses[bIdx].amount !== amount) {
-                    s.eventBonuses[bIdx].amount = amount;
-                    if (s.endTime) s.earnings = calculateShiftEarnings(s);
-                    changed = true;
-                    return true;
-                }
+        // Начислить бонус: на смену если есть, иначе historicalAccrual
+        const creditTo = (empId, amount, bonusType) => {
+            if (!empId || amount <= 0) return;
+            // Попробовать найти смену
+            let shiftIdx = shifts.findIndex(s => s.date === eventDate && s.employeeId === empId);
+            if (shiftIdx < 0) {
+                const todayStr = todayLocal();
+                if (eventDate !== todayStr) shiftIdx = shifts.findIndex(s => s.date === todayStr && s.employeeId === empId);
             }
-            return false;
-        };
-
-        // Обновить бонусы в historicalAccruals
-        const updateAccrualBonus = (empId, amount, bonusType) => {
-            for (const a of accruals) {
-                if (a.employeeId === empId && a.id && String(a.id).startsWith('evtbonus_' + eventId + '_' + empId)) {
-                    if (a.amount !== amount) {
-                        a.amount = amount;
-                        changed = true;
-                    }
-                    return true;
-                }
+            if (shiftIdx >= 0) {
+                if (!shifts[shiftIdx].eventBonuses) shifts[shiftIdx].eventBonuses = [];
+                shifts[shiftIdx].eventBonuses.push({ eventId, eventTitle: evtTitle, amount, bonusType });
+                if (shifts[shiftIdx].endTime) shifts[shiftIdx].earnings = calculateShiftEarnings(shifts[shiftIdx]);
+            } else {
+                // На historicalAccrual
+                const emps = DB.get('employees', []);
+                const emp = emps.find(e => e.id === empId);
+                const empName = emp ? (emp.firstName + ' ' + emp.lastName) : '';
+                const roleName = bonusType === 'instructor' ? 'инструктор' : 'администратор';
+                accruals.push({
+                    id: 'evtbonus_' + eventId + '_' + empId + '_' + Date.now() + '_' + Math.random(),
+                    employeeId: empId, employeeName: empName, date: eventDate,
+                    amount, note: `Бонус за мероприятие "${evtTitle}" (${roleName})`
+                });
             }
-            return false;
+            created++;
         };
 
-        // Создать начисление если нигде нет
-        const ensureBonus = (empId, amount, bonusType) => {
-            if (amount <= 0) return;
-            if (updateShiftBonus(empId, amount, bonusType)) return;
-            if (updateAccrualBonus(empId, amount, bonusType)) return;
-            // Нет нигде — создать
-            const emps = DB.get('employees', []);
-            const emp = emps.find(e => e.id === empId);
-            const empName = emp ? (emp.firstName + ' ' + emp.lastName) : '';
-            const roleName = bonusType === 'instructor' ? 'инструктор' : 'администратор';
-            accruals.push({
-                id: 'evtbonus_' + eventId + '_' + empId + '_' + Date.now() + '_' + Math.random(),
-                employeeId: empId,
-                employeeName: empName,
-                date: eventDate,
-                amount: amount,
-                note: `Бонус за мероприятие "${evtTitle}" (${roleName})`
-            });
-            changed = true;
-        };
-
-        instrIds.forEach(id => ensureBonus(id, perInstructor, 'instructor'));
-        adminIds.forEach(id => ensureBonus(id, perAdmin, 'admin'));
+        instrIds.forEach(id => creditTo(id, perInstructor, 'instructor'));
+        adminIds.forEach(id => creditTo(id, perAdmin, 'admin'));
     });
 
-    if (changed) {
-        DB.set('events', events);
-        DB.set('shifts', shifts);
-        DB.set('historicalAccruals', accruals);
-        console.log('Bonus recalc v8: recalculated all post-April event bonuses');
-    }
-    DB.set('bonus_recalc_v8', true);
+    DB.set('events', events);
+    DB.set('shifts', shifts);
+    DB.set('historicalAccruals', accruals);
+    DB.set('bonus_recalc_v8b', true);
+    console.log(`Bonus recalc v8b: removed ${removedDupes} dupes, created ${created} bonuses`);
 }
 
 // Сумма исторических виртуальных начислений по сотруднику в диапазоне
