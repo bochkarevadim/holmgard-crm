@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'stock_recalc_v6', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'deletedSalaryPaymentIds', 'historicalAccruals'
 ]);
 
 const DB = {
@@ -897,7 +897,10 @@ function migrateV4RestorePostCutoffAccruals() {
 
 // v5: Retroactively credit missing event bonuses — if event completed but bonus not on any shift or accrual
 function migrateV5FixMissingEventBonuses() {
-    if (DB.get('salary_import_v5', false)) return;
+    // v5b: перезапуск после бага (v5 могла пройти с пустыми events)
+    if (DB.get('salary_import_v5b', false)) return;
+    const events = DB.get('events', []);
+    if (events.length === 0) return; // данные ещё не загружены
     const events = DB.get('events', []);
     const shifts = DB.get('shifts', []);
     const accruals = DB.get('historicalAccruals', []);
@@ -952,6 +955,7 @@ function migrateV5FixMissingEventBonuses() {
         console.log('Salary import v5: created ' + addedCount + ' missing event bonus accruals');
     }
     DB.set('salary_import_v5', true);
+    DB.set('salary_import_v5b', true);
 }
 
 // v6: Пересчитать склад по всем документам (после бага с гранатами/дымами × ppl)
@@ -3114,46 +3118,28 @@ function calculateRevenue(period) {
 }
 
 // Исторические продажи из Excel (только для аналитики директора)
-// Ежедневные записи НЕ суммируются с CRM — они дублируют данные из CRM за 2025-2026.
-// Только годовые сводки (y:1) за 2024 включаются, т.к. за 2024 CRM не вёлся.
-function _getHistoricalCutoff() {
-    // Определяем дату первого события в CRM — до неё исторические daily записи нужны
-    if (_getHistoricalCutoff._val === undefined) {
-        const events = DB.get('events', []);
-        const dates = events.filter(e => e.date).map(e => e.date).sort();
-        _getHistoricalCutoff._val = dates.length > 0 ? dates[0] : '9999-12-31';
-    }
-    return _getHistoricalCutoff._val;
-}
-
+// Daily записи НЕ включаются в выручку — они дублируют CRM-события за 2025-2026.
+// Включаются ТОЛЬКО годовые сводки (y:1) за 2024, т.к. за 2024 CRM не вёлся.
 function getHistoricalSalesSum(startDate, endDate) {
     if (typeof HISTORICAL_SALES_DATA === 'undefined') return 0;
-    const cutoff = _getHistoricalCutoff(); // daily записи только ДО первого CRM-события
     let sum = 0;
     const startYear = parseInt(startDate.split('-')[0]);
     const endYear = parseInt(endDate.split('-')[0]);
     HISTORICAL_SALES_DATA.forEach(s => {
-        if (s.y) {
-            // Годовые сводки: включать если год попадает в диапазон
-            const recYear = parseInt(s.d.split('-')[0]);
-            if (recYear >= startYear && recYear <= endYear) {
-                const yearStart = `${recYear}-01-01`;
-                const yearEnd = `${recYear}-12-31`;
-                if (startDate <= yearStart && endDate >= yearEnd) {
-                    sum += s.a || 0;
-                } else {
-                    const effStart = startDate > yearStart ? startDate : yearStart;
-                    const effEnd = endDate < yearEnd ? endDate : yearEnd;
-                    const startM = parseInt(effStart.split('-')[1]);
-                    const endM = parseInt(effEnd.split('-')[1]);
-                    const months = endM - startM + 1;
-                    sum += Math.round((s.a || 0) * months / 12);
-                }
-            }
-        } else {
-            // Ежедневные записи: только за даты ДО первого CRM-события
-            if (s.d < cutoff && s.d >= startDate && s.d <= endDate) {
+        if (!s.y) return; // daily записи пропускаем — они дублируют CRM
+        const recYear = parseInt(s.d.split('-')[0]);
+        if (recYear >= startYear && recYear <= endYear) {
+            const yearStart = `${recYear}-01-01`;
+            const yearEnd = `${recYear}-12-31`;
+            if (startDate <= yearStart && endDate >= yearEnd) {
                 sum += s.a || 0;
+            } else {
+                const effStart = startDate > yearStart ? startDate : yearStart;
+                const effEnd = endDate < yearEnd ? endDate : yearEnd;
+                const startM = parseInt(effStart.split('-')[1]);
+                const endM = parseInt(effEnd.split('-')[1]);
+                const months = endM - startM + 1;
+                sum += Math.round((s.a || 0) * months / 12);
             }
         }
     });
@@ -3161,11 +3147,8 @@ function getHistoricalSalesSum(startDate, endDate) {
 }
 
 function getHistoricalSalesForDate(dateStr) {
-    if (typeof HISTORICAL_SALES_DATA === 'undefined') return 0;
-    if (dateStr >= _getHistoricalCutoff()) return 0;
-    return HISTORICAL_SALES_DATA
-        .filter(s => s.d === dateStr && !s.y)
-        .reduce((sum, s) => sum + (s.a || 0), 0);
+    // Daily записи не используются — они дублируют CRM
+    return 0;
 }
 
 function getMonthlyRevenueData(year) {
@@ -3181,22 +3164,13 @@ function getMonthlyRevenueData(year) {
             }
         }
     });
-    // Добавить исторические продажи (daily только до cutoff, annual всегда)
+    // Добавить исторические продажи (только annual за 2024)
     if (typeof HISTORICAL_SALES_DATA !== 'undefined') {
-        const cutoff = _getHistoricalCutoff();
         HISTORICAL_SALES_DATA.forEach(s => {
-            if (s.y) {
-                // Годовая сводка — распределить по 12 месяцам
-                if (parseInt(s.d.split('-')[0]) === year) {
-                    const perMonth = Math.round((s.a || 0) / 12);
-                    for (let i = 0; i < 12; i++) monthly[i] += perMonth;
-                }
-            } else if (s.d < cutoff) {
-                const parts = s.d.split('-');
-                if (parseInt(parts[0]) === year) {
-                    const monthIdx = parseInt(parts[1]) - 1;
-                    if (monthIdx >= 0 && monthIdx < 12) monthly[monthIdx] += s.a || 0;
-                }
+            if (!s.y) return; // daily пропускаем — дублируют CRM
+            if (parseInt(s.d.split('-')[0]) === year) {
+                const perMonth = Math.round((s.a || 0) / 12);
+                for (let i = 0; i < 12; i++) monthly[i] += perMonth;
             }
         });
     }
@@ -3289,17 +3263,7 @@ function loadRevenue() {
             if (y === selY && m === selM - 1 && day <= maxDays) currentData[day - 1] += e.price;
             if (y === prevM.getFullYear() && m === prevM.getMonth() && day <= maxDays) prevData[day - 1] += e.price;
         });
-        // Historical sales per day (only for dates before CRM tracking started)
-        if (typeof HISTORICAL_SALES_DATA !== 'undefined') {
-            const cutoff = _getHistoricalCutoff();
-            HISTORICAL_SALES_DATA.forEach(s => {
-                if (s.y || s.d >= cutoff) return;
-                const parts = s.d.split('-');
-                const y = parseInt(parts[0]), m = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
-                if (y === selY && m === selM - 1 && day <= maxDays) currentData[day - 1] += s.a || 0;
-                if (y === prevM.getFullYear() && m === prevM.getMonth() && day <= maxDays) prevData[day - 1] += s.a || 0;
-            });
-        }
+        // Daily historical records не добавляем — они дублируют CRM
         const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
         currentLabel = monthNames[selM - 1]; prevLabel = monthNames[prevM.getMonth()];
     } else {
