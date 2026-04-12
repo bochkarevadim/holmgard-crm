@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'bonus_recalc_v8', 'deletedSalaryPaymentIds', 'historicalAccruals'
 ]);
 
 const DB = {
@@ -483,7 +483,7 @@ function fixMissingWriteoffs() {
             totalBalls = 0; totalKidsBalls = 0; totalGrenades = 0; totalSmokes = 0;
             const isKidball = evt.type === 'kidball' || (evt.title || '').toLowerCase().includes('кидбол');
             if (evt.tariffId) {
-                const tariff = tariffs.find(t => t.id === evt.tariffId);
+                const tariff = tariffs.find(t => String(t.id) === String(evt.tariffId));
                 if (tariff) {
                     const ppl = evt.participants || 1;
                     const kbpp = tariff.kidsBallsPerPerson || 0;
@@ -496,7 +496,7 @@ function fixMissingWriteoffs() {
             }
             if (evt.selectedOptions && evt.selectedOptions.length > 0) {
                 evt.selectedOptions.forEach(optId => {
-                    const opt = tariffs.find(t => t.id === optId);
+                    const opt = tariffs.find(t => String(t.id) === String(optId));
                     if (opt) {
                         const qty = evt.optionQuantities?.[optId] || 1;
                         const ppl = evt.participants || 1;
@@ -1057,6 +1057,105 @@ function migrateV7CleanupPreAprilBonuses() {
     DB.set('salary_cleanup_v7', true);
 }
 
+// v8: Пересчитать все бонусы за мероприятия с 1 апреля (исправление tariffId string/number + fallback)
+function migrateV8RecalcEventBonuses() {
+    if (DB.get('bonus_recalc_v8', false)) return;
+    const events = DB.get('events', []);
+    if (events.length === 0) return;
+
+    const CUTOFF = '2026-03-31';
+    const salaryRules = DB.get('salaryRules', {});
+    const instrRule = salaryRules.instructor || salaryRules.senior_instructor || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] };
+    const adminRule = salaryRules.admin || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
+    const shifts = DB.get('shifts', []);
+    let accruals = DB.get('historicalAccruals', []);
+    let changed = false;
+
+    events.forEach(evt => {
+        if (evt.status !== 'completed' || !evt.date || evt.date <= CUTOFF) return;
+        const eventId = evt.id;
+        const eventDate = evt.date;
+        const evtTitle = evt.title || 'Мероприятие';
+        const instrIds = evt.assignedInstructors || evt.instructors || [];
+        const adminIds = evt.assignedAdmins || evt.admins || [];
+
+        // Пересчитать правильные суммы бонусов
+        const instrRevenue = calculateEventRevenueBySources(evt, instrRule.bonusSources || ['services', 'optionsForGame']);
+        const adminRevenue = calculateEventRevenueBySources(evt, adminRule.bonusSources || ['services', 'optionsForGame', 'options']);
+        const instrBonusTotal = Math.round(instrRevenue * (instrRule.bonusPercent || 5) / 100);
+        const adminBonusTotal = Math.round(adminRevenue * (adminRule.bonusPercent || 5) / 100);
+        const perInstructor = instrIds.length > 0 ? Math.round(instrBonusTotal / instrIds.length) : 0;
+        const perAdmin = adminIds.length > 0 ? Math.round(adminBonusTotal / adminIds.length) : 0;
+
+        // Обновить bonuses в событии
+        if (!evt.bonuses || evt.bonuses.perInstructor !== perInstructor || evt.bonuses.perAdmin !== perAdmin) {
+            evt.bonuses = { instructorTotal: instrBonusTotal, adminTotal: adminBonusTotal, perInstructor, perAdmin };
+            changed = true;
+        }
+
+        // Обновить бонусы на сменах
+        const updateShiftBonus = (empId, amount, bonusType) => {
+            for (const s of shifts) {
+                if (s.employeeId !== empId || !s.eventBonuses) continue;
+                const bIdx = s.eventBonuses.findIndex(b => String(b.eventId) === String(eventId) && b.bonusType === bonusType);
+                if (bIdx >= 0 && s.eventBonuses[bIdx].amount !== amount) {
+                    s.eventBonuses[bIdx].amount = amount;
+                    if (s.endTime) s.earnings = calculateShiftEarnings(s);
+                    changed = true;
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // Обновить бонусы в historicalAccruals
+        const updateAccrualBonus = (empId, amount, bonusType) => {
+            for (const a of accruals) {
+                if (a.employeeId === empId && a.id && String(a.id).startsWith('evtbonus_' + eventId + '_' + empId)) {
+                    if (a.amount !== amount) {
+                        a.amount = amount;
+                        changed = true;
+                    }
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // Создать начисление если нигде нет
+        const ensureBonus = (empId, amount, bonusType) => {
+            if (amount <= 0) return;
+            if (updateShiftBonus(empId, amount, bonusType)) return;
+            if (updateAccrualBonus(empId, amount, bonusType)) return;
+            // Нет нигде — создать
+            const emps = DB.get('employees', []);
+            const emp = emps.find(e => e.id === empId);
+            const empName = emp ? (emp.firstName + ' ' + emp.lastName) : '';
+            const roleName = bonusType === 'instructor' ? 'инструктор' : 'администратор';
+            accruals.push({
+                id: 'evtbonus_' + eventId + '_' + empId + '_' + Date.now() + '_' + Math.random(),
+                employeeId: empId,
+                employeeName: empName,
+                date: eventDate,
+                amount: amount,
+                note: `Бонус за мероприятие "${evtTitle}" (${roleName})`
+            });
+            changed = true;
+        };
+
+        instrIds.forEach(id => ensureBonus(id, perInstructor, 'instructor'));
+        adminIds.forEach(id => ensureBonus(id, perAdmin, 'admin'));
+    });
+
+    if (changed) {
+        DB.set('events', events);
+        DB.set('shifts', shifts);
+        DB.set('historicalAccruals', accruals);
+        console.log('Bonus recalc v8: recalculated all post-April event bonuses');
+    }
+    DB.set('bonus_recalc_v8', true);
+}
+
 // Сумма исторических виртуальных начислений по сотруднику в диапазоне
 function getHistoricalAccrualSum(empId, startDate, endDate) {
     return DB.get('historicalAccruals', [])
@@ -1121,6 +1220,7 @@ function onFirestoreReady() {
     migrateV5FixMissingEventBonuses();
     migrateV6RecalcStock();
     migrateV7CleanupPreAprilBonuses();
+    migrateV8RecalcEventBonuses();
 
     // Refresh UI with data from Firestore
     applyAccentColor(DB.get('accentColor', '#FFD600'));
@@ -1741,7 +1841,7 @@ function calculateEventRevenueBySources(event, sources) {
     // Base service price
     if (sources.includes('services')) {
         if (event.tariffId) {
-            const tariff = tariffs.find(t => t.id === event.tariffId);
+            const tariff = tariffs.find(t => String(t.id) === String(event.tariffId));
             if (tariff) {
                 total += (tariff.price || 0) * (event.participants || 1);
             }
@@ -1754,7 +1854,7 @@ function calculateEventRevenueBySources(event, sources) {
     // Options for game (price × qty × participants)
     if (sources.includes('optionsForGame') && event.selectedOptions) {
         event.selectedOptions.forEach(optId => {
-            const opt = tariffs.find(t => t.id === optId && t.category === 'optionsForGame');
+            const opt = tariffs.find(t => String(t.id) === String(optId) && t.category === 'optionsForGame');
             if (opt) {
                 const qty = event.optionQuantities?.[optId] || 1;
                 total += (opt.price || 0) * qty * (event.participants || 1);
@@ -1765,7 +1865,7 @@ function calculateEventRevenueBySources(event, sources) {
     // Additional options (price × qty, NOT per participant)
     if (sources.includes('options') && event.selectedOptions) {
         event.selectedOptions.forEach(optId => {
-            const opt = tariffs.find(t => t.id === optId && t.category === 'options');
+            const opt = tariffs.find(t => String(t.id) === String(optId) && t.category === 'options');
             if (opt) {
                 const qty = event.optionQuantities?.[optId] || 1;
                 total += (opt.price || 0) * qty;
@@ -2440,7 +2540,7 @@ function completeEventPayment() {
 
     // Main tariff × participants
     if (evt.tariffId) {
-        const tariff = tariffs.find(t => t.id === evt.tariffId);
+        const tariff = tariffs.find(t => String(t.id) === String(evt.tariffId));
         if (tariff) {
             const ppl = (evt.participants || 1);
             const kbpp = tariff.kidsBallsPerPerson || 0;
@@ -2458,7 +2558,7 @@ function completeEventPayment() {
     // Options × quantity (grenades/smokes are per-unit, balls are per-person)
     if (evt.selectedOptions && evt.selectedOptions.length > 0) {
         evt.selectedOptions.forEach(optId => {
-            const opt = tariffs.find(t => t.id === optId);
+            const opt = tariffs.find(t => String(t.id) === String(optId));
             if (opt) {
                 const qty = evt.optionQuantities?.[optId] || 1;
                 const ppl = (evt.participants || 1);
@@ -4295,7 +4395,7 @@ function exportEventsCSV() {
 
     const headers = ['Дата','Время','Статус','Тип','Тариф','Название','Клиент','Телефон','Связь','Повод','Участников','Стоимость','Предоплата','Способ предоплаты','Скидка','Сертификат','Комментарий'];
     const rows = events.map(e => {
-        const tariff = e.tariffId ? tariffs.find(t => t.id === e.tariffId) : null;
+        const tariff = e.tariffId ? tariffs.find(t => String(t.id) === String(e.tariffId)) : null;
         return [
             e.date || '',
             e.time || '',
@@ -4365,7 +4465,7 @@ function renderUpcomingEventsTable(events) {
         const statusName = getStatusName(e.status);
         const rowStyle = e.status === 'completed' ? 'background:rgba(76,175,80,0.1);' : isToday ? 'background:rgba(255,214,0,0.08);' : '';
         // Find tariff name
-        const tariff = e.tariffId ? tariffs.find(t => t.id === e.tariffId) : null;
+        const tariff = e.tariffId ? tariffs.find(t => String(t.id) === String(e.tariffId)) : null;
         const tariffName = tariff ? tariff.name : (e.tariffName || '—');
         return `<tr style="${rowStyle}cursor:pointer;" onclick="openEventModal('${e.id}')">
             <td style="${isToday ? 'font-weight:700;color:var(--accent);' : ''}">${dateF}</td>
@@ -4690,13 +4790,13 @@ function recalcEventTotal() {
     const prepayment = parseFloat(document.getElementById('evt-prepayment').value) || 0;
 
     let serviceCost = 0;
-    const tariff = tariffs.find(t => t.id === tariffId);
+    const tariff = tariffs.find(t => String(t.id) === String(tariffId));
     if (tariff) serviceCost = tariff.price * participants;
 
     let optionsCost = 0;
     document.querySelectorAll('#evt-options-game-list .option-qty-row, #evt-options-extra-list .option-qty-row').forEach(row => {
         const optId = parseInt(row.dataset.optionId);
-        const opt = tariffs.find(t => t.id === optId);
+        const opt = tariffs.find(t => String(t.id) === String(optId));
         if (!opt) return;
         const inputType = row.dataset.inputType;
         let qty = 0;
