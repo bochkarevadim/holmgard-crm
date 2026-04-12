@@ -33,7 +33,7 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'deletedSalaryPaymentIds', 'historicalAccruals'
 ]);
 
 const DB = {
@@ -504,8 +504,8 @@ function fixMissingWriteoffs() {
                         const bpp = opt.ballsPerPerson || 0;
                         if (kbpp > 0) totalKidsBalls += kbpp * qty * ppl;
                         else if (bpp > 0) { if (isKidball) totalKidsBalls += bpp * qty * ppl; else totalBalls += bpp * qty * ppl; }
-                        totalGrenades += (opt.grenadesPerPerson || 0) * qty * ppl;
-                        totalSmokes += (opt.smokesPerPerson || 0) * qty * ppl;
+                        totalGrenades += (opt.grenadesPerPerson || 0) * qty;
+                        totalSmokes += (opt.smokesPerPerson || 0) * qty;
                     }
                 });
             }
@@ -895,6 +895,65 @@ function migrateV4RestorePostCutoffAccruals() {
     DB.set('salary_import_v4', true);
 }
 
+// v5: Retroactively credit missing event bonuses — if event completed but bonus not on any shift or accrual
+function migrateV5FixMissingEventBonuses() {
+    if (DB.get('salary_import_v5', false)) return;
+    const events = DB.get('events', []);
+    const shifts = DB.get('shifts', []);
+    const accruals = DB.get('historicalAccruals', []);
+    let addedCount = 0;
+
+    events.forEach(evt => {
+        if (evt.status !== 'completed' || !evt.bonuses) return;
+        const eventId = evt.id;
+        const eventDate = evt.date || '';
+        const evtTitle = evt.title || 'Мероприятие';
+
+        const checkAndCredit = (empId, amount, bonusType) => {
+            if (!empId || amount <= 0) return;
+            // Check if bonus already exists on a shift
+            const hasOnShift = shifts.some(s =>
+                s.employeeId === empId && s.eventBonuses &&
+                s.eventBonuses.some(b => String(b.eventId) === String(eventId) && b.bonusType === bonusType)
+            );
+            if (hasOnShift) return;
+            // Check if bonus already exists as historical accrual
+            const hasAccrual = accruals.some(a =>
+                a.employeeId === empId && a.id && String(a.id).startsWith('evtbonus_' + eventId + '_' + empId)
+            );
+            if (hasAccrual) return;
+            // Missing — create accrual
+            const emps = DB.get('employees', []);
+            const emp = emps.find(e => e.id === empId);
+            const empName = emp ? (emp.firstName + ' ' + emp.lastName) : '';
+            const roleName = bonusType === 'instructor' ? 'инструктор' : 'администратор';
+            accruals.push({
+                id: 'evtbonus_' + eventId + '_' + empId + '_' + Date.now() + '_' + Math.random(),
+                employeeId: empId,
+                employeeName: empName,
+                date: eventDate,
+                amount: amount,
+                note: `Бонус за мероприятие "${evtTitle}" (${roleName})`
+            });
+            addedCount++;
+        };
+
+        const instrIds = evt.assignedInstructors || evt.instructors || [];
+        const adminIds = evt.assignedAdmins || evt.admins || [];
+        const perInstr = evt.bonuses.perInstructor || 0;
+        const perAdm = evt.bonuses.perAdmin || 0;
+
+        instrIds.forEach(id => checkAndCredit(id, perInstr, 'instructor'));
+        adminIds.forEach(id => checkAndCredit(id, perAdm, 'admin'));
+    });
+
+    if (addedCount > 0) {
+        DB.set('historicalAccruals', accruals);
+        console.log('Salary import v5: created ' + addedCount + ' missing event bonus accruals');
+    }
+    DB.set('salary_import_v5', true);
+}
+
 // Сумма исторических виртуальных начислений по сотруднику в диапазоне
 function getHistoricalAccrualSum(empId, startDate, endDate) {
     return DB.get('historicalAccruals', [])
@@ -956,6 +1015,7 @@ function onFirestoreReady() {
     // One-time salary import from Excel spreadsheet
     importSalaryPaymentsFromExcel();
     migrateV4RestorePostCutoffAccruals();
+    migrateV5FixMissingEventBonuses();
 
     // Refresh UI with data from Firestore
     applyAccentColor(DB.get('accentColor', '#FFD600'));
@@ -2238,13 +2298,26 @@ function completeEventPayment() {
         }
         if (shiftIdx >= 0) {
             if (!shifts[shiftIdx].eventBonuses) shifts[shiftIdx].eventBonuses = [];
-            // bonusType: 'instructor' or 'admin' — event role, NOT shift role
-            // Shift rate is always based on employee's own role (for showing up)
             shifts[shiftIdx].eventBonuses.push({ eventId: events[idx].id, eventTitle: evtTitle, amount, bonusType });
-            // Recalculate earnings (shift rate stays based on employee's own role)
             if (shifts[shiftIdx].endTime) {
                 shifts[shiftIdx].earnings = calculateShiftEarnings(shifts[shiftIdx]);
             }
+        } else {
+            // No shift found — save bonus as historical accrual so it's not lost
+            const emps = DB.get('employees', []);
+            const emp = emps.find(e => e.id === empId);
+            const empName = emp ? (emp.firstName + ' ' + emp.lastName) : '';
+            const roleName = bonusType === 'instructor' ? 'инструктор' : 'администратор';
+            const accruals = DB.get('historicalAccruals', []);
+            accruals.push({
+                id: 'evtbonus_' + events[idx].id + '_' + empId + '_' + Date.now(),
+                employeeId: empId,
+                employeeName: empName,
+                date: eventDate,
+                amount: amount,
+                note: `Бонус за мероприятие "${evtTitle}" (${roleName})`
+            });
+            DB.set('historicalAccruals', accruals);
         }
     };
 
@@ -2275,7 +2348,7 @@ function completeEventPayment() {
         }
     }
 
-    // Options × quantity × participants
+    // Options × quantity (grenades/smokes are per-unit, balls are per-person)
     if (evt.selectedOptions && evt.selectedOptions.length > 0) {
         evt.selectedOptions.forEach(optId => {
             const opt = tariffs.find(t => t.id === optId);
@@ -2289,8 +2362,9 @@ function completeEventPayment() {
                 } else if (bpp > 0) {
                     if (isKidball) totalKidsBalls += bpp * qty * ppl; else totalBalls += bpp * qty * ppl;
                 }
-                totalGrenades += (opt.grenadesPerPerson || 0) * qty * ppl;
-                totalSmokes += (opt.smokesPerPerson || 0) * qty * ppl;
+                // Grenades and smokes are per-unit options (qty = how many ordered), NOT per person
+                totalGrenades += (opt.grenadesPerPerson || 0) * qty;
+                totalSmokes += (opt.smokesPerPerson || 0) * qty;
             }
         });
     }
@@ -3015,15 +3089,58 @@ function calculateRevenue(period) {
 }
 
 // Исторические продажи из Excel (только для аналитики директора)
+// Исключаем даты, за которые уже есть завершённые мероприятия в CRM (чтобы не считать дважды)
+function _getCrmEventDates() {
+    // Кэшируем на 5 сек чтобы не пересоздавать Set при каждом вызове в рамках одного рендера
+    const now = Date.now();
+    if (!_getCrmEventDates._cache || now - (_getCrmEventDates._ts || 0) > 5000) {
+        const events = DB.get('events', []);
+        _getCrmEventDates._cache = new Set(
+            events.filter(e => e.status === 'completed' && e.date).map(e => e.date)
+        );
+        _getCrmEventDates._ts = now;
+    }
+    return _getCrmEventDates._cache;
+}
+
 function getHistoricalSalesSum(startDate, endDate) {
     if (typeof HISTORICAL_SALES_DATA === 'undefined') return 0;
-    return HISTORICAL_SALES_DATA
-        .filter(s => !s.y && s.d >= startDate && s.d <= endDate)
-        .reduce((sum, s) => sum + (s.a || 0), 0);
+    const crmDates = _getCrmEventDates();
+    let sum = 0;
+    const startYear = parseInt(startDate.split('-')[0]);
+    const endYear = parseInt(endDate.split('-')[0]);
+    HISTORICAL_SALES_DATA.forEach(s => {
+        if (s.y) {
+            // Годовые сводки: включать если год попадает в диапазон
+            const recYear = parseInt(s.d.split('-')[0]);
+            if (recYear >= startYear && recYear <= endYear) {
+                const yearStart = `${recYear}-01-01`;
+                const yearEnd = `${recYear}-12-31`;
+                if (startDate <= yearStart && endDate >= yearEnd) {
+                    sum += s.a || 0;
+                } else {
+                    const effStart = startDate > yearStart ? startDate : yearStart;
+                    const effEnd = endDate < yearEnd ? endDate : yearEnd;
+                    const startM = parseInt(effStart.split('-')[1]);
+                    const endM = parseInt(effEnd.split('-')[1]);
+                    const months = endM - startM + 1;
+                    sum += Math.round((s.a || 0) * months / 12);
+                }
+            }
+        } else {
+            // Ежедневные записи: НЕ включать если за эту дату есть CRM-мероприятия
+            if (s.d >= startDate && s.d <= endDate && !crmDates.has(s.d)) {
+                sum += s.a || 0;
+            }
+        }
+    });
+    return sum;
 }
 
 function getHistoricalSalesForDate(dateStr) {
     if (typeof HISTORICAL_SALES_DATA === 'undefined') return 0;
+    // Не включать если за эту дату есть CRM-мероприятия
+    if (_getCrmEventDates().has(dateStr)) return 0;
     return HISTORICAL_SALES_DATA
         .filter(s => s.d === dateStr && !s.y)
         .reduce((sum, s) => sum + (s.a || 0), 0);
@@ -3042,8 +3159,9 @@ function getMonthlyRevenueData(year) {
             }
         }
     });
-    // Добавить исторические продажи
+    // Добавить исторические продажи (только за даты без CRM-мероприятий)
     if (typeof HISTORICAL_SALES_DATA !== 'undefined') {
+        const crmDates = _getCrmEventDates();
         HISTORICAL_SALES_DATA.forEach(s => {
             if (s.y) {
                 // Годовая сводка — распределить по 12 месяцам
@@ -3051,7 +3169,7 @@ function getMonthlyRevenueData(year) {
                     const perMonth = Math.round((s.a || 0) / 12);
                     for (let i = 0; i < 12; i++) monthly[i] += perMonth;
                 }
-            } else {
+            } else if (!crmDates.has(s.d)) {
                 const parts = s.d.split('-');
                 if (parseInt(parts[0]) === year) {
                     const monthIdx = parseInt(parts[1]) - 1;
@@ -3149,10 +3267,11 @@ function loadRevenue() {
             if (y === selY && m === selM - 1 && day <= maxDays) currentData[day - 1] += e.price;
             if (y === prevM.getFullYear() && m === prevM.getMonth() && day <= maxDays) prevData[day - 1] += e.price;
         });
-        // Historical sales per day
+        // Historical sales per day (only for dates without CRM events)
         if (typeof HISTORICAL_SALES_DATA !== 'undefined') {
+            const crmDates = _getCrmEventDates();
             HISTORICAL_SALES_DATA.forEach(s => {
-                if (s.y) return;
+                if (s.y || crmDates.has(s.d)) return;
                 const parts = s.d.split('-');
                 const y = parseInt(parts[0]), m = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
                 if (y === selY && m === selM - 1 && day <= maxDays) currentData[day - 1] += s.a || 0;
@@ -5323,7 +5442,7 @@ function saveDocument(e) {
         comment: document.getElementById('doc-comment').value.trim(),
     };
     if (id) {
-        const idx = docs.findIndex(d => d.id === parseInt(id));
+        const idx = docs.findIndex(d => String(d.id) === String(id));
         if (idx >= 0) docs[idx] = { ...docs[idx], ...data };
     } else {
         data.id = Date.now();
@@ -5359,7 +5478,7 @@ function saveDocument(e) {
 function deleteDocument(id) {
     showConfirm('Удалить документ?', 'Это действие нельзя отменить', () => {
         let docs = DB.get('documents', []);
-        docs = docs.filter(d => d.id !== id);
+        docs = docs.filter(d => String(d.id) !== String(id));
         DB.set('documents', docs);
         loadDocuments();
         showToast('Документ удалён');
