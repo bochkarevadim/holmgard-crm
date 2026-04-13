@@ -2066,8 +2066,10 @@ function getManagerDailyAccruals(emp, startDate, endDate) {
     return accruals;
 }
 
-function getEmployeeEarningsForPeriod(employeeId, period) {
-    const { startDate, endDate } = getDateRangeForPeriod(period);
+function getEmployeeEarningsForPeriod(employeeId, period, startDateOverride, endDateOverride) {
+    const { startDate, endDate } = startDateOverride
+        ? { startDate: startDateOverride, endDate: endDateOverride }
+        : getDateRangeForPeriod(period);
     const shifts = DB.get('shifts', []).filter(s =>
         s.employeeId === employeeId && s.date >= startDate && s.date <= endDate && s.endTime && s.earnings
         && (s.shiftRole || s.employeeRole) !== 'manager'
@@ -2081,8 +2083,10 @@ function getEmployeeEarningsForPeriod(employeeId, period) {
     return { shifts, totalEarned, shiftCount: shifts.length };
 }
 
-function getEmployeePaymentsForPeriod(employeeId, period) {
-    const { startDate, endDate } = getDateRangeForPeriod(period);
+function getEmployeePaymentsForPeriod(employeeId, period, startDateOverride, endDateOverride) {
+    const { startDate, endDate } = startDateOverride
+        ? { startDate: startDateOverride, endDate: endDateOverride }
+        : getDateRangeForPeriod(period);
     const payments = getActiveSalaryPayments().filter(p =>
         p.employeeId === employeeId && p.date >= startDate && p.date <= endDate
     );
@@ -5267,18 +5271,9 @@ function loadFinances(period) {
     let periodSalariesAccrued = 0;
     const salaryRows = [];
     employees.forEach(emp => {
-        // Shifts earnings (non-manager)
-        const empShifts = allShifts.filter(s =>
-            s.employeeId === emp.id && s.date >= startDate && s.date <= endDate
-            && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager'
-        );
-        const shiftEarned = empShifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
-        // Manager daily accruals
-        const mgrAccrualsArr = getManagerDailyAccruals(emp, startDate, endDate);
-        const mgrTotal = mgrAccrualsArr.reduce((s, a) => s + a.amount, 0);
-        // Historical accruals
-        const histEarned = getHistoricalAccrualSum(emp.id, startDate, endDate);
-        const accrued = shiftEarned + mgrTotal + histEarned;
+        const earnData = getEmployeeEarningsForPeriod(emp.id, null, startDate, endDate);
+        const empShifts = earnData.shifts;
+        const accrued = earnData.totalEarned;
         // Payments in period
         const periodPaid = getActiveSalaryPayments()
             .filter(p => p.employeeId === emp.id && p.date >= startDate && p.date <= endDate)
