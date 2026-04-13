@@ -873,7 +873,7 @@
                 <div class="fin-breakdown-header">
                     <div class="fin-breakdown-title" onclick="toggleFinSection('salaries')" style="cursor:pointer;flex:1;">
                         <span class="material-icons-round">badge</span>
-                        <span>Зарплаты</span>
+                        <span>Зарплаты <span style="font-size:11px;font-weight:400;color:var(--text-secondary);">— общий баланс</span></span>
                     </div>
                     <button class="btn-sm btn-primary" onclick="openSalaryPaymentModal()" style="margin-right:8px;font-size:11px;padding:4px 10px;">+ Выплатить</button>
                     <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-salaries" onclick="toggleFinSection('salaries')" style="cursor:pointer;">expand_more</span>
@@ -2456,7 +2456,7 @@
 <script src="js/gcal.js?v=16"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=82"></script>
+<script src="js/app.js?v=83"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {

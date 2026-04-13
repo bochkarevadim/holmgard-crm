@@ -5264,29 +5264,44 @@ function loadFinances(period) {
     );
     const totalConsumablesCost = docs.reduce((sum, d) => sum + (d.amount || 0) + (d.delivery || 0), 0) + totalManualExpense;
 
-    // === 3. SALARIES: accruals & payments in this period ===
+    // === 3. SALARIES: all-time balance per employee (matches "Сотрудники" section) ===
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
     const allShifts = DB.get('shifts', []);
+    const todayForSal = todayLocal();
+    const allPayments = getActiveSalaryPayments();
     let periodSalariesPaid = 0;
     let periodSalariesAccrued = 0;
     const salaryRows = [];
     employees.forEach(emp => {
-        const earnData = getEmployeeEarningsForPeriod(emp.id, null, startDate, endDate);
-        const empShifts = earnData.shifts;
-        const accrued = earnData.totalEarned;
-        // Payments in period
-        const periodPaid = getActiveSalaryPayments()
+        // All-time earned (same logic as Сотрудники)
+        const allTimeShiftEarned = DB.get('shifts', [])
+            .filter(s => s.employeeId === emp.id && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager')
+            .reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
+        const allTimeMgr = getManagerDailyAccruals(emp, '2020-01-01', todayForSal)
+            .reduce((s, a) => s + a.amount, 0);
+        const allTimeHist = getHistoricalAccrualSum(emp.id, '2020-01-01', todayForSal);
+        const accrued = allTimeShiftEarned + allTimeMgr + allTimeHist;
+        // All-time paid
+        const paid = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
+        // Period paid (for fin-salaries card and balance card)
+        const periodPaid = allPayments
             .filter(p => p.employeeId === emp.id && p.date >= startDate && p.date <= endDate)
             .reduce((s, p) => s + (p.amount || 0), 0);
         periodSalariesPaid += periodPaid;
         periodSalariesAccrued += accrued;
-        if (accrued > 0 || periodPaid > 0) {
+        // Shifts in period (for shift count display)
+        const empShifts = allShifts.filter(s =>
+            s.employeeId === emp.id && s.date >= startDate && s.date <= endDate
+            && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager'
+        );
+        const debt = accrued - paid; // positive = owed to employee, negative = overpaid
+        if (accrued > 0 || paid > 0) {
             salaryRows.push({
                 id: emp.id,
                 name: emp.firstName + ' ' + emp.lastName,
                 role: getRoleName(emp.role),
                 shiftCount: empShifts.length,
-                accrued, paid: periodPaid, debt: accrued - periodPaid
+                accrued, paid, debt
             });
         }
     });
@@ -5378,12 +5393,15 @@ function loadFinances(period) {
     }
 
     // === SALARIES TABLE — per employee analytics ===
-    const totalSalDebt = periodSalariesAccrued - periodSalariesPaid;
+    // All-time totals (same as Сотрудники section)
+    const totalSalAccrued = salaryRows.reduce((s, r) => s + r.accrued, 0);
+    const totalSalPaid = salaryRows.reduce((s, r) => s + r.paid, 0);
+    const totalSalDebt = totalSalAccrued - totalSalPaid;
     const salAccruedEl = document.getElementById('fin-sal-accrued');
     const salPaidEl = document.getElementById('fin-sal-paid');
     const salDebtEl = document.getElementById('fin-sal-debt');
-    if (salAccruedEl) salAccruedEl.textContent = formatMoney(periodSalariesAccrued);
-    if (salPaidEl) salPaidEl.textContent = formatMoney(periodSalariesPaid);
+    if (salAccruedEl) salAccruedEl.textContent = formatMoney(totalSalAccrued);
+    if (salPaidEl) salPaidEl.textContent = formatMoney(totalSalPaid);
     if (salDebtEl) {
         salDebtEl.textContent = formatMoney(Math.abs(totalSalDebt));
         salDebtEl.className = 'sal-summary-value ' + (totalSalDebt > 0 ? 'red' : totalSalDebt < 0 ? 'green' : '');
@@ -5409,8 +5427,8 @@ function loadFinances(period) {
         const totalDebtColor = totalSalDebt > 0 ? 'var(--red)' : totalSalDebt < 0 ? 'var(--green)' : '';
         html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
             <td colspan="2" style="text-align:right;">Итого:</td>
-            <td style="color:var(--green)">${formatMoney(periodSalariesAccrued)}</td>
-            <td>${formatMoney(periodSalariesPaid)}</td>
+            <td style="color:var(--green)">${formatMoney(totalSalAccrued)}</td>
+            <td>${formatMoney(totalSalPaid)}</td>
             <td style="color:${totalDebtColor}">${totalDebtStr}</td>
             <td></td>
         </tr>`;
