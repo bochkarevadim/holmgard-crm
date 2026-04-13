@@ -2035,8 +2035,8 @@ function getManagerDailyAccruals(emp, startDate, endDate) {
     if (!managerSince && !isManager) return [];
 
     const rules = DB.get('salaryRules', {});
-    const mgrRule = rules.manager || { dailyRate: 360 };
-    const dailyRate = mgrRule.dailyRate || 360;
+    const mgrRule = rules.manager || { dailyRate: 340 };
+    const dailyRate = mgrRule.dailyRate || 340;
 
     // Determine effective range — не раньше MGR_AUTO_START
     const floorStart = startDate < MGR_AUTO_START ? MGR_AUTO_START : startDate;
@@ -2349,7 +2349,7 @@ function saveShiftEarnings() {
 
 function editMgrDailyRate(empId) {
     const rules = DB.get('salaryRules', {});
-    const current = (rules.manager || {}).dailyRate || 360;
+    const current = (rules.manager || {}).dailyRate || 340;
     const newRate = prompt('Дневная ставка менеджера (₽):', current);
     if (newRate === null) return;
     const rate = parseInt(newRate);
@@ -6168,7 +6168,7 @@ function loadSettingsData() {
     document.getElementById('rule-admin-src-options').checked = adminSources.includes('options');
 
     // Manager weekly rate
-    document.getElementById('rule-manager-daily-rate').value = rules.manager?.dailyRate ?? 360;
+    document.getElementById('rule-manager-daily-rate').value = rules.manager?.dailyRate ?? 340;
 
     // Stock
     const stockComputed = getStockFromDocs();
@@ -6267,7 +6267,7 @@ function initSettings() {
                 bonusSources: adminSrc
             },
             manager: {
-                dailyRate: parseFloat(document.getElementById('rule-manager-daily-rate').value) || 360
+                dailyRate: parseFloat(document.getElementById('rule-manager-daily-rate').value) || 340
             }
         };
         DB.set('salaryRules', newRules);
