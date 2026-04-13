@@ -33,7 +33,8 @@ const FIRESTORE_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'certificates', 'finEntries', 'salaryPayments', 'gcal_token', 'gcal_apps_script_url', 'gcal_calendar_id', 'gcal_event_map', 'consumablePrices',
-    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'bonus_recalc_v8', 'bonus_recalc_v8b', 'bonus_recalc_v8c', 'bonus_recalc_v8d', 'price_recalc_v9', 'deletedSalaryPaymentIds', 'historicalAccruals'
+    'directorDashOrder', 'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4', 'salary_import_v5', 'salary_import_v5b', 'stock_recalc_v6', 'salary_cleanup_v7', 'bonus_recalc_v8', 'bonus_recalc_v8b', 'bonus_recalc_v8c', 'bonus_recalc_v8d', 'price_recalc_v9', 'deletedSalaryPaymentIds', 'historicalAccruals',
+    'stockBase', 'stock_docs_v10'
 ]);
 
 const DB = {
@@ -511,12 +512,7 @@ function fixMissingWriteoffs() {
                     }
                 });
             }
-            // Списать со склада (допускаем отрицательный остаток)
             if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0 || totalSmokes > 0) {
-                stock.balls = (stock.balls || 0) - totalBalls;
-                stock.kidsBalls = (stock.kidsBalls || 0) - totalKidsBalls;
-                stock.grenades = (stock.grenades || 0) - totalGrenades;
-                stock.smokes = (stock.smokes || 0) - totalSmokes;
                 stockChanged = true;
             }
             evt.consumablesUsed = { balls: totalBalls, kidsBalls: totalKidsBalls, grenades: totalGrenades, smokes: totalSmokes };
@@ -554,7 +550,6 @@ function fixMissingWriteoffs() {
     if (addedDocs > 0) {
         DB.set('documents', docs);
         DB.set('events', events);
-        if (stockChanged) DB.set('stock', stock);
         console.log('fixMissingWriteoffs: created ' + addedDocs + ' writeoff documents');
     }
 }
@@ -976,11 +971,8 @@ function migrateV6RecalcStock() {
         if (d.type === 'incoming') stock[k] += d.qty;
         else if (d.type === 'outgoing' || d.type === 'writeoff') stock[k] -= d.qty;
     });
-    // Не допускать отрицательных значений
-    Object.keys(stock).forEach(k => { if (stock[k] < 0) stock[k] = 0; });
-    DB.set('stock', stock);
     DB.set('stock_recalc_v6', true);
-    console.log('Stock recalc v6:', JSON.stringify(stock));
+    // Stock is now computed from documents in getStockFromDocs() — no need to persist
 }
 
 // v7: Удалить автоматические evtbonus_ начисления до 31 марта (покрыты Excel-импортом)
@@ -1264,6 +1256,32 @@ document.addEventListener('DOMContentLoaded', () => {
     if (c) c.addEventListener('click', () => closeModal('modal-unpaid-accruals'));
 });
 
+// v10: Switch stock tracking to document-based (compute from docs, not incremental)
+function migrateV10StockBase() {
+    if (DB.get('stock_docs_v10', false)) return;
+    // Migrate: set stockBase so that getStockFromDocs() matches current stock value
+    const stock = DB.get('stock', {});
+    const fromDocs = { balls: 0, kidsBalls: 0, grenades: 0, smokes: 0 };
+    DB.get('documents', []).forEach(d => {
+        const k = STOCK_KEY_MAP[d.item];
+        if (!k || !d.qty) return;
+        if (d.type === 'incoming') fromDocs[k] += d.qty;
+        else if (d.type === 'outgoing' || d.type === 'writeoff') fromDocs[k] -= d.qty;
+    });
+    const existingBase = DB.get('stockBase', {});
+    DB.set('stockBase', {
+        balls: (stock.balls || 0) - fromDocs.balls,
+        kidsBalls: (stock.kidsBalls || 0) - fromDocs.kidsBalls,
+        grenades: (stock.grenades || 0) - fromDocs.grenades,
+        smokes: (stock.smokes || 0) - fromDocs.smokes,
+        ballsCritical: existingBase.ballsCritical || stock.ballsCritical || 60000,
+        kidsBallsCritical: existingBase.kidsBallsCritical || stock.kidsBallsCritical || 20000,
+        grenadesCritical: existingBase.grenadesCritical || stock.grenadesCritical || 100,
+        smokesCritical: existingBase.smokesCritical || stock.smokesCritical || 50,
+    });
+    DB.set('stock_docs_v10', true);
+}
+
 function onFirestoreReady() {
     // One-time salary import from Excel spreadsheet
     importSalaryPaymentsFromExcel();
@@ -1272,6 +1290,7 @@ function onFirestoreReady() {
     migrateV6RecalcStock();
     migrateV7CleanupPreAprilBonuses();
     migrateV9RecalcEventPrices();
+    migrateV10StockBase();
     migrateV8RecalcEventBonuses();
 
     // Refresh UI with data from Firestore
@@ -2628,14 +2647,8 @@ function completeEventPayment() {
         });
     }
 
-    // Deduct from stock (allow negative balance)
+    // Auto-create write-off documents for consumables used
     if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0 || totalSmokes > 0) {
-        const stock = DB.get('stock', {});
-        stock.balls = (stock.balls || 0) - totalBalls;
-        stock.kidsBalls = (stock.kidsBalls || 0) - totalKidsBalls;
-        stock.grenades = (stock.grenades || 0) - totalGrenades;
-        stock.smokes = (stock.smokes || 0) - totalSmokes;
-        DB.set('stock', stock);
         events[idx].consumablesUsed = { balls: totalBalls, kidsBalls: totalKidsBalls, grenades: totalGrenades, smokes: totalSmokes };
 
         // === AUTO-CREATE WRITE-OFF DOCUMENTS ===
@@ -3735,8 +3748,33 @@ function loadEmployeeRating() {
     `).join('');
 }
 
+const STOCK_KEY_MAP = {
+    'Пейнтбольные шары 0.68': 'balls',
+    'Детские пейнтбольные шары 0.50': 'kidsBalls',
+    'Гранаты': 'grenades',
+    'Дымы': 'smokes'
+};
+
+function getStockFromDocs() {
+    const base = DB.get('stockBase', {});
+    const result = {
+        balls: base.balls || 0,
+        kidsBalls: base.kidsBalls || 0,
+        grenades: base.grenades || 0,
+        smokes: base.smokes || 0
+    };
+    DB.get('documents', []).forEach(d => {
+        const k = STOCK_KEY_MAP[d.item];
+        if (!k || !d.qty) return;
+        if (d.type === 'incoming') result[k] += d.qty;
+        else if (d.type === 'outgoing' || d.type === 'writeoff') result[k] -= d.qty;
+    });
+    return result;
+}
+
 function loadStock() {
-    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, kidsBalls: 0, kidsBallsCritical: 20000, grenades: 0, grenadesCritical: 100, smokes: 0, smokesCritical: 50 });
+    const stock = getStockFromDocs();
+    const stockMeta = DB.get('stockBase', {});
 
     const renderStockItem = (id, value, critical) => {
         const el = document.getElementById(id);
@@ -3752,29 +3790,44 @@ function loadStock() {
         if (warn) warn.textContent = v < critical ? `Ниже критического уровня (${(critical || 0).toLocaleString('ru-RU')})` : '';
     };
 
-    renderStockItem('stock-balls', stock.balls, stock.ballsCritical || 60000);
-    renderStockItem('stock-kids-balls', stock.kidsBalls, stock.kidsBallsCritical || 20000);
-    renderStockItem('stock-grenades', stock.grenades, stock.grenadesCritical || 100);
-    renderStockItem('stock-smokes', stock.smokes, stock.smokesCritical || 50);
+    renderStockItem('stock-balls', stock.balls, stockMeta.ballsCritical || 60000);
+    renderStockItem('stock-kids-balls', stock.kidsBalls, stockMeta.kidsBallsCritical || 20000);
+    renderStockItem('stock-grenades', stock.grenades, stockMeta.grenadesCritical || 100);
+    renderStockItem('stock-smokes', stock.smokes, stockMeta.smokesCritical || 50);
 }
 
 // ===== STOCK INVENTORY (manual set) =====
 function openStockInventoryModal() {
-    const stock = DB.get('stock', {});
-    document.getElementById('inv-balls').value = stock.balls ?? 0;
-    document.getElementById('inv-kids-balls').value = stock.kidsBalls ?? 0;
-    document.getElementById('inv-grenades').value = stock.grenades ?? 0;
-    document.getElementById('inv-smokes').value = stock.smokes ?? 0;
+    const computed = getStockFromDocs();
+    document.getElementById('inv-balls').value = computed.balls ?? 0;
+    document.getElementById('inv-kids-balls').value = computed.kidsBalls ?? 0;
+    document.getElementById('inv-grenades').value = computed.grenades ?? 0;
+    document.getElementById('inv-smokes').value = computed.smokes ?? 0;
     openModal('modal-stock-inventory');
 }
 
 function saveStockInventory() {
-    const stock = DB.get('stock', {});
-    stock.balls = parseInt(document.getElementById('inv-balls').value) || 0;
-    stock.kidsBalls = parseInt(document.getElementById('inv-kids-balls').value) || 0;
-    stock.grenades = parseInt(document.getElementById('inv-grenades').value) || 0;
-    stock.smokes = parseInt(document.getElementById('inv-smokes').value) || 0;
-    DB.set('stock', stock);
+    // User enters actual stock counts → compute base = actual - fromDocs
+    const userBalls = parseInt(document.getElementById('inv-balls').value) ?? 0;
+    const userKidsBalls = parseInt(document.getElementById('inv-kids-balls').value) ?? 0;
+    const userGrenades = parseInt(document.getElementById('inv-grenades').value) ?? 0;
+    const userSmokes = parseInt(document.getElementById('inv-smokes').value) ?? 0;
+
+    // Compute what documents contribute
+    const fromDocs = { balls: 0, kidsBalls: 0, grenades: 0, smokes: 0 };
+    DB.get('documents', []).forEach(d => {
+        const k = STOCK_KEY_MAP[d.item];
+        if (!k || !d.qty) return;
+        if (d.type === 'incoming') fromDocs[k] += d.qty;
+        else if (d.type === 'outgoing' || d.type === 'writeoff') fromDocs[k] -= d.qty;
+    });
+
+    const stockBase = DB.get('stockBase', {});
+    stockBase.balls = userBalls - fromDocs.balls;
+    stockBase.kidsBalls = userKidsBalls - fromDocs.kidsBalls;
+    stockBase.grenades = userGrenades - fromDocs.grenades;
+    stockBase.smokes = userSmokes - fromDocs.smokes;
+    DB.set('stockBase', stockBase);
     closeModal('modal-stock-inventory');
     loadStock();
     showToast('Остатки склада обновлены');
@@ -5870,42 +5923,6 @@ function saveDocument(e) {
     }
     DB.set('documents', docs);
 
-    // Auto-update stock when saving document for consumables
-    const stockKeyMap = {
-        'Пейнтбольные шары 0.68': 'balls',
-        'Детские пейнтбольные шары 0.50': 'kidsBalls',
-        'Гранаты': 'grenades',
-        'Дымы': 'smokes'
-    };
-
-    // При редактировании — сначала вернуть старое количество на склад
-    if (id && _saveDoc_oldData) {
-        const oldKey = stockKeyMap[_saveDoc_oldData.item];
-        if (oldKey && _saveDoc_oldData.qty > 0) {
-            const stock = DB.get('stock', {});
-            if (_saveDoc_oldData.type === 'incoming') {
-                stock[oldKey] = (stock[oldKey] || 0) - _saveDoc_oldData.qty;
-            } else if (_saveDoc_oldData.type === 'outgoing' || _saveDoc_oldData.type === 'writeoff') {
-                stock[oldKey] = (stock[oldKey] || 0) + _saveDoc_oldData.qty;
-            }
-            DB.set('stock', stock);
-        }
-    }
-
-    // Применить новое количество
-    const stockKey = stockKeyMap[data.item];
-    if (stockKey && data.qty > 0) {
-        const stock = DB.get('stock', {});
-        const current = stock[stockKey] || 0;
-        if (data.type === 'incoming') {
-            stock[stockKey] = current + data.qty;
-            DB.set('stock', stock);
-        } else if (data.type === 'outgoing' || data.type === 'writeoff') {
-            stock[stockKey] = current - data.qty;
-            DB.set('stock', stock);
-        }
-    }
-
     closeModal('modal-document');
     loadDocuments(data.type);
     // Refresh stock display if on stock page
@@ -5919,22 +5936,6 @@ function deleteDocument(id) {
         const doc = docs.find(d => String(d.id) === String(id));
         const remaining = docs.filter(d => String(d.id) !== String(id));
         DB.set('documents', remaining);
-        // Reverse stock effect of deleted document
-        if (doc) {
-            const stockKeyMap = {
-                'Пейнтбольные шары 0.68': 'balls',
-                'Детские пейнтбольные шары 0.50': 'kidsBalls',
-                'Гранаты': 'grenades',
-                'Дымы': 'smokes'
-            };
-            const k = stockKeyMap[doc.item];
-            if (k && doc.qty > 0) {
-                const stock = DB.get('stock', {});
-                if (doc.type === 'incoming') stock[k] = (stock[k] || 0) - doc.qty;
-                else if (doc.type === 'outgoing' || doc.type === 'writeoff') stock[k] = (stock[k] || 0) + doc.qty;
-                DB.set('stock', stock);
-            }
-        }
         loadDocuments();
         if (typeof loadStock === 'function') loadStock();
         showToast('Документ удалён');
@@ -6157,15 +6158,16 @@ function loadSettingsData() {
     document.getElementById('rule-manager-daily-rate').value = rules.manager?.dailyRate ?? 360;
 
     // Stock
-    const stock = DB.get('stock', { balls: 0, ballsCritical: 60000, grenades: 0, grenadesCritical: 100 });
-    document.getElementById('set-balls').value = stock.balls || 0;
-    document.getElementById('set-balls-critical').value = stock.ballsCritical || 60000;
-    document.getElementById('set-kids-balls').value = stock.kidsBalls || 0;
-    document.getElementById('set-kids-balls-critical').value = stock.kidsBallsCritical || 20000;
-    document.getElementById('set-grenades').value = stock.grenades || 0;
-    document.getElementById('set-grenades-critical').value = stock.grenadesCritical || 100;
-    document.getElementById('set-smokes').value = stock.smokes || 0;
-    document.getElementById('set-smokes-critical').value = stock.smokesCritical || 50;
+    const stockComputed = getStockFromDocs();
+    const stockBase = DB.get('stockBase', {});
+    document.getElementById('set-balls').value = stockComputed.balls || 0;
+    document.getElementById('set-balls-critical').value = stockBase.ballsCritical || 60000;
+    document.getElementById('set-kids-balls').value = stockComputed.kidsBalls || 0;
+    document.getElementById('set-kids-balls-critical').value = stockBase.kidsBallsCritical || 20000;
+    document.getElementById('set-grenades').value = stockComputed.grenades || 0;
+    document.getElementById('set-grenades-critical').value = stockBase.grenadesCritical || 100;
+    document.getElementById('set-smokes').value = stockComputed.smokes || 0;
+    document.getElementById('set-smokes-critical').value = stockBase.smokesCritical || 50;
 
     // Manager assignment list
     loadManagerAssignment();
@@ -6260,19 +6262,15 @@ function initSettings() {
     });
 
     document.getElementById('btn-save-stock').addEventListener('click', () => {
-        const newStock = {
-            balls: parseInt(document.getElementById('set-balls').value) || 0,
-            ballsCritical: parseInt(document.getElementById('set-balls-critical').value) || 60000,
-            kidsBalls: parseInt(document.getElementById('set-kids-balls').value) || 0,
-            kidsBallsCritical: parseInt(document.getElementById('set-kids-balls-critical').value) || 20000,
-            grenades: parseInt(document.getElementById('set-grenades').value) || 0,
-            grenadesCritical: parseInt(document.getElementById('set-grenades-critical').value) || 100,
-            smokes: parseInt(document.getElementById('set-smokes').value) || 0,
-            smokesCritical: parseInt(document.getElementById('set-smokes-critical').value) || 50,
-        };
-        DB.set('stock', newStock);
+        // Save critical levels to stockBase; actual quantities use document-based calculation
+        const stockBase = DB.get('stockBase', {});
+        stockBase.ballsCritical = parseInt(document.getElementById('set-balls-critical').value) || 60000;
+        stockBase.kidsBallsCritical = parseInt(document.getElementById('set-kids-balls-critical').value) || 20000;
+        stockBase.grenadesCritical = parseInt(document.getElementById('set-grenades-critical').value) || 100;
+        stockBase.smokesCritical = parseInt(document.getElementById('set-smokes-critical').value) || 50;
+        DB.set('stockBase', stockBase);
         loadStock();
-        showToast('Данные склада обновлены');
+        showToast('Настройки склада сохранены');
     });
 
     // Manager assignment save
