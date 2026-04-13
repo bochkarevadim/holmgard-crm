@@ -482,18 +482,20 @@ function fixMissingWriteoffs() {
             // Пересчитать расходники и списать со склада
             totalBalls = 0; totalKidsBalls = 0; totalGrenades = 0; totalSmokes = 0;
             const isKidball = evt.type === 'kidball' || (evt.title || '').toLowerCase().includes('кидбол');
-            if (evt.tariffId) {
-                const tariff = tariffs.find(t => String(t.id) === String(evt.tariffId));
-                if (tariff) {
-                    const ppl = evt.participants || 1;
-                    const kbpp = tariff.kidsBallsPerPerson || 0;
-                    const bpp = tariff.ballsPerPerson || 0;
-                    if (kbpp > 0) totalKidsBalls += kbpp * ppl;
-                    else if (bpp > 0) { if (isKidball) totalKidsBalls += bpp * ppl; else totalBalls += bpp * ppl; }
-                    totalGrenades += (tariff.grenadesPerPerson || 0) * ppl;
-                    totalSmokes += (tariff.smokesPerPerson || 0) * ppl;
-                }
-            }
+            // Support tariffGroups (multi-tariff) or fallback to single tariffId
+            const evtGroups = evt.tariffGroups || (evt.tariffId ? [{ tariffId: evt.tariffId, participants: evt.participants || 1 }] : []);
+            evtGroups.forEach(g => {
+                if (!g.tariffId) return;
+                const tariff = tariffs.find(t => String(t.id) === String(g.tariffId));
+                if (!tariff) return;
+                const ppl = g.participants || 1;
+                const kbpp = tariff.kidsBallsPerPerson || 0;
+                const bpp = tariff.ballsPerPerson || 0;
+                if (kbpp > 0) totalKidsBalls += kbpp * ppl;
+                else if (bpp > 0) { if (isKidball) totalKidsBalls += bpp * ppl; else totalBalls += bpp * ppl; }
+                totalGrenades += (tariff.grenadesPerPerson || 0) * ppl;
+                totalSmokes += (tariff.smokesPerPerson || 0) * ppl;
+            });
             if (evt.selectedOptions && evt.selectedOptions.length > 0) {
                 evt.selectedOptions.forEach(optId => {
                     const opt = tariffs.find(t => String(t.id) === String(optId));
@@ -1888,15 +1890,17 @@ function calculateEventRevenueBySources(event, sources) {
         return event.price || 0;
     }
 
-    // Base service price
+    // Base service price (support tariffGroups)
     if (sources.includes('services')) {
-        if (event.tariffId) {
-            const tariff = tariffs.find(t => String(t.id) === String(event.tariffId));
-            if (tariff) {
-                total += (tariff.price || 0) * (event.participants || 1);
-            }
+        const evGroups = event.tariffGroups || (event.tariffId ? [{ tariffId: event.tariffId, participants: event.participants || 1 }] : null);
+        if (evGroups && evGroups.length > 0) {
+            evGroups.forEach(g => {
+                if (!g.tariffId) return;
+                const tariff = tariffs.find(t => String(t.id) === String(g.tariffId));
+                if (tariff) total += (tariff.price || 0) * (g.participants || 1);
+            });
         } else {
-            // No specific tariff — use event price as service
+            // No tariff — use event price as service
             total += event.price || 0;
         }
     }
@@ -2588,22 +2592,20 @@ function completeEventPayment() {
     let totalBalls = 0, totalKidsBalls = 0, totalGrenades = 0, totalSmokes = 0;
     const isKidball = evt.type === 'kidball' || (evt.title || '').toLowerCase().includes('кидбол');
 
-    // Main tariff × participants
-    if (evt.tariffId) {
-        const tariff = tariffs.find(t => String(t.id) === String(evt.tariffId));
-        if (tariff) {
-            const ppl = (evt.participants || 1);
-            const kbpp = tariff.kidsBallsPerPerson || 0;
-            const bpp = tariff.ballsPerPerson || 0;
-            if (kbpp > 0) {
-                totalKidsBalls += kbpp * ppl;
-            } else if (bpp > 0) {
-                if (isKidball) totalKidsBalls += bpp * ppl; else totalBalls += bpp * ppl;
-            }
-            totalGrenades += (tariff.grenadesPerPerson || 0) * ppl;
-            totalSmokes += (tariff.smokesPerPerson || 0) * ppl;
-        }
-    }
+    // Main tariff groups × participants (support multi-tariff)
+    const evtGroups2 = evt.tariffGroups || (evt.tariffId ? [{ tariffId: evt.tariffId, participants: evt.participants || 1 }] : []);
+    evtGroups2.forEach(g => {
+        if (!g.tariffId) return;
+        const tariff = tariffs.find(t => String(t.id) === String(g.tariffId));
+        if (!tariff) return;
+        const ppl = g.participants || 1;
+        const kbpp = tariff.kidsBallsPerPerson || 0;
+        const bpp = tariff.ballsPerPerson || 0;
+        if (kbpp > 0) { totalKidsBalls += kbpp * ppl; }
+        else if (bpp > 0) { if (isKidball) totalKidsBalls += bpp * ppl; else totalBalls += bpp * ppl; }
+        totalGrenades += (tariff.grenadesPerPerson || 0) * ppl;
+        totalSmokes += (tariff.smokesPerPerson || 0) * ppl;
+    });
 
     // Options × quantity (grenades/smokes are per-unit, balls are per-person)
     if (evt.selectedOptions && evt.selectedOptions.length > 0) {
@@ -4517,9 +4519,17 @@ function renderUpcomingEventsTable(events) {
         const statusClass = e.status === 'completed' ? 'status-completed' : e.status === 'confirmed' ? 'status-confirmed' : '';
         const statusName = getStatusName(e.status);
         const rowStyle = e.status === 'completed' ? 'background:rgba(76,175,80,0.1);' : isToday ? 'background:rgba(255,214,0,0.08);' : '';
-        // Find tariff name
-        const tariff = e.tariffId ? tariffs.find(t => String(t.id) === String(e.tariffId)) : null;
-        const tariffName = tariff ? tariff.name : (e.tariffName || '—');
+        // Find tariff name(s) — support multi-group
+        let tariffName;
+        if (e.tariffGroups && e.tariffGroups.length > 1) {
+            tariffName = e.tariffGroups.map(g => {
+                const t = g.tariffId ? tariffs.find(t => String(t.id) === String(g.tariffId)) : null;
+                return t ? `${t.name} ×${g.participants}` : '?';
+            }).join(', ');
+        } else {
+            const tariff = e.tariffId ? tariffs.find(t => String(t.id) === String(e.tariffId)) : null;
+            tariffName = tariff ? tariff.name : (e.tariffName || '—');
+        }
         return `<tr style="${rowStyle}cursor:pointer;" onclick="openEventModal('${e.id}')">
             <td style="${isToday ? 'font-weight:700;color:var(--accent);' : ''}">${dateF}</td>
             <td>${e.time || '—'}</td>
@@ -4741,11 +4751,11 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('evt-time').value = evt.time;
         document.getElementById('evt-duration').value = evt.duration;
         document.getElementById('evt-type').value = evt.type;
-        updateTariffsByType(); // filter tariffs by selected type
         document.getElementById('evt-occasion').value = evt.occasion || '';
         document.getElementById('evt-player-age').value = evt.playerAge || '';
-        document.getElementById('evt-tariff').value = evt.tariffId || '';
-        document.getElementById('evt-participants').value = evt.participants;
+        // Load tariff groups (support old single-tariff format)
+        const savedGroups = evt.tariffGroups || [{ tariffId: evt.tariffId, participants: evt.participants || 1 }];
+        initTariffGroupsUI(savedGroups);
         // Check instructors
         const instrIds = evt.instructors || (evt.instructor ? [evt.instructor] : []);
         document.querySelectorAll('.evt-instr-cb').forEach(cb => {
@@ -4814,6 +4824,8 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('evt-certificate-number').value = '';
         document.getElementById('evt-certificate-amount').value = '';
         toggleDiscountType();
+        // Init empty tariff group for new event
+        initTariffGroupsUI([{ tariffId: null, participants: 10 }]);
     }
 
     // Always recalculate total to keep price in sync with options
@@ -4839,14 +4851,17 @@ function openEventModal(id = null, completing = false) {
 
 function recalcEventTotal() {
     const tariffs = DB.get('tariffs', []);
-    const tariffId = parseInt(document.getElementById('evt-tariff').value);
-    const participants = parseInt(document.getElementById('evt-participants').value) || 0;
     const discount = parseFloat(document.getElementById('evt-discount').value) || 0;
     const prepayment = parseFloat(document.getElementById('evt-prepayment').value) || 0;
 
+    // Sum service cost across all tariff groups
     let serviceCost = 0;
-    const tariff = tariffs.find(t => String(t.id) === String(tariffId));
-    if (tariff) serviceCost = tariff.price * participants;
+    const groups = getTariffGroupsFromDOM();
+    groups.forEach(g => {
+        if (!g.tariffId) return;
+        const t = tariffs.find(t => String(t.id) === String(g.tariffId));
+        if (t) serviceCost += (t.price || 0) * g.participants;
+    });
 
     let optionsCost = 0;
     document.querySelectorAll('#evt-options-game-list .option-qty-row, #evt-options-extra-list .option-qty-row').forEach(row => {
@@ -4886,9 +4901,22 @@ function recalcEventTotal() {
 
     const block = document.getElementById('evt-total-block');
     if (block) {
+        // Show per-group breakdown if multiple groups
+        const activeGroups = groups.filter(g => g.tariffId);
+        let serviceRows = '';
+        if (activeGroups.length > 1) {
+            activeGroups.forEach(g => {
+                const t = tariffs.find(t => String(t.id) === String(g.tariffId));
+                if (!t) return;
+                const amt = t.price * g.participants;
+                serviceRows += `<div class="evt-total-row" style="padding-left:12px;font-size:12px;color:var(--text-secondary);">
+                    <span>${t.name} × ${g.participants} чел.</span><span>${formatMoney(amt)}</span></div>`;
+            });
+        }
         block.innerHTML = `
             <div class="evt-total-summary">
                 <div class="evt-total-row"><span>Услуга:</span><span>${formatMoney(serviceCost)}</span></div>
+                ${serviceRows}
                 <div class="evt-total-row"><span>Доп. опции:</span><span>${formatMoney(optionsCost)}</span></div>
                 ${discountAmount > 0 ? `<div class="evt-total-row"><span>${discountLabel}:</span><span>−${formatMoney(discountAmount)}</span></div>` : ''}
                 <div class="evt-total-row evt-total-main"><span>Итого:</span><span>${formatMoney(total)}</span></div>
@@ -4941,7 +4969,11 @@ function saveEvent(e) {
         }
     });
 
-    const participantsMax = parseInt(document.getElementById('evt-participants').value) || 0;
+    // Collect tariff groups
+    const tariffGroups = getTariffGroupsSaved();
+    const totalParticipants = tariffGroups.reduce((s, g) => s + g.participants, 0) || 1;
+    // For backward compat: set tariffId to first group's tariffId
+    const firstTariffId = tariffGroups[0]?.tariffId || null;
 
     const data = {
         title: document.getElementById('evt-title').value.trim(),
@@ -4954,8 +4986,9 @@ function saveEvent(e) {
         type: document.getElementById('evt-type').value,
         occasion: document.getElementById('evt-occasion').value,
         playerAge: document.getElementById('evt-player-age').value.trim(),
-        tariffId: parseInt(document.getElementById('evt-tariff').value) || null,
-        participants: participantsMax,
+        tariffId: firstTariffId,
+        tariffGroups: tariffGroups.length > 1 ? tariffGroups : null, // null when single group
+        participants: totalParticipants,
         instructors: [...document.querySelectorAll('.evt-instr-cb:checked')].map(cb => parseInt(cb.value)),
         admins: [...document.querySelectorAll('.evt-admin-cb:checked')].map(cb => parseInt(cb.value)),
         instructor: [...document.querySelectorAll('.evt-instr-cb:checked')].map(cb => parseInt(cb.value))[0] || null, // backward compat
@@ -6420,6 +6453,76 @@ function getSourceBadge(ev) {
 }
 
 // Map event type to tariff sheetCategory for filtering
+// ===== TARIFF GROUPS (multiple tariffs per event) =====
+function _buildTariffOptions(currentVal) {
+    const type = document.getElementById('evt-type')?.value || '';
+    const allTariffs = DB.get('tariffs', []).filter(t => t.category === 'services');
+    const allowedCats = EVENT_TYPE_TARIFF_MAP[type];
+    const filtered = allowedCats ? allTariffs.filter(t => allowedCats.includes(t.sheetCategory)) : allTariffs;
+    return '<option value="">— Тариф —</option>' +
+        filtered.map(t => `<option value="${t.id}"${String(t.id) === String(currentVal) ? ' selected' : ''}>${t.name} — ${formatMoney(t.price)}/${t.unit || 'чел.'}</option>`).join('');
+}
+
+function _renderTariffGroupRow(tariffId, participants) {
+    return `<div class="tariff-group-row">
+        <select class="tg-tariff" onchange="recalcEventTotal()">${_buildTariffOptions(tariffId)}</select>
+        <div class="tg-ppl-wrap">
+            <input type="number" class="tg-ppl" min="1" value="${participants || 1}" oninput="recalcEventTotal()" placeholder="1">
+            <span class="tg-ppl-label">чел.</span>
+        </div>
+        <button type="button" class="tg-remove-btn" onclick="removeTariffGroup(this)" title="Удалить группу">
+            <span class="material-icons-round">close</span>
+        </button>
+    </div>`;
+}
+
+function initTariffGroupsUI(groups) {
+    const list = document.getElementById('tariff-groups-list');
+    if (!list) return;
+    if (!groups || groups.length === 0) groups = [{ tariffId: null, participants: 10 }];
+    list.innerHTML = groups.map(g => _renderTariffGroupRow(g.tariffId, g.participants)).join('');
+    _updateTariffGroupRemoveButtons();
+}
+
+function addTariffGroup() {
+    const list = document.getElementById('tariff-groups-list');
+    if (!list) return;
+    list.insertAdjacentHTML('beforeend', _renderTariffGroupRow(null, 1));
+    _updateTariffGroupRemoveButtons();
+    recalcEventTotal();
+}
+
+function removeTariffGroup(btn) {
+    btn.closest('.tariff-group-row')?.remove();
+    _updateTariffGroupRemoveButtons();
+    recalcEventTotal();
+}
+
+function _updateTariffGroupRemoveButtons() {
+    const rows = document.querySelectorAll('#tariff-groups-list .tariff-group-row');
+    rows.forEach(row => {
+        const btn = row.querySelector('.tg-remove-btn');
+        if (btn) btn.style.display = rows.length > 1 ? 'inline-flex' : 'none';
+    });
+}
+
+function getTariffGroupsFromDOM() {
+    const groups = [];
+    document.querySelectorAll('#tariff-groups-list .tariff-group-row').forEach(row => {
+        const tariffId = row.querySelector('.tg-tariff')?.value || null;
+        const participants = parseInt(row.querySelector('.tg-ppl')?.value) || 1;
+        groups.push({ tariffId: tariffId || null, participants });
+    });
+    return groups.length > 0 ? groups : [{ tariffId: null, participants: 1 }];
+}
+
+// Returns [{tariffId (Number), participants}] with parsed IDs
+function getTariffGroupsSaved() {
+    return getTariffGroupsFromDOM()
+        .map(g => ({ tariffId: g.tariffId ? parseInt(g.tariffId) : null, participants: g.participants }))
+        .filter(g => g.participants > 0);
+}
+
 const EVENT_TYPE_TARIFF_MAP = {
     paintball: ['Пейнтбол', 'Тир пейнтбольный'],
     laser: ['Лазертаг'],
@@ -6432,20 +6535,12 @@ const EVENT_TYPE_TARIFF_MAP = {
 };
 
 function updateTariffsByType() {
-    const type = document.getElementById('evt-type').value;
-    const tariffSel = document.getElementById('evt-tariff');
-    const currentVal = tariffSel.value;
-    const allTariffs = DB.get('tariffs', []).filter(t => t.category === 'services');
-    const allowedCategories = EVENT_TYPE_TARIFF_MAP[type];
-    const filtered = allowedCategories
-        ? allTariffs.filter(t => allowedCategories.includes(t.sheetCategory))
-        : allTariffs;
-    tariffSel.innerHTML = '<option value="">— Выберите тариф —</option>' +
-        filtered.map(t => `<option value="${t.id}">${t.name} — ${formatMoney(t.price)}/${t.unit}</option>`).join('');
-    // Restore previous value if still available
-    if (currentVal && [...tariffSel.options].some(o => o.value === currentVal)) {
-        tariffSel.value = currentVal;
-    }
+    // Rebuild options in all tariff group selects (preserving current selection)
+    document.querySelectorAll('#tariff-groups-list .tg-tariff').forEach(sel => {
+        const currentVal = sel.value;
+        sel.innerHTML = _buildTariffOptions(currentVal);
+    });
+    recalcEventTotal();
 }
 
 function getStatusName(status) {

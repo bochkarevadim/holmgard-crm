@@ -2341,6 +2341,75 @@ body {
     color: var(--text);
 }
 
+/* Tariff groups (multi-tariff per event) */
+.tariff-groups-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.tariff-groups-header label {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.tariff-group-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.tariff-group-row .tg-tariff {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: var(--bg-input);
+    color: var(--text);
+    font-family: inherit;
+}
+.tg-ppl-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.tg-ppl-wrap .tg-ppl {
+    width: 60px;
+    text-align: center;
+    font-size: 13px;
+    padding: 8px 6px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: var(--bg-input);
+    color: var(--text);
+    font-family: inherit;
+}
+.tg-ppl-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.tg-remove-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-xs);
+    flex-shrink: 0;
+    transition: var(--transition);
+}
+.tg-remove-btn:hover { color: var(--red); background: rgba(255,82,82,0.1); }
+.tg-remove-btn .material-icons-round { font-size: 16px; }
+
 /* Salary analytics summary in finances */
 .sal-summary-row {
     display: flex;
