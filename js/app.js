@@ -509,12 +509,12 @@ function fixMissingWriteoffs() {
                     }
                 });
             }
-            // Списать со склада
+            // Списать со склада (допускаем отрицательный остаток)
             if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0 || totalSmokes > 0) {
-                stock.balls = Math.max(0, (stock.balls || 0) - totalBalls);
-                stock.kidsBalls = Math.max(0, (stock.kidsBalls || 0) - totalKidsBalls);
-                stock.grenades = Math.max(0, (stock.grenades || 0) - totalGrenades);
-                stock.smokes = Math.max(0, (stock.smokes || 0) - totalSmokes);
+                stock.balls = (stock.balls || 0) - totalBalls;
+                stock.kidsBalls = (stock.kidsBalls || 0) - totalKidsBalls;
+                stock.grenades = (stock.grenades || 0) - totalGrenades;
+                stock.smokes = (stock.smokes || 0) - totalSmokes;
                 stockChanged = true;
             }
             evt.consumablesUsed = { balls: totalBalls, kidsBalls: totalKidsBalls, grenades: totalGrenades, smokes: totalSmokes };
@@ -2626,13 +2626,13 @@ function completeEventPayment() {
         });
     }
 
-    // Deduct from stock
+    // Deduct from stock (allow negative balance)
     if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0 || totalSmokes > 0) {
         const stock = DB.get('stock', {});
-        stock.balls = Math.max(0, (stock.balls || 0) - totalBalls);
-        stock.kidsBalls = Math.max(0, (stock.kidsBalls || 0) - totalKidsBalls);
-        stock.grenades = Math.max(0, (stock.grenades || 0) - totalGrenades);
-        stock.smokes = Math.max(0, (stock.smokes || 0) - totalSmokes);
+        stock.balls = (stock.balls || 0) - totalBalls;
+        stock.kidsBalls = (stock.kidsBalls || 0) - totalKidsBalls;
+        stock.grenades = (stock.grenades || 0) - totalGrenades;
+        stock.smokes = (stock.smokes || 0) - totalSmokes;
         DB.set('stock', stock);
         events[idx].consumablesUsed = { balls: totalBalls, kidsBalls: totalKidsBalls, grenades: totalGrenades, smokes: totalSmokes };
 
@@ -3739,12 +3739,15 @@ function loadStock() {
     const renderStockItem = (id, value, critical) => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.textContent = (value || 0).toLocaleString('ru-RU');
-        const pct = Math.min(100, ((value || 0) / (critical || 1)) * 100);
+        const v = value || 0;
+        el.textContent = v.toLocaleString('ru-RU');
+        el.style.color = v < 0 ? 'var(--red)' : '';
+        // Bar: negative = 0%, warning if below critical
+        const pct = v <= 0 ? 0 : Math.min(100, (v / (critical || 1)) * 100);
         const bar = document.getElementById(id + '-bar');
-        if (bar) { bar.style.width = pct + '%'; bar.className = 'stock-bar-fill' + ((value || 0) < critical ? ' warning' : ''); }
+        if (bar) { bar.style.width = pct + '%'; bar.className = 'stock-bar-fill' + (v < critical ? ' warning' : ''); }
         const warn = document.getElementById(id + '-warning');
-        if (warn) warn.textContent = (value || 0) < critical ? `Ниже критического уровня (${critical.toLocaleString('ru-RU')})` : '';
+        if (warn) warn.textContent = v < critical ? `Ниже критического уровня (${(critical || 0).toLocaleString('ru-RU')})` : '';
     };
 
     renderStockItem('stock-balls', stock.balls, stock.ballsCritical || 60000);
@@ -3756,10 +3759,10 @@ function loadStock() {
 // ===== STOCK INVENTORY (manual set) =====
 function openStockInventoryModal() {
     const stock = DB.get('stock', {});
-    document.getElementById('inv-balls').value = stock.balls || 0;
-    document.getElementById('inv-kids-balls').value = stock.kidsBalls || 0;
-    document.getElementById('inv-grenades').value = stock.grenades || 0;
-    document.getElementById('inv-smokes').value = stock.smokes || 0;
+    document.getElementById('inv-balls').value = stock.balls ?? 0;
+    document.getElementById('inv-kids-balls').value = stock.kidsBalls ?? 0;
+    document.getElementById('inv-grenades').value = stock.grenades ?? 0;
+    document.getElementById('inv-smokes').value = stock.smokes ?? 0;
     openModal('modal-stock-inventory');
 }
 
@@ -5841,7 +5844,7 @@ function saveDocument(e) {
         if (oldKey && _saveDoc_oldData.qty > 0) {
             const stock = DB.get('stock', {});
             if (_saveDoc_oldData.type === 'incoming') {
-                stock[oldKey] = Math.max(0, (stock[oldKey] || 0) - _saveDoc_oldData.qty);
+                stock[oldKey] = (stock[oldKey] || 0) - _saveDoc_oldData.qty;
             } else if (_saveDoc_oldData.type === 'outgoing' || _saveDoc_oldData.type === 'writeoff') {
                 stock[oldKey] = (stock[oldKey] || 0) + _saveDoc_oldData.qty;
             }
@@ -5858,7 +5861,7 @@ function saveDocument(e) {
             stock[stockKey] = current + data.qty;
             DB.set('stock', stock);
         } else if (data.type === 'outgoing' || data.type === 'writeoff') {
-            stock[stockKey] = Math.max(0, current - data.qty);
+            stock[stockKey] = current - data.qty;
             DB.set('stock', stock);
         }
     }
