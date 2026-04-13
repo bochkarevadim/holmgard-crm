@@ -5845,10 +5845,17 @@ function saveDocument(e) {
     e.preventDefault();
     const docs = DB.get('documents', []);
     const id = document.getElementById('doc-id').value;
+    // Read item name: from select if not custom, else from text input
+    const itemSel = document.getElementById('doc-item-select');
+    const itemInput = document.getElementById('doc-item');
+    const itemValue = (itemSel.value && itemSel.value !== '__custom')
+        ? itemSel.value
+        : itemInput.value.trim();
+
     const data = {
         type: document.getElementById('doc-type').value,
         date: document.getElementById('doc-date').value,
-        item: document.getElementById('doc-item').value.trim(),
+        item: itemValue,
         qty: parseInt(document.getElementById('doc-qty').value) || 0,
         amount: parseFloat(document.getElementById('doc-amount').value) || 0,
         delivery: parseFloat(document.getElementById('doc-delivery').value) || 0,
@@ -5901,15 +5908,35 @@ function saveDocument(e) {
 
     closeModal('modal-document');
     loadDocuments(data.type);
+    // Refresh stock display if on stock page
+    if (typeof loadStock === 'function') loadStock();
     showToast('Документ сохранён');
 }
 
 function deleteDocument(id) {
     showConfirm('Удалить документ?', 'Это действие нельзя отменить', () => {
-        let docs = DB.get('documents', []);
-        docs = docs.filter(d => String(d.id) !== String(id));
-        DB.set('documents', docs);
+        const docs = DB.get('documents', []);
+        const doc = docs.find(d => String(d.id) === String(id));
+        const remaining = docs.filter(d => String(d.id) !== String(id));
+        DB.set('documents', remaining);
+        // Reverse stock effect of deleted document
+        if (doc) {
+            const stockKeyMap = {
+                'Пейнтбольные шары 0.68': 'balls',
+                'Детские пейнтбольные шары 0.50': 'kidsBalls',
+                'Гранаты': 'grenades',
+                'Дымы': 'smokes'
+            };
+            const k = stockKeyMap[doc.item];
+            if (k && doc.qty > 0) {
+                const stock = DB.get('stock', {});
+                if (doc.type === 'incoming') stock[k] = (stock[k] || 0) - doc.qty;
+                else if (doc.type === 'outgoing' || doc.type === 'writeoff') stock[k] = (stock[k] || 0) + doc.qty;
+                DB.set('stock', stock);
+            }
+        }
         loadDocuments();
+        if (typeof loadStock === 'function') loadStock();
         showToast('Документ удалён');
     });
 }
