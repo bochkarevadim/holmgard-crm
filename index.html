@@ -879,27 +879,11 @@
                     <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-salaries" onclick="toggleFinSection('salaries')" style="cursor:pointer;">expand_more</span>
                 </div>
                 <div class="fin-breakdown-content" id="fin-content-salaries" style="display:none;">
-                    <div class="sal-summary-row">
-                        <div class="sal-summary-item">
-                            <span class="sal-summary-label">Начислено</span>
-                            <span class="sal-summary-value green" id="fin-sal-accrued">0 ₽</span>
-                        </div>
-                        <div class="sal-summary-item">
-                            <span class="sal-summary-label">Выплачено</span>
-                            <span class="sal-summary-value" id="fin-sal-paid">0 ₽</span>
-                        </div>
-                        <div class="sal-summary-item">
-                            <span class="sal-summary-label">Задолженность</span>
-                            <span class="sal-summary-value red" id="fin-sal-debt">0 ₽</span>
-                        </div>
-                    </div>
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead><tr><th>Сотрудник</th><th>Смен</th><th>Начислено</th><th>Выплачено</th><th>Долг</th><th></th></tr></thead>
-                            <tbody id="fin-salaries-body"></tbody>
-                        </table>
-                    </div>
-                    <p class="fin-subsection-label"><span class="material-icons-round" style="font-size:15px;vertical-align:middle;margin-right:4px;">history</span>История выплат</p>
+                    <!-- hidden elements kept for JS compatibility -->
+                    <span id="fin-sal-accrued" style="display:none;"></span>
+                    <span id="fin-sal-paid" style="display:none;"></span>
+                    <span id="fin-sal-debt" style="display:none;"></span>
+                    <tbody id="fin-salaries-body" style="display:none;"></tbody>
                     <div class="table-container">
                         <table class="data-table">
                             <thead><tr><th>Дата</th><th>Время</th><th>Сотрудник</th><th>Сумма</th><th>Способ</th><th>Примечание</th></tr></thead>
@@ -2456,7 +2440,7 @@
 <script src="js/gcal.js?v=16"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=83"></script>
+<script src="js/app.js?v=84"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
