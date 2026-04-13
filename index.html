@@ -870,18 +870,58 @@
             </div>
 
             <div class="fin-breakdown" id="fin-breakdown-salaries">
-                <div class="fin-breakdown-header" onclick="toggleFinSection('salaries')">
-                    <div class="fin-breakdown-title">
+                <div class="fin-breakdown-header">
+                    <div class="fin-breakdown-title" onclick="toggleFinSection('salaries')" style="cursor:pointer;flex:1;">
                         <span class="material-icons-round">badge</span>
                         <span>Зарплаты</span>
                     </div>
-                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-salaries">expand_more</span>
+                    <button class="btn-sm btn-primary" onclick="openSalaryPaymentModal()" style="margin-right:8px;font-size:11px;padding:4px 10px;">+ Выплатить</button>
+                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-salaries" onclick="toggleFinSection('salaries')" style="cursor:pointer;">expand_more</span>
                 </div>
                 <div class="fin-breakdown-content" id="fin-content-salaries" style="display:none;">
+                    <div class="sal-summary-row">
+                        <div class="sal-summary-item">
+                            <span class="sal-summary-label">Начислено</span>
+                            <span class="sal-summary-value green" id="fin-sal-accrued">0 ₽</span>
+                        </div>
+                        <div class="sal-summary-item">
+                            <span class="sal-summary-label">Выплачено</span>
+                            <span class="sal-summary-value" id="fin-sal-paid">0 ₽</span>
+                        </div>
+                        <div class="sal-summary-item">
+                            <span class="sal-summary-label">Задолженность</span>
+                            <span class="sal-summary-value red" id="fin-sal-debt">0 ₽</span>
+                        </div>
+                    </div>
                     <div class="table-container">
                         <table class="data-table">
-                            <thead><tr><th>Сотрудник</th><th>Должность</th><th>Выплачено за период</th></tr></thead>
+                            <thead><tr><th>Сотрудник</th><th>Смен</th><th>Начислено</th><th>Выплачено</th><th>Долг</th><th></th></tr></thead>
                             <tbody id="fin-salaries-body"></tbody>
+                        </table>
+                    </div>
+                    <p class="fin-subsection-label"><span class="material-icons-round" style="font-size:15px;vertical-align:middle;margin-right:4px;">history</span>История выплат</p>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Дата</th><th>Время</th><th>Сотрудник</th><th>Сумма</th><th>Способ</th><th>Примечание</th></tr></thead>
+                            <tbody id="fin-payments-history-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="fin-breakdown" id="fin-breakdown-shifts">
+                <div class="fin-breakdown-header" onclick="toggleFinSection('shifts')">
+                    <div class="fin-breakdown-title">
+                        <span class="material-icons-round">schedule</span>
+                        <span>Смены</span>
+                    </div>
+                    <span class="material-icons-round fin-breakdown-chevron" id="fin-chevron-shifts">expand_more</span>
+                </div>
+                <div class="fin-breakdown-content" id="fin-content-shifts" style="display:none;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Дата</th><th>Часы</th><th>Сотрудник</th><th>Роль</th><th>Ставка за смену</th><th>Бонус ₽</th><th>Менеджер</th></tr></thead>
+                            <tbody id="fin-shifts-body"></tbody>
                         </table>
                     </div>
                 </div>
@@ -2414,7 +2454,7 @@
 <script src="js/gcal.js?v=16"></script>
 <script src="js/gsheets.js?v=9"></script>
 <!-- atol.js — облачный модуль (зарезервировано для ATOL Online) -->
-<script src="js/app.js?v=76"></script>
+<script src="js/app.js?v=77"></script>
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {

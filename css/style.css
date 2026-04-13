@@ -2341,6 +2341,45 @@ body {
     color: var(--text);
 }
 
+/* Salary analytics summary in finances */
+.sal-summary-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.sal-summary-item {
+    flex: 1;
+    min-width: 100px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.sal-summary-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.sal-summary-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+}
+.sal-summary-value.green { color: var(--green); }
+.sal-summary-value.red { color: var(--red); }
+.fin-subsection-label {
+    margin: 16px 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
 /* Salary payment modal */
 .salary-pay-info {
     background: var(--bg-card);

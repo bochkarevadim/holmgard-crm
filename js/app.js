@@ -5171,18 +5171,38 @@ function loadFinances(period) {
     );
     const totalConsumablesCost = docs.reduce((sum, d) => sum + (d.amount || 0) + (d.delivery || 0), 0) + totalManualExpense;
 
-    // === 3. SALARIES: payments made in this period ===
+    // === 3. SALARIES: accruals & payments in this period ===
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
+    const allShifts = DB.get('shifts', []);
     let periodSalariesPaid = 0;
+    let periodSalariesAccrued = 0;
     const salaryRows = [];
     employees.forEach(emp => {
-        const periodPaid = getEmployeePaymentsForPeriod(emp.id, period).totalPaid;
+        // Shifts earnings (non-manager)
+        const empShifts = allShifts.filter(s =>
+            s.employeeId === emp.id && s.date >= startDate && s.date <= endDate
+            && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager'
+        );
+        const shiftEarned = empShifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
+        // Manager daily accruals
+        const mgrAccrualsArr = getManagerDailyAccruals(emp, startDate, endDate);
+        const mgrTotal = mgrAccrualsArr.reduce((s, a) => s + a.amount, 0);
+        // Historical accruals
+        const histEarned = getHistoricalAccrualSum(emp.id, startDate, endDate);
+        const accrued = shiftEarned + mgrTotal + histEarned;
+        // Payments in period
+        const periodPaid = getActiveSalaryPayments()
+            .filter(p => p.employeeId === emp.id && p.date >= startDate && p.date <= endDate)
+            .reduce((s, p) => s + (p.amount || 0), 0);
         periodSalariesPaid += periodPaid;
-        if (periodPaid > 0) {
+        periodSalariesAccrued += accrued;
+        if (accrued > 0 || periodPaid > 0) {
             salaryRows.push({
+                id: emp.id,
                 name: emp.firstName + ' ' + emp.lastName,
                 role: getRoleName(emp.role),
-                paid: periodPaid
+                shiftCount: empShifts.length,
+                accrued, paid: periodPaid, debt: accrued - periodPaid
             });
         }
     });
@@ -5200,7 +5220,7 @@ function loadFinances(period) {
     document.getElementById('fin-income').textContent = formatMoney(totalIncome + totalManualIncome);
     document.getElementById('fin-cert-income').textContent = formatMoney(totalCertIncome);
     document.getElementById('fin-consumables').textContent = formatMoney(totalConsumablesCost);
-    document.getElementById('fin-salaries').textContent = formatMoney(periodSalariesPaid);
+    document.getElementById('fin-salaries').textContent = formatMoney(periodSalariesAccrued);
 
     const balEl = document.getElementById('fin-balance');
     balEl.textContent = (totalBalance >= 0 ? '+' : '') + formatMoney(totalBalance);
@@ -5273,21 +5293,101 @@ function loadFinances(period) {
         consBody.innerHTML = html;
     }
 
-    // === SALARIES TABLE ===
+    // === SALARIES TABLE — per employee analytics ===
+    const totalSalDebt = periodSalariesAccrued - periodSalariesPaid;
+    const salAccruedEl = document.getElementById('fin-sal-accrued');
+    const salPaidEl = document.getElementById('fin-sal-paid');
+    const salDebtEl = document.getElementById('fin-sal-debt');
+    if (salAccruedEl) salAccruedEl.textContent = formatMoney(periodSalariesAccrued);
+    if (salPaidEl) salPaidEl.textContent = formatMoney(periodSalariesPaid);
+    if (salDebtEl) {
+        salDebtEl.textContent = formatMoney(Math.abs(totalSalDebt));
+        salDebtEl.className = 'sal-summary-value ' + (totalSalDebt > 0 ? 'red' : totalSalDebt < 0 ? 'green' : '');
+    }
+
     const salBody = document.getElementById('fin-salaries-body');
     if (salaryRows.length === 0) {
-        salBody.innerHTML = '<tr><td colspan="3" class="empty-state">Нет выплат за период</td></tr>';
+        salBody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет начислений за период</td></tr>';
     } else {
-        let html = salaryRows.map(r => `<tr>
-            <td>${r.name}</td>
-            <td>${r.role}</td>
-            <td style="color:var(--green);font-weight:600">${formatMoney(r.paid)}</td>
-        </tr>`).join('');
+        let html = salaryRows.map(r => {
+            const debtColor = r.debt > 0 ? 'var(--red)' : r.debt < 0 ? 'var(--green)' : '';
+            const debtStr = r.debt > 0 ? formatMoney(r.debt) : r.debt < 0 ? '−' + formatMoney(-r.debt) : '—';
+            return `<tr>
+                <td>${r.name}<br><span style="color:var(--text-secondary);font-size:11px;">${r.role}</span></td>
+                <td>${r.shiftCount}</td>
+                <td style="color:var(--green);font-weight:600">${formatMoney(r.accrued)}</td>
+                <td>${formatMoney(r.paid)}</td>
+                <td style="color:${debtColor};font-weight:600">${debtStr}</td>
+                <td><button class="btn-sm btn-primary" onclick="openSalaryPaymentModal(${r.id})" style="font-size:11px;padding:3px 8px;white-space:nowrap;">Выплатить</button></td>
+            </tr>`;
+        }).join('');
+        const totalDebtStr = totalSalDebt > 0 ? formatMoney(totalSalDebt) : totalSalDebt < 0 ? '−' + formatMoney(-totalSalDebt) : '—';
+        const totalDebtColor = totalSalDebt > 0 ? 'var(--red)' : totalSalDebt < 0 ? 'var(--green)' : '';
         html += `<tr style="font-weight:700;border-top:2px solid var(--border);">
-            <td colspan="2" style="text-align:right;">Итого выплачено:</td>
-            <td style="color:var(--green)">${formatMoney(periodSalariesPaid)}</td>
+            <td colspan="2" style="text-align:right;">Итого:</td>
+            <td style="color:var(--green)">${formatMoney(periodSalariesAccrued)}</td>
+            <td>${formatMoney(periodSalariesPaid)}</td>
+            <td style="color:${totalDebtColor}">${totalDebtStr}</td>
+            <td></td>
         </tr>`;
         salBody.innerHTML = html;
+    }
+
+    // === PAYMENT HISTORY TABLE ===
+    const histBody = document.getElementById('fin-payments-history-body');
+    if (histBody) {
+        const periodPayments = getActiveSalaryPayments()
+            .filter(p => p.date >= startDate && p.date <= endDate)
+            .sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')));
+        if (periodPayments.length === 0) {
+            histBody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет выплат за период</td></tr>';
+        } else {
+            histBody.innerHTML = periodPayments.map(p => `<tr>
+                <td>${p.date}</td>
+                <td>${p.time || '—'}</td>
+                <td>${p.employeeName || '—'}</td>
+                <td style="color:var(--green);font-weight:600">${formatMoney(p.amount)}</td>
+                <td>${getPaymentMethodName(p.method)}</td>
+                <td style="color:var(--text-secondary);font-size:12px;">${p.note || '—'}</td>
+            </tr>`).join('');
+        }
+    }
+
+    // === SHIFTS TABLE ===
+    const shiftsBody = document.getElementById('fin-shifts-body');
+    if (shiftsBody) {
+        const periodShifts = allShifts.filter(s =>
+            s.date >= startDate && s.date <= endDate && s.endTime
+        ).sort((a, b) => b.date.localeCompare(a.date));
+        const empMap = {};
+        DB.get('employees', []).forEach(e => empMap[e.id] = e);
+        if (periodShifts.length === 0) {
+            shiftsBody.innerHTML = '<tr><td colspan="7" class="empty-state">Нет смен за период</td></tr>';
+        } else {
+            shiftsBody.innerHTML = periodShifts.map(s => {
+                const emp = empMap[s.employeeId];
+                const empName = emp ? (emp.firstName + ' ' + emp.lastName) : '—';
+                const role = s.shiftRole || s.employeeRole || emp?.role;
+                const isManager = role === 'manager';
+                const startT = s.startTime || '—';
+                const endT = s.endTime || '—';
+                const hours = s.duration ? formatDuration(s.duration) : '—';
+                const baseVal = s.earnings?.base || 0;
+                const bonusVal = s.earnings?.bonus || 0;
+                const base = isManager ? '—' : formatMoney(baseVal);
+                const bonus = isManager ? '—' : (bonusVal > 0 ? formatMoney(bonusVal) : '—');
+                const mgrRate = isManager ? formatMoney(s.earnings?.total || 0) : '—';
+                return `<tr>
+                    <td>${s.date}</td>
+                    <td>${startT}–${endT}<br><span style="color:var(--text-secondary);font-size:11px;">${hours}</span></td>
+                    <td>${empName}</td>
+                    <td>${getRoleName(role)}</td>
+                    <td>${base}</td>
+                    <td>${bonus}</td>
+                    <td>${mgrRate}</td>
+                </tr>`;
+            }).join('');
+        }
     }
 
     // === CERTIFICATES TABLE ===
