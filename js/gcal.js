@@ -423,13 +423,15 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
 
     // CRM → GCal format
     function crmToGcal(ev) {
-        const startDT = ev.date + 'T' + (ev.time || '10:00') + ':00';
+        // Explicitly mark as Moscow time (UTC+3, no DST) so GAS/GCal never misinterpret it
+        const startDT = ev.date + 'T' + (ev.time || '10:00') + ':00+03:00';
         const dur = ev.duration || 60;
-        const endDate = new Date(startDT);
-        endDate.setMinutes(endDate.getMinutes() + dur);
+        // Compute end time with UTC arithmetic to avoid local-timezone distortion
+        const endMs = new Date(startDT).getTime() + dur * 60 * 1000;
+        const endMoscow = new Date(endMs + 3 * 3600 * 1000); // shift to Moscow "virtual UTC"
         const pad = (n) => String(n).padStart(2, '0');
-        const endDT = endDate.getFullYear() + '-' + pad(endDate.getMonth() + 1) + '-' + pad(endDate.getDate()) +
-            'T' + pad(endDate.getHours()) + ':' + pad(endDate.getMinutes()) + ':00';
+        const endDT = endMoscow.getUTCFullYear() + '-' + pad(endMoscow.getUTCMonth() + 1) + '-' + pad(endMoscow.getUTCDate()) +
+            'T' + pad(endMoscow.getUTCHours()) + ':' + pad(endMoscow.getUTCMinutes()) + ':00+03:00';
 
         const descParts = [];
         if (ev.title) descParts.push('📋 ' + ev.title);
@@ -467,8 +469,10 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         const endD = new Date(end);
         const dur = Math.round((endD - startD) / 60000);
         const pad = (n) => String(n).padStart(2, '0');
-        const dateStr = startD.getFullYear() + '-' + pad(startD.getMonth() + 1) + '-' + pad(startD.getDate());
-        const timeStr = pad(startD.getHours()) + ':' + pad(startD.getMinutes());
+        // Use explicit UTC+3 arithmetic — never rely on browser local timezone
+        const startMoscow = new Date(startD.getTime() + 3 * 3600 * 1000);
+        const dateStr = startMoscow.getUTCFullYear() + '-' + pad(startMoscow.getUTCMonth() + 1) + '-' + pad(startMoscow.getUTCDate());
+        const timeStr = pad(startMoscow.getUTCHours()) + ':' + pad(startMoscow.getUTCMinutes());
 
         const desc = gcalEv.description || '';
         const getField = (label) => {

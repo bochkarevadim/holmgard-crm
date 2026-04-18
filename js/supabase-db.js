@@ -18,21 +18,22 @@
        • Supabase Realtime — заменяет onSnapshot
 */
 
-const SUPABASE_URL = 'https://zubxspuiogpyvnaevpxu.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1YnhzcHVpb2dweXZuYWV2cHh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMTEyNTgsImV4cCI6MjA5MTY4NzI1OH0.0YoLXHBahPOXAcLsJiW1HnJg27ifhzm9A8YaF-r2GV8';
+var SUPABASE_URL = 'https://zubxspuiogpyvnaevpxu.supabase.co';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1YnhzcHVpb2dweXZuYWV2cHh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMTEyNTgsImV4cCI6MjA5MTY4NzI1OH0.0YoLXHBahPOXAcLsJiW1HnJg27ifhzm9A8YaF-r2GV8';
 
 // ============================================================
 // SUPABASE CLIENT
 // ============================================================
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, storageKey: 'hp_supabase_auth' },
     realtime: { params: { eventsPerSecond: 10 } }
 });
 
 // ============================================================
 // FIRESTORE_KEYS — плоские ключи, которые использует app.js
+// (Используем var чтобы не конфликтовать с возможными const в старом app.js из кэша SW)
 // ============================================================
-const FIRESTORE_KEYS = new Set([
+var FIRESTORE_KEYS = new Set([
     'employees', 'events', 'clients', 'tariffs', 'shifts',
     'stock', 'salaryRules', 'finances', 'documents',
     'loyaltyPercent', 'accentColor', 'empDashOrder',
@@ -49,7 +50,7 @@ const FIRESTORE_KEYS = new Set([
     'stockBase', 'stock_docs_v10'
 ]);
 
-const MIGRATION_FLAG_KEYS = new Set([
+var MIGRATION_FLAG_KEYS = new Set([
     'initialized', 'roles_version_v2', 'multirole_v1',
     'stock_critical_v1', 'stock_kids_v1', 'consumables_v1', 'tariffs_version',
     'salary_import_v1', 'salary_import_v2', 'salary_import_v3', 'salary_import_v4',
@@ -58,7 +59,7 @@ const MIGRATION_FLAG_KEYS = new Set([
     'price_recalc_v9', 'stock_docs_v10'
 ]);
 
-const SETTINGS_KEYS_MAP = {
+var SETTINGS_KEYS_MAP = {
     loyaltyPercent: 'loyalty_percent',
     accentColor: 'accent_color',
     gcal_token: 'gcal_token',
@@ -74,7 +75,7 @@ const SETTINGS_KEYS_MAP = {
 // ============================================================
 // DB OBJECT (совместимый API с Firestore-версией)
 // ============================================================
-const DB = {
+var DB = {
     _cache: {},
     _orgId: null,
     _ready: false,
@@ -1048,7 +1049,7 @@ function rowToStockBase(r) {
     };
 }
 
-const _STOCK_KEY_MAP = {
+var _STOCK_KEY_MAP = {
     'Пейнтбольные шары 0.68': 'balls',
     'Детские пейнтбольные шары 0.50': 'kidsBalls',
     'Гранаты': 'grenades',
