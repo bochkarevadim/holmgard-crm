@@ -1048,7 +1048,7 @@ function rowToStockBase(r) {
     };
 }
 
-const STOCK_KEY_MAP = {
+const _STOCK_KEY_MAP = {
     'Пейнтбольные шары 0.68': 'balls',
     'Детские пейнтбольные шары 0.50': 'kidsBalls',
     'Гранаты': 'grenades',
@@ -1067,7 +1067,7 @@ function computeStock(base, docs) {
         smokesCritical: base.smokesCritical
     };
     for (const d of docs) {
-        const k = STOCK_KEY_MAP[d.item];
+        const k = _STOCK_KEY_MAP[d.item];
         if (!k || !d.qty) continue;
         if (d.type === 'incoming') result[k] += d.qty;
         else result[k] -= d.qty;
