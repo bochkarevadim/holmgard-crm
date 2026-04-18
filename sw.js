@@ -1,10 +1,11 @@
-const CACHE_NAME = 'holmgard-crm-v30';
+const CACHE_NAME = 'holmgard-crm-v31';
 const ASSETS_TO_CACHE = [
     '/holmgard-crm/',
     '/holmgard-crm/index.html',
     '/holmgard-crm/css/style.css',
     '/holmgard-crm/js/app.js',
-    '/holmgard-crm/js/auth.js',
+    '/holmgard-crm/js/supabase-db.js',
+    '/holmgard-crm/js/supabase-auth.js',
     '/holmgard-crm/js/gcal.js',
     '/holmgard-crm/js/gsheets.js',
     '/holmgard-crm/js/sales-history.js',

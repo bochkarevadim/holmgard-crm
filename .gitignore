@@ -1,0 +1,6 @@
+supabase/node_modules/
+supabase/.temp/
+node_modules/
+.DS_Store
+# Firebase credentials — не коммитить
+supabase/*.json
