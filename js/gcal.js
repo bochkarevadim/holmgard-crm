@@ -318,6 +318,7 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
                 if (r && (r.ok || r.email)) {
                     updateStatus('connected');
                     startAutoSync();
+                    _scheduleTimezoneRepair();
                     return;
                 }
             } catch (err) {
@@ -335,6 +336,7 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
                 gapi.client.setToken({ access_token: accessToken });
                 updateStatus('connected');
                 startAutoSync();
+                _scheduleTimezoneRepair();
                 if (gotToken) showToast('Google Calendar подключён');
             } else {
                 const refreshed = await silentRefresh();
@@ -342,6 +344,7 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
                     gapi.client.setToken({ access_token: accessToken });
                     updateStatus('connected');
                     startAutoSync();
+                    _scheduleTimezoneRepair();
                 } else {
                     updateStatus('disconnected');
                 }
@@ -910,6 +913,39 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         }
     }
 
+    // ===================== TIMEZONE REPAIR =====================
+
+    // Re-push ALL CRM events to GCal so existing events get corrected UTC+3 times.
+    // Triggered once automatically after the timezone fix (flag: gcal_tz_fix_v1).
+    async function repushAllEvents() {
+        if (!isConnected() || _syncInProgress) return 0;
+        const events = DB.get('events', []);
+        const toPush = events.filter(e => e.date && !e.deleted);
+        let fixed = 0;
+        console.log('[GCal] repushAllEvents: fixing', toPush.length, 'events...');
+        for (const ev of toPush) {
+            try {
+                await pushEvent(ev);
+                fixed++;
+            } catch (e) {
+                console.warn('[GCal] repushAllEvents error for', ev.id, e);
+            }
+        }
+        console.log('[GCal] repushAllEvents done:', fixed, 'updated');
+        return fixed;
+    }
+
+    // Run once per device to correct timezone in existing GCal events
+    function _scheduleTimezoneRepair() {
+        if (localStorage.getItem('gcal_tz_fix_v1')) return; // already done
+        setTimeout(async () => {
+            if (!isConnected()) return;
+            const fixed = await repushAllEvents();
+            localStorage.setItem('gcal_tz_fix_v1', '1');
+            if (fixed > 0) showToast(`📅 Время в Google Calendar исправлено: ${fixed} событий`);
+        }, 8000); // wait 8s after init so startup isn't blocked
+    }
+
     // ===================== DEDUP (safety net) =====================
 
     function deduplicateEvents() {
@@ -947,7 +983,7 @@ function deleteExcept(calId, timeMin, timeMax, keepIdsStr) {
         init, authorize, disconnect, isConnected,
         pushEvent, deleteEvent, pullEvents,
         fullSync, autoSync, updateStatus, reinitGis,
-        deduplicateEvents, getGasCode,
+        repushAllEvents, deduplicateEvents, getGasCode,
         setAppsScriptUrl, getAppsScriptUrl,
         setCalendarId, getCalendarId,
         startAutoSync, stopAutoSync,
