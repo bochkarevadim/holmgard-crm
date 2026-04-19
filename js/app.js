@@ -3849,29 +3849,25 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         totalFundEarned += earned;
         totalFundPaid += paid;
 
-        const balClass = balance > 0 ? 'red' : balance < 0 ? 'green' : '';
+        // Per-employee balance shown in table: all-time cumulative (to see who needs payment)
+        const balStr = balance > 0
+            ? `<span style="color:var(--red);font-weight:600;">−${formatMoney(balance)}</span>`
+            : balance < 0
+                ? `<span style="color:var(--green);font-weight:600;">+${formatMoney(-balance)}</span>`
+                : '—';
 
         return `<tr>
             <td><strong>${emp.firstName} ${emp.lastName}</strong></td>
             <td>${getRoleName(emp.role)}</td>
             <td style="text-align:right;">${formatMoney(earned)}</td>
             <td style="text-align:right;color:var(--green);">${formatMoney(paid)}</td>
+            <td style="text-align:right;">${balStr}</td>
         </tr>`;
     }).join('');
 
-    // Cumulative total balance across all employees (with historical adjustment)
-    const totalCumEarned = employees.reduce((s, emp) => {
-        return s + allShifts.filter(sh => sh.employeeId === emp.id && sh.date <= aEnd && (sh.shiftRole || sh.employeeRole) !== 'manager')
-            .reduce((ss, sh) => ss + (sh.earnings?.total || 0), 0)
-            + getManagerDailyAccruals(emp, '2020-01-01', aEnd).reduce((ss, a) => ss + a.amount, 0)
-            + getHistoricalAccrualSum(emp.id, '2020-01-01', aEnd);
-    }, 0);
-    const totalCumPaid = employees.reduce((s, emp) => {
-        return s + allPayments.filter(p => p.employeeId === emp.id && p.date <= aEnd).reduce((ss, p) => ss + (p.amount || 0), 0);
-    }, 0);
-    const totalBalance = totalCumEarned - totalCumPaid;
-    const debtLabel = totalBalance > 0 ? 'Задолженность' : totalBalance < 0 ? 'Переплата' : 'Задолженность';
-    const debtColor = totalBalance > 0 ? 'red' : totalBalance < 0 ? 'green' : '';
+    // Period balance: consistent with the other two cards (both are period-filtered)
+    const totalBalance = totalFundEarned - totalFundPaid;
+    const debtLabel = totalBalance > 0 ? 'Задолженность' : totalBalance < 0 ? 'Переплата' : 'Баланс';
     const debtCardClass = totalBalance > 0 ? 'sa-card-debt' : totalBalance < 0 ? 'sa-card-overpay' : 'sa-card-debt';
 
     contentEl.innerHTML = `
@@ -3892,13 +3888,17 @@ function renderSalaryAnalytics(employees, allShifts, allPayments, globalEndDate)
         <div class="table-container" style="margin-top:12px;">
             <table class="data-table">
                 <thead><tr>
-                    <th>Сотрудник</th><th>Должность</th><th style="text-align:right;">Начислено</th><th style="text-align:right;">Выплачено</th>
+                    <th>Сотрудник</th><th>Должность</th>
+                    <th style="text-align:right;">Начислено</th>
+                    <th style="text-align:right;">Выплачено</th>
+                    <th style="text-align:right;">Баланс (всего)</th>
                 </tr></thead>
                 <tbody>${empRows}
                     <tr style="border-top:2px solid var(--border);font-weight:700;">
                         <td colspan="2">Итого</td>
                         <td style="text-align:right;">${formatMoney(totalFundEarned)}</td>
                         <td style="text-align:right;color:var(--green);">${formatMoney(totalFundPaid)}</td>
+                        <td></td>
                     </tr>
                 </tbody>
             </table>
