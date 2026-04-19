@@ -2277,7 +2277,8 @@ function loadEmployeeEvents() {
                 <div class="emp-event-time">${e.time}</div>
                 <div class="emp-event-info">
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
-                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)} · ${staffNames} · ${formatMoney(e.price)}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)} · ${formatMoney(e.price)}</span>
+                    ${getStaffBadges(e) ? `<span style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;">${getStaffBadges(e)}</span>` : ''}
                 </div>
                 <span class="emp-event-status ${statusClass}">${statusName}</span>
                 <div class="emp-event-actions">
@@ -2746,7 +2747,8 @@ function selectEmpCalDay(dateStr) {
                 <div class="event-time">${e.time}</div>
                 <div class="event-info">
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}</span>` : ''}
-                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}</span>
+                    ${getStaffBadges(e) ? `<span style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;">${getStaffBadges(e)}</span>` : ''}
                 </div>
                 ${getSourceBadge(e)}
                 <span class="event-type-badge">${getEventTypeName(e.type)}</span>
@@ -4505,7 +4507,8 @@ function selectCalDay(dateStr) {
                 </div>
                 <div class="event-info">
                     <strong>${e.title}</strong>${e.clientName ? ` <span style="font-weight:400;color:var(--text-secondary);">— ${e.clientName}${getChannelBadge(e.contactChannel)}</span>` : ''}
-                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${getStaffNames(e) ? ' · ' + getStaffNames(e) : ''}${e.price ? ' · ' + formatMoney(e.price) : ''}${e.prepayment ? ' · предоплата ' + formatMoney(e.prepayment) + (e.prepaymentMethod === 'qr' ? ' QR' : e.prepaymentMethod === 'cash' ? ' нал.' : '') : ''}</span>
+                    <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${e.price ? ' · ' + formatMoney(e.price) : ''}${e.prepayment ? ' · предоплата ' + formatMoney(e.prepayment) + (e.prepaymentMethod === 'qr' ? ' QR' : e.prepaymentMethod === 'cash' ? ' нал.' : '') : ''}</span>
+                    ${getStaffBadges(e) ? `<span style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${getStaffBadges(e)}</span>` : ''}
                 </div>
                 ${!isCompleted ? `<button class="btn-primary btn-sm" onclick="event.stopPropagation();openEventModal('${e.id}', true)" style="width:100%;justify-content:center;">
                     <span class="material-icons-round" style="font-size:16px">done_all</span> Выполнить
@@ -6675,6 +6678,21 @@ function getStaffNames(evt) {
         if (emp) names.push(emp.firstName);
     });
     return names.length > 0 ? names.join(', ') : '';
+}
+
+function getStaffBadges(evt) {
+    const emps = DB.get('employees', []);
+    const badges = [];
+    const instrIds = evt.instructors || (evt.instructor ? [evt.instructor] : []);
+    instrIds.forEach(id => {
+        const emp = emps.find(e => e.id === id);
+        if (emp) badges.push(`<span style="display:inline-flex;align-items:center;gap:2px;background:rgba(var(--accent-rgb,33,150,243),0.18);color:var(--accent);border-radius:10px;padding:1px 8px;font-size:11px;font-weight:600;white-space:nowrap;"><span class="material-icons-round" style="font-size:11px;">sports</span>${emp.firstName}</span>`);
+    });
+    (evt.admins || []).forEach(id => {
+        const emp = emps.find(e => e.id === id);
+        if (emp) badges.push(`<span style="display:inline-flex;align-items:center;gap:2px;background:rgba(156,39,176,0.15);color:#ce93d8;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:600;white-space:nowrap;"><span class="material-icons-round" style="font-size:11px;">manage_accounts</span>${emp.firstName}</span>`);
+    });
+    return badges.join('');
 }
 
 function updateDate() {
