@@ -4857,6 +4857,101 @@ function completeEventFromModal() {
     }
 }
 
+// Пересчёт бонусов завершённого мероприятия при изменении состава сотрудников
+function recalculateEventBonuses(eventId) {
+    const events = DB.get('events', []);
+    const evt = events.find(e => e.id === eventId);
+    if (!evt || evt.status !== 'completed') return;
+
+    // 1. Снять старые бонусы этого события с смен
+    const shifts = DB.get('shifts', []);
+    shifts.forEach(s => {
+        if (!s.eventBonuses?.length) return;
+        const before = s.eventBonuses.length;
+        s.eventBonuses = s.eventBonuses.filter(b => b.eventId !== eventId);
+        if (s.eventBonuses.length !== before && s.endTime) {
+            s.earnings = calculateShiftEarnings(s);
+        }
+    });
+    DB.set('shifts', shifts);
+
+    // 2. Снять старые исторические начисления этого события
+    const prefix = 'evtbonus_' + eventId + '_';
+    const accruals = DB.get('historicalAccruals', []);
+    DB.set('historicalAccruals', accruals.filter(a => !String(a.id).startsWith(prefix)));
+
+    // 3. Начислить заново по актуальному составу
+    const selectedInstructors = evt.instructors || [];
+    const selectedAdmins = evt.admins || [];
+    const salaryRules = DB.get('salaryRules', {});
+    const adminRule = salaryRules.admin || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
+    const allEmps = DB.get('employees', []);
+
+    const instrBonusPerPerson = {};
+    selectedInstructors.forEach(empId => {
+        const emp = allEmps.find(e => e.id === empId);
+        const role = emp?.role || 'instructor';
+        const rule = salaryRules[role] || salaryRules.instructor || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] };
+        const revenue = calculateEventRevenueBySources(evt, rule.bonusSources || ['services', 'optionsForGame']);
+        instrBonusPerPerson[empId] = Math.round(revenue * (rule.bonusPercent || 5) / 100 / Math.max(selectedInstructors.length, 1));
+    });
+    const adminBonusPerPerson = {};
+    selectedAdmins.forEach(empId => {
+        const revenue = calculateEventRevenueBySources(evt, adminRule.bonusSources || ['services', 'optionsForGame', 'options']);
+        adminBonusPerPerson[empId] = Math.round(revenue * (adminRule.bonusPercent || 5) / 100 / Math.max(selectedAdmins.length, 1));
+    });
+
+    const eventDate = evt.date || todayLocal();
+    const todayStr2 = todayLocal();
+    const evtTitle = evt.title || 'Мероприятие';
+    const shifts2 = DB.get('shifts', []);
+
+    const credit = (empId, amount, bonusType) => {
+        if (amount <= 0) return;
+        let si = shifts2.findIndex(s => s.date === eventDate && s.employeeId === empId);
+        if (si < 0 && eventDate !== todayStr2) si = shifts2.findIndex(s => s.date === todayStr2 && s.employeeId === empId);
+        if (si >= 0) {
+            if (!shifts2[si].eventBonuses) shifts2[si].eventBonuses = [];
+            shifts2[si].eventBonuses.push({ eventId, eventTitle: evtTitle, amount, bonusType });
+            if (shifts2[si].endTime) shifts2[si].earnings = calculateShiftEarnings(shifts2[si]);
+        } else {
+            const emp = allEmps.find(e => e.id === empId);
+            const roleName = bonusType === 'instructor' ? 'инструктор' : 'администратор';
+            const hist = DB.get('historicalAccruals', []);
+            hist.push({
+                id: 'evtbonus_' + eventId + '_' + empId + '_' + Date.now(),
+                employeeId: empId,
+                employeeName: emp ? (emp.firstName + ' ' + emp.lastName) : '',
+                date: eventDate,
+                amount,
+                note: `Бонус за мероприятие "${evtTitle}" (${roleName})`
+            });
+            DB.set('historicalAccruals', hist);
+        }
+    };
+
+    selectedInstructors.forEach(id => credit(id, instrBonusPerPerson[id] || 0, 'instructor'));
+    selectedAdmins.forEach(id => credit(id, adminBonusPerPerson[id] || 0, 'admin'));
+    DB.set('shifts', shifts2);
+
+    const instrTotal = Object.values(instrBonusPerPerson).reduce((s, v) => s + v, 0);
+    const adminTotal = Object.values(adminBonusPerPerson).reduce((s, v) => s + v, 0);
+    const evtsUpd = DB.get('events', []);
+    const ei = evtsUpd.findIndex(e => e.id === eventId);
+    if (ei >= 0) {
+        evtsUpd[ei].bonuses = { instructorTotal: instrTotal, adminTotal, perInstructor: instrTotal || 0, perAdmin: adminTotal || 0 };
+        evtsUpd[ei].assignedInstructors = selectedInstructors;
+        evtsUpd[ei].assignedAdmins = selectedAdmins;
+        DB.set('events', evtsUpd);
+    }
+
+    const parts = [];
+    if (instrTotal > 0) parts.push(`инстр. ${formatMoney(instrTotal)}`);
+    if (adminTotal > 0) parts.push(`адм. ${formatMoney(adminTotal)}`);
+    showToast('✅ Бонусы пересчитаны' + (parts.length ? ': ' + parts.join(', ') : ''));
+    if (document.getElementById('page-employees')?.classList.contains('active')) loadEmployees();
+}
+
 function saveEvent(e) {
     e.preventDefault();
     const events = DB.get('events', []);
@@ -4935,9 +5030,24 @@ function saveEvent(e) {
         shopCount: shopCount, // quantity of shop items (if any)
     };
 
+    let needBonusRecalc = false;
+    let savedEventId = null;
+
     if (id) {
         const idx = events.findIndex(e => e.id === parseInt(id));
-        if (idx >= 0) events[idx] = { ...events[idx], ...data };
+        if (idx >= 0) {
+            const wasCompleted = events[idx].status === 'completed';
+            const prevInstrs = (events[idx].instructors || []).slice().sort().join(',');
+            const prevAdmins = (events[idx].admins || []).slice().sort().join(',');
+            events[idx] = { ...events[idx], ...data };
+            const newInstrs = allInstructors.slice().sort().join(',');
+            const newAdmins2 = allAdmins.slice().sort().join(',');
+            // Пересчитать бонусы если мероприятие завершено и состав изменился
+            if (wasCompleted && (prevInstrs !== newInstrs || prevAdmins !== newAdmins2)) {
+                needBonusRecalc = true;
+                savedEventId = parseInt(id);
+            }
+        }
     } else {
         data.id = Date.now();
         data.source = 'crm'; // Mark as created in CRM
@@ -4950,6 +5060,7 @@ function saveEvent(e) {
     if (document.getElementById('emp-page-booking').classList.contains('active')) renderEmpCalendar();
     if (document.getElementById('emp-page-events').classList.contains('active')) loadEmployeeEvents();
     showToast('Мероприятие сохранено');
+    if (needBonusRecalc) setTimeout(() => recalculateEventBonuses(savedEventId), 200);
 
 
     // Push to Google Calendar
