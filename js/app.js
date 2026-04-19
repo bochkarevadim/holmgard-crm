@@ -6358,9 +6358,9 @@ function _renderGBTypeOptions(selectedType) {
 
 function _renderGBTariffRow(gameType, tariffId, participants) {
     return `<div class="gb-tariff-row">
+      <select class="gb-tariff-sel" onchange="recalcEventTotal()">${_buildTariffOptionsForType(gameType, tariffId)}</select>
       <input type="number" class="gb-ppl-input" min="1" value="${participants || 1}" oninput="recalcEventTotal()">
       <span class="gb-ppl-lbl">чел.</span>
-      <select class="gb-tariff-sel" onchange="recalcEventTotal()">${_buildTariffOptionsForType(gameType, tariffId)}</select>
       <button type="button" class="gb-tr-remove" onclick="removeGBTariffRow(this)">
         <span class="material-icons-round">close</span>
       </button>
@@ -6383,17 +6383,23 @@ function _renderGBStaffChips(allEmps, selectedIds, role) {
 function _renderGameBlock(blockData, allEmps, blockIndex, totalBlocks) {
     const { gameType = 'paintball', tariffs = [{ tariffId: null, participants: 10 }], instructors = [], admins = [] } = blockData;
     const showRemove = totalBlocks > 1;
-    const tariffRowsHtml = tariffs.map(t => _renderGBTariffRow(gameType, t.tariffId, t.participants)).join('');
+    const firstTariff = tariffs[0] || { tariffId: null, participants: 10 };
+    const extraRows = tariffs.slice(1).map(t => _renderGBTariffRow(gameType, t.tariffId, t.participants)).join('');
     const instrChips = _renderGBStaffChips(allEmps, instructors, 'instructor');
     const adminChips = _renderGBStaffChips(allEmps, admins, 'admin');
     return `<div class="game-block">
-  <div class="game-block-header">
-    <select class="gb-type" onchange="onGBTypeChange(this)"><option value="">— Тип —</option>${_renderGBTypeOptions(gameType)}</select>
-    <button type="button" class="gb-remove-btn" onclick="removeGameBlock(this)" style="${showRemove ? '' : 'display:none;'}">
-      <span class="material-icons-round">close</span>
-    </button>
+  <div class="gb-tariff-rows">
+    <div class="gb-tariff-row gb-first-row">
+      <select class="gb-type" onchange="onGBTypeChange(this)">${_renderGBTypeOptions(gameType)}</select>
+      <select class="gb-tariff-sel" onchange="recalcEventTotal()">${_buildTariffOptionsForType(gameType, firstTariff.tariffId)}</select>
+      <input type="number" class="gb-ppl-input" min="1" value="${firstTariff.participants || 1}" oninput="recalcEventTotal()">
+      <span class="gb-ppl-lbl">чел.</span>
+      <button type="button" class="gb-remove-btn" onclick="removeGameBlock(this)" style="${showRemove ? '' : 'display:none;'}">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+    ${extraRows}
   </div>
-  <div class="gb-tariff-rows">${tariffRowsHtml}</div>
   <button type="button" class="gb-add-tariff-btn" onclick="addGBTariffRow(this)">
     <span class="material-icons-round" style="font-size:13px;">add</span> Тариф
   </button>
