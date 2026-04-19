@@ -2382,14 +2382,32 @@ function completeEventPayment() {
     const selectedAdmins = events[idx].admins || events[idx].assignedAdmins || [];
 
     const salaryRules = DB.get('salaryRules', {});
-    const instrRule = salaryRules.instructor || salaryRules.senior_instructor || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
     const adminRule = salaryRules.admin || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
+    const allEmpsForBonus = DB.get('employees', []);
 
-    const instrRevenue = calculateEventRevenueBySources(events[idx], instrRule.bonusSources || ['services', 'optionsForGame', 'options']);
-    const adminRevenue = calculateEventRevenueBySources(events[idx], adminRule.bonusSources || ['services', 'optionsForGame', 'options']);
+    // Per-person instructor bonus: each uses their own role's % / total instr count
+    const instrBonusPerPerson = {};
+    if (selectedInstructors.length > 0) {
+        selectedInstructors.forEach(empId => {
+            const emp = allEmpsForBonus.find(e => e.id === empId);
+            const role = emp?.role || 'instructor';
+            const rule = salaryRules[role] || salaryRules.instructor || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] };
+            const revenue = calculateEventRevenueBySources(events[idx], rule.bonusSources || ['services', 'optionsForGame']);
+            instrBonusPerPerson[empId] = Math.round(revenue * (rule.bonusPercent || 5) / 100 / selectedInstructors.length);
+        });
+    }
 
-    const instrBonusTotal = Math.round(instrRevenue * (instrRule.bonusPercent || 5) / 100);
-    const adminBonusTotal = Math.round(adminRevenue * (adminRule.bonusPercent || 5) / 100);
+    // Per-person admin bonus: all admins use admin rule / total admin count
+    const adminBonusPerPerson = {};
+    if (selectedAdmins.length > 0) {
+        selectedAdmins.forEach(empId => {
+            const revenue = calculateEventRevenueBySources(events[idx], adminRule.bonusSources || ['services', 'optionsForGame', 'options']);
+            adminBonusPerPerson[empId] = Math.round(revenue * (adminRule.bonusPercent || 5) / 100 / selectedAdmins.length);
+        });
+    }
+
+    const instrBonusTotal = Object.values(instrBonusPerPerson).reduce((s, v) => s + v, 0);
+    const adminBonusTotal = Object.values(adminBonusPerPerson).reduce((s, v) => s + v, 0);
     const perInstructor = selectedInstructors.length > 0 ? Math.round(instrBonusTotal / selectedInstructors.length) : 0;
     const perAdmin = selectedAdmins.length > 0 ? Math.round(adminBonusTotal / selectedAdmins.length) : 0;
 
@@ -2438,8 +2456,8 @@ function completeEventPayment() {
         }
     };
 
-    selectedInstructors.forEach(id => creditBonus(id, perInstructor, 'instructor'));
-    selectedAdmins.forEach(id => creditBonus(id, perAdmin, 'admin'));
+    selectedInstructors.forEach(id => creditBonus(id, instrBonusPerPerson[id] ?? perInstructor, 'instructor'));
+    selectedAdmins.forEach(id => creditBonus(id, adminBonusPerPerson[id] ?? perAdmin, 'admin'));
     DB.set('shifts', shifts);
 
     // === AUTO-DEDUCT CONSUMABLES FROM STOCK ===
@@ -4011,9 +4029,12 @@ function loadEmployees() {
                 shiftId = shift.id;
                 startTime = shift.startTime || '—';
                 endTime = shift.endTime || '—';
-                const [sh, sm] = (shift.startTime || '0:0').split(':').map(Number);
-                const [eh, em] = (shift.endTime || '0:0').split(':').map(Number);
-                hours = (((eh * 60 + em) - (sh * 60 + sm)) / 60).toFixed(1) + 'ч';
+                if (shift.startTime && shift.endTime) {
+                    const [sh, sm] = shift.startTime.split(':').map(Number);
+                    const [eh, em] = shift.endTime.split(':').map(Number);
+                    const mins = (eh * 60 + em) - (sh * 60 + sm);
+                    hours = mins > 0 ? (mins / 60).toFixed(1) + 'ч' : '—';
+                }
                 base = shift.earnings?.base || 0;
                 (shift.eventBonuses || []).forEach(b => {
                     if (b.bonusType === 'admin') adminBonus += (b.amount || 0);
