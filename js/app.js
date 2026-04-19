@@ -1608,6 +1608,27 @@ function initEmployeeScreen() {
         }
     });
 
+    // Sync button on employee events page
+    const empEventsSyncGcal = document.getElementById('emp-events-btn-sync-gcal');
+    if (empEventsSyncGcal) empEventsSyncGcal.addEventListener('click', async () => {
+        if (!GCalSync.isConnected()) {
+            showToast('Google Calendar не подключён. Директор должен подключить в Настройках.');
+            return;
+        }
+        const result = await GCalSync.fullSync();
+        if (result) loadEmployeeEvents();
+    });
+
+    // Sync button on employee dashboard page
+    const empDashSyncGcal = document.getElementById('emp-dash-btn-sync-gcal');
+    if (empDashSyncGcal) empDashSyncGcal.addEventListener('click', async () => {
+        if (!GCalSync.isConnected()) {
+            showToast('Google Calendar не подключён. Директор должен подключить в Настройках.');
+            return;
+        }
+        await GCalSync.fullSync();
+    });
+
     // Employee calendar
     const empCalPrev = document.getElementById('emp-cal-prev');
     const empCalNext = document.getElementById('emp-cal-next');

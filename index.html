@@ -230,6 +230,14 @@
                 </div>
             </div>
 
+            <!-- Dashboard actions row -->
+            <div class="section-header" style="margin-top:16px;">
+                <h2>Статистика</h2>
+                <button class="btn-secondary" id="emp-dash-btn-sync-gcal" title="Синхронизировать с Google Calendar">
+                    <span class="material-icons-round">sync</span> Sync GCal
+                </button>
+            </div>
+
             <!-- Quick Stats Cards (draggable) -->
             <div class="emp-dash-grid" id="emp-dash-grid">
                 <div class="dash-card emp-dash-draggable" draggable="true" data-card-id="emp-events-count">
@@ -260,6 +268,9 @@
         <div class="page" id="emp-page-events">
             <div class="section-header">
                 <h2>Мероприятия на сегодня</h2>
+                <button class="btn-secondary" id="emp-events-btn-sync-gcal" title="Синхронизировать с Google Calendar">
+                    <span class="material-icons-round">sync</span> Sync GCal
+                </button>
             </div>
             <div id="emp-events-list"></div>
         </div>
