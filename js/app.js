@@ -72,7 +72,7 @@ function initData() {
         DB.set('shifts', []);
         DB.set('salaryRules', {
             instructor: { shiftRate: 1500, bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] },
-            senior_instructor: { shiftRate: 2000, bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] },
+            senior_instructor: { shiftRate: 2000, bonusPercent: 7, bonusSources: ['services', 'optionsForGame'] },
             admin: { shiftRate: 0, bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] }
         });
         DB.set('stock', { balls: 4500, ballsCritical: 60000, kidsBalls: 0, kidsBallsCritical: 20000, grenades: 120, grenadesCritical: 100, smokes: 0, smokesCritical: 50 });
@@ -138,10 +138,20 @@ function runDataMigrations() {
     if (!DB.get('roles_version_v2')) {
         const rules = DB.get('salaryRules', {});
         if (!rules.senior_instructor) {
-            rules.senior_instructor = { shiftRate: 2000, bonusPercent: 7, bonusSources: ['services', 'optionsForGame', 'options'] };
+            rules.senior_instructor = { shiftRate: 2000, bonusPercent: 7, bonusSources: ['services', 'optionsForGame'] };
             DB.set('salaryRules', rules);
         }
         DB.set('roles_version_v2', true);
+    }
+
+    // Migration: fix senior_instructor bonusPercent (was incorrectly set to 5 in initData)
+    if (!DB.get('senior_instr_bonus_v1')) {
+        const rules = DB.get('salaryRules', {});
+        if (rules.senior_instructor && rules.senior_instructor.bonusPercent !== 7) {
+            rules.senior_instructor.bonusPercent = 7;
+            DB.set('salaryRules', rules);
+        }
+        DB.set('senior_instr_bonus_v1', true);
     }
 
     // Migration: add allowedShiftRoles to employees
