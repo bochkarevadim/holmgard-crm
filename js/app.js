@@ -6358,9 +6358,9 @@ function _renderGBTypeOptions(selectedType) {
 
 function _renderGBTariffRow(gameType, tariffId, participants) {
     return `<div class="gb-tariff-row">
-      <select class="gb-tariff-sel" onchange="recalcEventTotal()">${_buildTariffOptionsForType(gameType, tariffId)}</select>
       <input type="number" class="gb-ppl-input" min="1" value="${participants || 1}" oninput="recalcEventTotal()">
       <span class="gb-ppl-lbl">чел.</span>
+      <select class="gb-tariff-sel" onchange="recalcEventTotal()">${_buildTariffOptionsForType(gameType, tariffId)}</select>
       <button type="button" class="gb-tr-remove" onclick="removeGBTariffRow(this)">
         <span class="material-icons-round">close</span>
       </button>
