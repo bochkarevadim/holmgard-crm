@@ -3932,29 +3932,28 @@ function loadEmployees() {
         const histPeriod = getHistoricalAccrualSum(emp.id, startDate, endDate);
         const earned = shiftEarned + mgrTotal + histPeriod;
         const paid = empPayments.reduce((s, p) => s + (p.amount || 0), 0);
-        // Balance: all-time earned (включая исторические виртуальные начисления) − all-time paid
-        const allTimeEarnedEmp = allShifts.filter(s => s.employeeId === emp.id && (s.shiftRole || s.employeeRole) !== 'manager')
-            .reduce((s, sh) => s + (sh.earnings?.total || 0), 0)
-            + getManagerDailyAccruals(emp, '2020-01-01', endDate).reduce((s, a) => s + a.amount, 0)
-            + getHistoricalAccrualSum(emp.id, '2020-01-01', endDate);
-        const allTimePaidEmp = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
-        const balance = allTimeEarnedEmp - allTimePaidEmp; // positive = debt, negative = overpay
-
-        // Determine paid coverage
+        // FIFO: все начисления хронологически (смены + менеджер + исторические)
         const allTimePaid = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
         const allTimeShifts = DB.get('shifts', []).filter(s => s.employeeId === emp.id && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager').sort((a, b) => a.date.localeCompare(b.date));
         const allTimeMgr = getManagerDailyAccruals(emp, '2020-01-01', endDate).sort((a, b) => a.date.localeCompare(b.date));
+        const allTimeHistEntries = DB.get('historicalAccruals', []).filter(a => a.employeeId === emp.id).sort((a, b) => a.date.localeCompare(b.date));
         // Merge all accruals chronologically
         const allAccruals = [];
         allTimeShifts.forEach(s => allAccruals.push({ date: s.date, amount: s.earnings?.total || 0, id: s.id }));
         allTimeMgr.forEach(a => allAccruals.push({ date: a.date, amount: a.amount, id: 'mgr_' + a.date }));
+        allTimeHistEntries.forEach(a => allAccruals.push({ date: a.date, amount: a.amount || 0, id: a.id }));
         allAccruals.sort((a, b) => a.date.localeCompare(b.date));
-        let runningTotal = 0;
+        let paidPool = allTimePaid;
+        let balance = 0;
         const paidIds = new Set();
         for (const acc of allAccruals) {
-            runningTotal += acc.amount;
-            if (runningTotal <= allTimePaid) paidIds.add(acc.id);
-            else break;
+            if (paidPool >= acc.amount) {
+                paidPool -= acc.amount;
+                paidIds.add(acc.id);
+            } else {
+                balance += acc.amount - paidPool;
+                paidPool = 0;
+            }
         }
 
         // Build merged timeline: shifts + manager accruals + payments, last 30 days
@@ -4088,7 +4087,11 @@ function loadEmployees() {
                 <div class="emp-dash-card-stats">
                     <div class="emp-dash-stat" onclick="event.stopPropagation(); showUnpaidAccrualsModal(${emp.id})" style="cursor:pointer;" title="Показать неоплаченные начисления">
                         <span class="emp-dash-stat-label">К выплате</span>
-                        <span class="emp-dash-stat-value ${balance > 0 ? 'red' : ''}" style="text-decoration:underline dotted;">${formatMoney(balance > 0 ? balance : 0)}</span>
+                        <span class="emp-dash-stat-value ${balance > 0 ? 'red' : ''}" style="text-decoration:underline dotted;">${balance > 0 ? formatMoney(balance) : '—'}</span>
+                    </div>
+                    <div class="emp-dash-stat">
+                        <span class="emp-dash-stat-label">За месяц</span>
+                        <span class="emp-dash-stat-value" style="color:${earned > 0 ? 'var(--green)' : 'var(--text-secondary)'};">${earned > 0 ? formatMoney(earned) : '—'}</span>
                     </div>
                     <div class="emp-dash-stat">
                         <span class="emp-dash-stat-label">Должность</span>
