@@ -5277,31 +5277,43 @@ function loadFinances(period) {
     );
     const totalConsumablesCost = docs.reduce((sum, d) => sum + (d.amount || 0) + (d.delivery || 0), 0) + totalManualExpense;
 
-    // === 3. SALARIES: all-time balance per employee (matches "Сотрудники" section) ===
+    // === 3. SALARIES ===
     const employees = DB.get('employees', []).filter(e => e.role !== 'director');
     const allShifts = DB.get('shifts', []);
     const todayForSal = todayLocal();
     const allPayments = getActiveSalaryPayments();
     let periodSalariesPaid = 0;
-    let periodSalariesAccrued = 0;
+    let periodSalariesAccrued = 0; // earnings accrued DURING selected period
     const salaryRows = [];
     employees.forEach(emp => {
-        // All-time earned (same logic as Сотрудники)
-        const allTimeShiftEarned = DB.get('shifts', [])
+        // All-time earned (for debt/balance column in salary table)
+        const allTimeShiftEarned = allShifts
             .filter(s => s.employeeId === emp.id && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager')
             .reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
         const allTimeMgr = getManagerDailyAccruals(emp, '2020-01-01', todayForSal)
             .reduce((s, a) => s + a.amount, 0);
         const allTimeHist = getHistoricalAccrualSum(emp.id, '2020-01-01', todayForSal);
         const accrued = allTimeShiftEarned + allTimeMgr + allTimeHist;
+
+        // Period accruals — what employee EARNED during selected period
+        const periodShiftEarned = allShifts
+            .filter(s => s.employeeId === emp.id && s.date >= startDate && s.date <= endDate
+                      && s.endTime && s.earnings && (s.shiftRole || s.employeeRole) !== 'manager')
+            .reduce((s, sh) => s + (sh.earnings?.total || 0), 0);
+        const periodMgrEarned = getManagerDailyAccruals(emp, startDate, endDate)
+            .reduce((s, a) => s + a.amount, 0);
+        const periodHistEarned = getHistoricalAccrualSum(emp.id, startDate, endDate);
+        const periodAccrued = periodShiftEarned + periodMgrEarned + periodHistEarned;
+        periodSalariesAccrued += periodAccrued;
+
         // All-time paid
         const paid = allPayments.filter(p => p.employeeId === emp.id).reduce((s, p) => s + (p.amount || 0), 0);
-        // Period paid (for fin-salaries card and balance card)
+        // Period paid
         const periodPaid = allPayments
             .filter(p => p.employeeId === emp.id && p.date >= startDate && p.date <= endDate)
             .reduce((s, p) => s + (p.amount || 0), 0);
         periodSalariesPaid += periodPaid;
-        periodSalariesAccrued += accrued;
+
         // Shifts in period (for shift count display)
         const empShifts = allShifts.filter(s =>
             s.employeeId === emp.id && s.date >= startDate && s.date <= endDate
@@ -5314,7 +5326,8 @@ function loadFinances(period) {
                 name: emp.firstName + ' ' + emp.lastName,
                 role: getRoleName(emp.role),
                 shiftCount: empShifts.length,
-                accrued, paid, debt
+                accrued, paid, debt,
+                periodAccrued
             });
         }
     });
@@ -5324,7 +5337,8 @@ function loadFinances(period) {
     const periodCerts = allCerts.filter(c => c.createdDate >= startDate && c.createdDate <= endDate);
     const totalCertIncome = periodCerts.reduce((sum, c) => sum + (c.initialAmount || 0), 0);
 
-    const totalExpenses = totalConsumablesCost + periodSalariesPaid;
+    // Balance = income – consumables – salary accruals for period (accrual-basis P&L)
+    const totalExpenses = totalConsumablesCost + periodSalariesAccrued;
     const totalAllIncome = totalIncome + totalCertIncome + totalManualIncome;
     const totalBalance = totalAllIncome - totalExpenses;
 
