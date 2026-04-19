@@ -6318,7 +6318,8 @@ function getSourceBadge(ev) {
 
 // Map event type to tariff sheetCategory for filtering
 const EVENT_TYPE_TARIFF_MAP = {
-    paintball: ['Пейнтбол', 'Тир пейнтбольный'],
+    paintball: ['Пейнтбол'],
+    tir: ['Тир пейнтбольный'],
     laser: ['Лазертаг'],
     kidball: ['Кидбол'],
     quest: ['Квесты'],
@@ -6345,7 +6346,7 @@ function _buildTariffOptions(currentVal) {
 }
 
 const GAME_TYPE_LABELS = {
-    paintball: 'Пейнтбол', kidball: 'Кидбол', laser: 'Лазертаг',
+    paintball: 'Пейнтбол', tir: 'Тир', kidball: 'Кидбол', laser: 'Лазертаг',
     atv: 'Квадроциклы', race: 'Гонка с препятствиями', sup: 'Сапы',
     rent: 'Аренда', quest: 'Квесты', other: 'Другое'
 };
