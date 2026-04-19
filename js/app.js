@@ -2624,6 +2624,12 @@ function completeEventPayment() {
     }
     showToast(toastMsg);
 
+    // Sync status update to Google Calendar
+    if (GCalSync.isConnected()) {
+        const completedEv = events[idx];
+        if (completedEv) GCalSync.pushEvent(completedEv);
+    }
+
     // Reload current page
     if (document.getElementById('emp-page-events')?.classList.contains('active')) {
         loadEmployeeEvents();
