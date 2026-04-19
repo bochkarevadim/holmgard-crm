@@ -1855,32 +1855,18 @@
                         <input type="text" id="evt-player-age" placeholder="напр. 18-25">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>Тип игры</label>
-                    <select id="evt-type">
-                        <option value="">— Выберите —</option>
-                        <option value="paintball">Пейнтбол</option>
-                        <option value="kidball">Кидбол</option>
-                        <option value="laser">Лазертаг</option>
-                        <option value="race">Гонка с препятствиями</option>
-                        <option value="atv">Квадроциклы</option>
-                        <option value="sup">Сапы</option>
-                        <option value="rent">Аренда</option>
-                        <option value="quest">Квесты</option>
-                        <option value="other">Другое</option>
-                    </select>
-                </div>
-                <!-- Hidden compat fields (synced from tariff groups) -->
+                <!-- Hidden compat fields -->
+                <input type="hidden" id="evt-type">
                 <input type="hidden" id="evt-tariff">
                 <input type="hidden" id="evt-participants" value="1">
                 <div class="form-group">
-                    <div class="tariff-groups-header">
-                        <label>Тарифы и участники</label>
-                        <button type="button" class="btn-sm btn-primary" id="btn-add-tariff-group" onclick="addTariffGroup()">
-                            <span class="material-icons-round" style="font-size:14px;vertical-align:middle;">add</span> + Разные тарифы
+                    <div class="game-blocks-header">
+                        <label>Игры и участники</label>
+                        <button type="button" class="btn-sm btn-primary" onclick="addGameBlock()">
+                            <span class="material-icons-round" style="font-size:14px;vertical-align:middle;">add</span> + Игра
                         </button>
                     </div>
-                    <div id="tariff-groups-list">
+                    <div id="game-blocks-list">
                         <!-- populated by JS -->
                     </div>
                 </div>
@@ -1890,6 +1876,7 @@
                         <select id="evt-discount-type" onchange="toggleDiscountType()">
                             <option value="none">Нет</option>
                             <option value="percent">Скидка %</option>
+                            <option value="amount">Скидка ₽</option>
                             <option value="certificate">Сертификат</option>
                         </select>
                     </div>
@@ -1897,7 +1884,7 @@
                 <div id="evt-discount-details" style="display:none;">
                     <div class="form-row" id="evt-discount-percent-row">
                         <div class="form-group">
-                            <label>Скидка (%)</label>
+                            <label id="evt-discount-label">Скидка (%)</label>
                             <input type="number" id="evt-discount" placeholder="0" min="0" max="100">
                         </div>
                     </div>
@@ -1937,24 +1924,10 @@
                     <!-- Hidden container for compatibility -->
                     <div id="evt-options-list" style="display:none;"></div>
                 </div>
-                <div class="form-group">
-                    <div class="staff-section">
-                        <div class="staff-section-header" onclick="toggleStaffSection('instructors')">
-                            <label>Инструкторы</label>
-                            <span class="material-icons-round staff-chevron" id="staff-instructors-chevron">expand_more</span>
-                        </div>
-                        <div class="staff-select-list" id="evt-instructors-list" style="display:none;"></div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <div class="staff-section">
-                        <div class="staff-section-header" onclick="toggleStaffSection('admins')">
-                            <label>Администраторы</label>
-                            <span class="material-icons-round staff-chevron" id="staff-admins-chevron">expand_more</span>
-                        </div>
-                        <div class="staff-select-list" id="evt-admins-list" style="display:none;"></div>
-                    </div>
-                </div>
+                <!-- Staff is now per game block (in #game-blocks-list) -->
+                <!-- Hidden containers kept for any legacy references -->
+                <div id="evt-instructors-list" style="display:none;"></div>
+                <div id="evt-admins-list" style="display:none;"></div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Дата предоплаты</label>

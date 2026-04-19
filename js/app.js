@@ -4497,6 +4497,7 @@ function toggleDiscountType() {
     const details = document.getElementById('evt-discount-details');
     const percentRow = document.getElementById('evt-discount-percent-row');
     const certRow = document.getElementById('evt-certificate-row');
+    const discountLabel = document.getElementById('evt-discount-label');
 
     if (type === 'none') {
         details.style.display = 'none';
@@ -4507,6 +4508,16 @@ function toggleDiscountType() {
         details.style.display = '';
         percentRow.style.display = '';
         certRow.style.display = 'none';
+        if (discountLabel) discountLabel.textContent = 'Скидка (%)';
+        document.getElementById('evt-discount').setAttribute('max', '100');
+        document.getElementById('evt-certificate-number').value = '';
+        document.getElementById('evt-certificate-amount').value = '';
+    } else if (type === 'amount') {
+        details.style.display = '';
+        percentRow.style.display = '';
+        certRow.style.display = 'none';
+        if (discountLabel) discountLabel.textContent = 'Скидка (₽)';
+        document.getElementById('evt-discount').removeAttribute('max');
         document.getElementById('evt-certificate-number').value = '';
         document.getElementById('evt-certificate-amount').value = '';
     } else if (type === 'certificate') {
@@ -4553,29 +4564,6 @@ function openEventModal(id = null, completing = false) {
     form.reset();
     document.getElementById('evt-id').value = '';
     document.getElementById('btn-delete-event').style.display = 'none';
-
-    // Populate instructor checkboxes (employees with instructor/senior_instructor in allowedShiftRoles)
-    const allEmps = DB.get('employees', []).filter(e => e.role !== 'director');
-    const instructorEmps = allEmps.filter(e => {
-        const roles = e.allowedShiftRoles || getDefaultAllowedRoles(e.role);
-        return roles.includes('instructor') || roles.includes('senior_instructor');
-    });
-    document.getElementById('evt-instructors-list').innerHTML = instructorEmps.length
-        ? instructorEmps.map(i => `<label class="staff-select-item"><input type="checkbox" value="${i.id}" class="evt-instr-cb"> ${i.firstName} ${i.lastName}</label>`).join('')
-        : '<span class="empty-state-text">Нет инструкторов</span>';
-
-    // Populate admin checkboxes (employees with admin in allowedShiftRoles)
-    const adminEmps = allEmps.filter(e => {
-        const roles = e.allowedShiftRoles || getDefaultAllowedRoles(e.role);
-        return roles.includes('admin');
-    });
-    document.getElementById('evt-admins-list').innerHTML = adminEmps.length
-        ? adminEmps.map(a => `<label class="staff-select-item"><input type="checkbox" value="${a.id}" class="evt-admin-cb"> ${a.firstName} ${a.lastName}</label>`).join('')
-        : '<span class="empty-state-text">Нет администраторов</span>';
-
-    // Populate tariff select (filtered by event type)
-    document.getElementById('evt-type').onchange = updateTariffsByType;
-    updateTariffsByType();
 
     // Populate options with quantity controls
     const allTariffOptions = DB.get('tariffs', []).filter(t => (t.category === 'optionsForGame' || t.category === 'options') && t.id !== 23);
@@ -4627,7 +4615,7 @@ function openEventModal(id = null, completing = false) {
     });
 
     // Recalc total when key fields change
-    ['evt-tariff', 'evt-participants', 'evt-discount', 'evt-prepayment', 'evt-certificate-amount'].forEach(fid => {
+    ['evt-discount', 'evt-prepayment', 'evt-certificate-amount'].forEach(fid => {
         const el = document.getElementById(fid);
         if (el) el.addEventListener('input', recalcEventTotal);
         if (el) el.addEventListener('change', recalcEventTotal);
@@ -4645,22 +4633,16 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('evt-date').value = evt.date;
         document.getElementById('evt-time').value = evt.time;
         document.getElementById('evt-duration').value = evt.duration;
-        document.getElementById('evt-type').value = evt.type;
         document.getElementById('evt-occasion').value = evt.occasion || '';
         document.getElementById('evt-player-age').value = evt.playerAge || '';
-        // Load tariff groups (support old single-tariff format)
-        const savedGroups = evt.tariffGroups || [{ tariffId: evt.tariffId, participants: evt.participants || 1 }];
-        initTariffGroupsUI(savedGroups);
-        // Check instructors
-        const instrIds = evt.instructors || (evt.instructor ? [evt.instructor] : []);
-        document.querySelectorAll('.evt-instr-cb').forEach(cb => {
-            cb.checked = instrIds.includes(parseInt(cb.value));
-        });
-        // Check admins
-        const adminIds = evt.admins || [];
-        document.querySelectorAll('.evt-admin-cb').forEach(cb => {
-            cb.checked = adminIds.includes(parseInt(cb.value));
-        });
+        // Load game blocks (support old single-tariff and tariffGroups format)
+        const gameBlocks = evt.gameBlocks || [{
+            gameType: evt.type || 'other',
+            tariffs: evt.tariffGroups || [{ tariffId: evt.tariffId, participants: evt.participants || 1 }],
+            instructors: evt.instructors || (evt.instructor ? [evt.instructor] : []),
+            admins: evt.admins || []
+        }];
+        initGameBlocksUI(gameBlocks);
         document.getElementById('evt-notes').value = evt.notes || '';
         document.getElementById('evt-price').value = evt.price || '';
         document.getElementById('evt-discount').value = evt.discount || '';
@@ -4669,6 +4651,8 @@ function openEventModal(id = null, completing = false) {
             document.getElementById('evt-discount-type').value = 'certificate';
             document.getElementById('evt-certificate-number').value = evt.certificateNumber || '';
             document.getElementById('evt-certificate-amount').value = evt.certificateAmount || '';
+        } else if (evt.discountType === 'amount' && evt.discount > 0) {
+            document.getElementById('evt-discount-type').value = 'amount';
         } else if (evt.discount > 0) {
             document.getElementById('evt-discount-type').value = 'percent';
         } else {
@@ -4719,8 +4703,8 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('evt-certificate-number').value = '';
         document.getElementById('evt-certificate-amount').value = '';
         toggleDiscountType();
-        // Init empty tariff group for new event
-        initTariffGroupsUI([{ tariffId: null, participants: 10 }]);
+        // Init default game block for new event
+        initGameBlocksUI(null);
     }
 
     // Always recalculate total to keep price in sync with options
@@ -4749,13 +4733,20 @@ function recalcEventTotal() {
     const discount = parseFloat(document.getElementById('evt-discount').value) || 0;
     const prepayment = parseFloat(document.getElementById('evt-prepayment').value) || 0;
 
-    // Sum service cost across all tariff groups
+    // Sum service cost across all game blocks
     let serviceCost = 0;
-    const groups = getTariffGroupsFromDOM();
-    groups.forEach(g => {
-        if (!g.tariffId) return;
-        const t = tariffs.find(t => String(t.id) === String(g.tariffId));
-        if (t) serviceCost += (t.price || 0) * g.participants;
+    const serviceRows_data = []; // for breakdown display
+    document.querySelectorAll('#game-blocks-list .game-block').forEach(block => {
+        block.querySelectorAll('.gb-tariff-row').forEach(row => {
+            const tariffId = row.querySelector('.gb-tariff-sel')?.value;
+            const ppl = parseInt(row.querySelector('.gb-ppl-input')?.value) || 1;
+            const t = tariffs.find(t => String(t.id) === String(tariffId));
+            if (t) {
+                const amt = (t.price || 0) * ppl;
+                serviceCost += amt;
+                serviceRows_data.push({ name: t.name, ppl, amt });
+            }
+        });
     });
 
     let optionsCost = 0;
@@ -4786,6 +4777,9 @@ function recalcEventTotal() {
     if (discountType === 'percent' && discount > 0) {
         discountAmount = subtotal * discount / 100;
         discountLabel = `Скидка ${discount}%`;
+    } else if (discountType === 'amount' && discount > 0) {
+        discountAmount = discount;
+        discountLabel = `Скидка ${formatMoney(discount)}`;
     } else if (discountType === 'certificate' && certAmount > 0) {
         discountAmount = certAmount;
         const certNum = document.getElementById('evt-certificate-number').value.trim();
@@ -4796,22 +4790,17 @@ function recalcEventTotal() {
 
     const block = document.getElementById('evt-total-block');
     if (block) {
-        // Show per-group breakdown if multiple groups
-        const activeGroups = groups.filter(g => g.tariffId);
-        let serviceRows = '';
-        if (activeGroups.length > 1) {
-            activeGroups.forEach(g => {
-                const t = tariffs.find(t => String(t.id) === String(g.tariffId));
-                if (!t) return;
-                const amt = t.price * g.participants;
-                serviceRows += `<div class="evt-total-row" style="padding-left:12px;font-size:12px;color:var(--text-secondary);">
-                    <span>${t.name} × ${g.participants} чел.</span><span>${formatMoney(amt)}</span></div>`;
-            });
+        let serviceBreakdown = '';
+        if (serviceRows_data.length > 1) {
+            serviceBreakdown = serviceRows_data.map(r =>
+                `<div class="evt-total-row" style="padding-left:12px;font-size:12px;color:var(--text-secondary);">
+                    <span>${r.name} × ${r.ppl} чел.</span><span>${formatMoney(r.amt)}</span></div>`
+            ).join('');
         }
         block.innerHTML = `
             <div class="evt-total-summary">
                 <div class="evt-total-row"><span>Услуга:</span><span>${formatMoney(serviceCost)}</span></div>
-                ${serviceRows}
+                ${serviceBreakdown}
                 <div class="evt-total-row"><span>Доп. опции:</span><span>${formatMoney(optionsCost)}</span></div>
                 ${discountAmount > 0 ? `<div class="evt-total-row"><span>${discountLabel}:</span><span>−${formatMoney(discountAmount)}</span></div>` : ''}
                 <div class="evt-total-row evt-total-main"><span>Итого:</span><span>${formatMoney(total)}</span></div>
@@ -4864,11 +4853,19 @@ function saveEvent(e) {
         }
     });
 
-    // Collect tariff groups
-    const tariffGroups = getTariffGroupsSaved();
-    const totalParticipants = tariffGroups.reduce((s, g) => s + g.participants, 0) || 1;
-    // For backward compat: set tariffId to first group's tariffId
-    const firstTariffId = tariffGroups[0]?.tariffId || null;
+    // Collect game blocks
+    const gameBlocks = getGameBlocksFromDOM();
+    // Backward compat derived fields
+    const firstBlock = gameBlocks[0] || {};
+    const firstTariffId = firstBlock.tariffs?.[0]?.tariffId || null;
+    const allTariffs = gameBlocks.flatMap(b => b.tariffs || []);
+    const totalParticipants = allTariffs.reduce((s, t) => s + (t.participants || 1), 0) || 1;
+    const allInstructors = [...new Set(gameBlocks.flatMap(b => b.instructors || []))];
+    const allAdmins = [...new Set(gameBlocks.flatMap(b => b.admins || []))];
+    // Compute duration from first block's first tariff
+    const tariffData = DB.get('tariffs', []);
+    const firstTariffObj = tariffData.find(t => String(t.id) === String(firstTariffId));
+    const computedDuration = firstTariffObj?.duration || parseInt(document.getElementById('evt-duration').value) || 60;
 
     const data = {
         title: document.getElementById('evt-title').value.trim(),
@@ -4877,16 +4874,19 @@ function saveEvent(e) {
         clientPhone: document.getElementById('evt-client-phone').value.trim(),
         date: document.getElementById('evt-date').value,
         time: document.getElementById('evt-time').value,
-        duration: parseInt(document.getElementById('evt-duration').value) || 60,
-        type: document.getElementById('evt-type').value,
+        duration: computedDuration,
+        // game blocks (new)
+        gameBlocks: gameBlocks,
+        // backward compat fields
+        type: firstBlock.gameType || 'other',
         occasion: document.getElementById('evt-occasion').value,
         playerAge: document.getElementById('evt-player-age').value.trim(),
         tariffId: firstTariffId,
-        tariffGroups: tariffGroups.length > 1 ? tariffGroups : null, // null when single group
+        tariffGroups: allTariffs,
         participants: totalParticipants,
-        instructors: [...document.querySelectorAll('.evt-instr-cb:checked')].map(cb => parseInt(cb.value)),
-        admins: [...document.querySelectorAll('.evt-admin-cb:checked')].map(cb => parseInt(cb.value)),
-        instructor: [...document.querySelectorAll('.evt-instr-cb:checked')].map(cb => parseInt(cb.value))[0] || null, // backward compat
+        instructors: allInstructors,
+        admins: allAdmins,
+        instructor: allInstructors[0] || null, // backward compat
         notes: document.getElementById('evt-notes').value.trim(),
         price: parseFloat(document.getElementById('evt-price').value) || 0,
         totalPrice: parseFloat(document.getElementById('evt-price').value) || 0,
@@ -6317,76 +6317,6 @@ function getSourceBadge(ev) {
 }
 
 // Map event type to tariff sheetCategory for filtering
-// ===== TARIFF GROUPS (multiple tariffs per event) =====
-function _buildTariffOptions(currentVal) {
-    const type = document.getElementById('evt-type')?.value || '';
-    const allTariffs = DB.get('tariffs', []).filter(t => t.category === 'services');
-    const allowedCats = EVENT_TYPE_TARIFF_MAP[type];
-    const filtered = allowedCats ? allTariffs.filter(t => allowedCats.includes(t.sheetCategory)) : allTariffs;
-    return '<option value="">— Тариф —</option>' +
-        filtered.map(t => `<option value="${t.id}"${String(t.id) === String(currentVal) ? ' selected' : ''}>${t.name} — ${formatMoney(t.price)}/${t.unit || 'чел.'}</option>`).join('');
-}
-
-function _renderTariffGroupRow(tariffId, participants) {
-    return `<div class="tariff-group-row">
-        <select class="tg-tariff" onchange="recalcEventTotal()">${_buildTariffOptions(tariffId)}</select>
-        <div class="tg-ppl-wrap">
-            <input type="number" class="tg-ppl" min="1" value="${participants || 1}" oninput="recalcEventTotal()" placeholder="1">
-            <span class="tg-ppl-label">чел.</span>
-        </div>
-        <button type="button" class="tg-remove-btn" onclick="removeTariffGroup(this)" title="Удалить группу">
-            <span class="material-icons-round">close</span>
-        </button>
-    </div>`;
-}
-
-function initTariffGroupsUI(groups) {
-    const list = document.getElementById('tariff-groups-list');
-    if (!list) return;
-    if (!groups || groups.length === 0) groups = [{ tariffId: null, participants: 10 }];
-    list.innerHTML = groups.map(g => _renderTariffGroupRow(g.tariffId, g.participants)).join('');
-    _updateTariffGroupRemoveButtons();
-}
-
-function addTariffGroup() {
-    const list = document.getElementById('tariff-groups-list');
-    if (!list) return;
-    list.insertAdjacentHTML('beforeend', _renderTariffGroupRow(null, 1));
-    _updateTariffGroupRemoveButtons();
-    recalcEventTotal();
-}
-
-function removeTariffGroup(btn) {
-    btn.closest('.tariff-group-row')?.remove();
-    _updateTariffGroupRemoveButtons();
-    recalcEventTotal();
-}
-
-function _updateTariffGroupRemoveButtons() {
-    const rows = document.querySelectorAll('#tariff-groups-list .tariff-group-row');
-    rows.forEach(row => {
-        const btn = row.querySelector('.tg-remove-btn');
-        if (btn) btn.style.display = rows.length > 1 ? 'inline-flex' : 'none';
-    });
-}
-
-function getTariffGroupsFromDOM() {
-    const groups = [];
-    document.querySelectorAll('#tariff-groups-list .tariff-group-row').forEach(row => {
-        const tariffId = row.querySelector('.tg-tariff')?.value || null;
-        const participants = parseInt(row.querySelector('.tg-ppl')?.value) || 1;
-        groups.push({ tariffId: tariffId || null, participants });
-    });
-    return groups.length > 0 ? groups : [{ tariffId: null, participants: 1 }];
-}
-
-// Returns [{tariffId (Number), participants}] with parsed IDs
-function getTariffGroupsSaved() {
-    return getTariffGroupsFromDOM()
-        .map(g => ({ tariffId: g.tariffId ? parseInt(g.tariffId) : null, participants: g.participants }))
-        .filter(g => g.participants > 0);
-}
-
 const EVENT_TYPE_TARIFF_MAP = {
     paintball: ['Пейнтбол', 'Тир пейнтбольный'],
     laser: ['Лазертаг'],
@@ -6398,13 +6328,176 @@ const EVENT_TYPE_TARIFF_MAP = {
     rent: ['Аренда'],
 };
 
-function updateTariffsByType() {
-    // Rebuild options in all tariff group selects (preserving current selection)
-    document.querySelectorAll('#tariff-groups-list .tg-tariff').forEach(sel => {
-        const currentVal = sel.value;
-        sel.innerHTML = _buildTariffOptions(currentVal);
+// ===== GAME BLOCKS =====
+
+function _buildTariffOptionsForType(gameType, currentVal) {
+    const allTariffs = DB.get('tariffs', []).filter(t => t.category === 'services');
+    const allowedCats = EVENT_TYPE_TARIFF_MAP[gameType];
+    const filtered = allowedCats ? allTariffs.filter(t => allowedCats.includes(t.sheetCategory)) : allTariffs;
+    return '<option value="">— Тариф —</option>' +
+        filtered.map(t => `<option value="${t.id}"${String(t.id) === String(currentVal) ? ' selected' : ''}>${t.name} — ${formatMoney(t.price)}/${t.unit || 'чел.'}</option>`).join('');
+}
+
+// Keep for any internal backward-compat usage
+function _buildTariffOptions(currentVal) {
+    const type = document.getElementById('evt-type')?.value || '';
+    return _buildTariffOptionsForType(type, currentVal);
+}
+
+const GAME_TYPE_LABELS = {
+    paintball: 'Пейнтбол', kidball: 'Кидбол', laser: 'Лазертаг',
+    atv: 'Квадроциклы', race: 'Гонка с препятствиями', sup: 'Сапы',
+    rent: 'Аренда', quest: 'Квесты', other: 'Другое'
+};
+
+function _renderGBTypeOptions(selectedType) {
+    return Object.entries(GAME_TYPE_LABELS)
+        .map(([v, l]) => `<option value="${v}"${v === selectedType ? ' selected' : ''}>${l}</option>`)
+        .join('');
+}
+
+function _renderGBTariffRow(gameType, tariffId, participants) {
+    return `<div class="gb-tariff-row">
+      <select class="gb-tariff-sel" onchange="recalcEventTotal()">${_buildTariffOptionsForType(gameType, tariffId)}</select>
+      <input type="number" class="gb-ppl-input" min="1" value="${participants || 1}" oninput="recalcEventTotal()">
+      <span class="gb-ppl-lbl">чел.</span>
+      <button type="button" class="gb-tr-remove" onclick="removeGBTariffRow(this)">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>`;
+}
+
+function _renderGBStaffChips(allEmps, selectedIds, role) {
+    const filtered = allEmps.filter(e => {
+        const roles = e.allowedShiftRoles || getDefaultAllowedRoles(e.role);
+        if (role === 'instructor') return roles.includes('instructor') || roles.includes('senior_instructor');
+        if (role === 'admin') return roles.includes('admin');
+        return false;
+    });
+    if (!filtered.length) return '<span style="font-size:11px;color:var(--text-secondary);">—</span>';
+    return filtered.map(e =>
+        `<button type="button" class="gb-staff-chip${selectedIds.includes(e.id) ? ' active' : ''}" data-emp-id="${e.id}" onclick="toggleGBStaffChip(this)">${e.firstName}</button>`
+    ).join('');
+}
+
+function _renderGameBlock(blockData, allEmps, blockIndex, totalBlocks) {
+    const { gameType = 'paintball', tariffs = [{ tariffId: null, participants: 10 }], instructors = [], admins = [] } = blockData;
+    const showRemove = totalBlocks > 1;
+    const tariffRowsHtml = tariffs.map(t => _renderGBTariffRow(gameType, t.tariffId, t.participants)).join('');
+    const instrChips = _renderGBStaffChips(allEmps, instructors, 'instructor');
+    const adminChips = _renderGBStaffChips(allEmps, admins, 'admin');
+    return `<div class="game-block">
+  <div class="game-block-header">
+    <select class="gb-type" onchange="onGBTypeChange(this)"><option value="">— Тип —</option>${_renderGBTypeOptions(gameType)}</select>
+    <button type="button" class="gb-remove-btn" onclick="removeGameBlock(this)" style="${showRemove ? '' : 'display:none;'}">
+      <span class="material-icons-round">close</span>
+    </button>
+  </div>
+  <div class="gb-tariff-rows">${tariffRowsHtml}</div>
+  <button type="button" class="gb-add-tariff-btn" onclick="addGBTariffRow(this)">
+    <span class="material-icons-round" style="font-size:13px;">add</span> Тариф
+  </button>
+  <div class="gb-staff">
+    <div class="gb-staff-row">
+      <span class="gb-staff-lbl">Инстр.:</span>
+      <div class="gb-instr-chips">${instrChips}</div>
+    </div>
+    <div class="gb-staff-row">
+      <span class="gb-staff-lbl">Адм.:</span>
+      <div class="gb-admin-chips">${adminChips}</div>
+    </div>
+  </div>
+</div>`;
+}
+
+function initGameBlocksUI(gameBlocks) {
+    const list = document.getElementById('game-blocks-list');
+    if (!list) return;
+    const allEmps = DB.get('employees', []).filter(e => e.role !== 'director');
+    if (!gameBlocks || gameBlocks.length === 0) {
+        gameBlocks = [{ gameType: 'paintball', tariffs: [{ tariffId: null, participants: 10 }], instructors: [], admins: [] }];
+    }
+    list.innerHTML = gameBlocks.map((b, i) => _renderGameBlock(b, allEmps, i, gameBlocks.length)).join('');
+    _updateGBRemoveButtons();
+}
+
+function addGameBlock() {
+    const list = document.getElementById('game-blocks-list');
+    if (!list) return;
+    const allEmps = DB.get('employees', []).filter(e => e.role !== 'director');
+    const totalBlocks = list.querySelectorAll('.game-block').length + 1;
+    const html = _renderGameBlock({ gameType: 'paintball', tariffs: [{ tariffId: null, participants: 1 }], instructors: [], admins: [] }, allEmps, totalBlocks - 1, totalBlocks);
+    list.insertAdjacentHTML('beforeend', html);
+    _updateGBRemoveButtons();
+    recalcEventTotal();
+}
+
+function removeGameBlock(btn) {
+    btn.closest('.game-block')?.remove();
+    _updateGBRemoveButtons();
+    recalcEventTotal();
+}
+
+function _updateGBRemoveButtons() {
+    const blocks = document.querySelectorAll('#game-blocks-list .game-block');
+    blocks.forEach(block => {
+        const btn = block.querySelector('.gb-remove-btn');
+        if (btn) btn.style.display = blocks.length > 1 ? 'inline-flex' : 'none';
+    });
+}
+
+function onGBTypeChange(sel) {
+    const block = sel.closest('.game-block');
+    if (!block) return;
+    const gameType = sel.value;
+    block.querySelectorAll('.gb-tariff-row').forEach(row => {
+        const tariffSel = row.querySelector('.gb-tariff-sel');
+        if (tariffSel) tariffSel.innerHTML = _buildTariffOptionsForType(gameType, tariffSel.value);
     });
     recalcEventTotal();
+}
+
+function addGBTariffRow(btn) {
+    const block = btn.closest('.game-block');
+    if (!block) return;
+    const gameType = block.querySelector('.gb-type')?.value || '';
+    const rowsContainer = block.querySelector('.gb-tariff-rows');
+    if (rowsContainer) {
+        rowsContainer.insertAdjacentHTML('beforeend', _renderGBTariffRow(gameType, null, 1));
+    }
+    recalcEventTotal();
+}
+
+function removeGBTariffRow(btn) {
+    const row = btn.closest('.gb-tariff-row');
+    const block = btn.closest('.game-block');
+    if (!block) return;
+    const rows = block.querySelectorAll('.gb-tariff-row');
+    if (rows.length > 1) {
+        row?.remove();
+        recalcEventTotal();
+    }
+}
+
+function toggleGBStaffChip(btn) {
+    btn.classList.toggle('active');
+}
+
+function getGameBlocksFromDOM() {
+    const blocks = [];
+    document.querySelectorAll('#game-blocks-list .game-block').forEach(block => {
+        const gameType = block.querySelector('.gb-type')?.value || 'other';
+        const tariffs = [];
+        block.querySelectorAll('.gb-tariff-row').forEach(row => {
+            const tariffId = row.querySelector('.gb-tariff-sel')?.value || null;
+            const participants = parseInt(row.querySelector('.gb-ppl-input')?.value) || 1;
+            tariffs.push({ tariffId: tariffId ? parseInt(tariffId) : null, participants });
+        });
+        const instructors = [...block.querySelectorAll('.gb-instr-chips .gb-staff-chip.active')].map(c => parseInt(c.dataset.empId));
+        const admins = [...block.querySelectorAll('.gb-admin-chips .gb-staff-chip.active')].map(c => parseInt(c.dataset.empId));
+        blocks.push({ gameType, tariffs, instructors, admins });
+    });
+    return blocks.length > 0 ? blocks : [{ gameType: 'other', tariffs: [{ tariffId: null, participants: 1 }], instructors: [], admins: [] }];
 }
 
 function getStatusName(status) {

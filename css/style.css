@@ -2410,6 +2410,31 @@ body {
 .tg-remove-btn:hover { color: var(--red); background: rgba(255,82,82,0.1); }
 .tg-remove-btn .material-icons-round { font-size: 16px; }
 
+/* ===== GAME BLOCKS ===== */
+.game-blocks-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.game-blocks-header label { margin:0; font-size:13px; font-weight:600; color:var(--text-secondary); }
+.game-block { border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; margin-bottom:8px; background:var(--bg-card); }
+.game-block-header { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+.gb-type { flex:1; font-size:13px; font-weight:600; padding:6px 8px; border-radius:var(--radius-xs); border:1px solid var(--border); background:var(--bg-input); color:var(--text); font-family:inherit; }
+.gb-remove-btn { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border:none; background:transparent; color:var(--text-secondary); cursor:pointer; border-radius:var(--radius-xs); flex-shrink:0; margin-left:auto; transition:var(--transition); }
+.gb-remove-btn:hover { color:var(--red); background:rgba(255,82,82,0.1); }
+.gb-remove-btn .material-icons-round { font-size:15px; }
+.gb-tariff-rows { margin-bottom:4px; }
+.gb-tariff-row { display:flex; align-items:center; gap:5px; margin-bottom:5px; }
+.gb-tariff-sel { flex:1; min-width:0; font-size:12px; padding:6px 7px; border-radius:var(--radius-xs); border:1px solid var(--border); background:var(--bg-input); color:var(--text); font-family:inherit; }
+.gb-ppl-input { width:50px; text-align:center; font-size:13px; padding:6px 4px; border-radius:var(--radius-xs); border:1px solid var(--border); background:var(--bg-input); color:var(--text); font-family:inherit; flex-shrink:0; }
+.gb-ppl-lbl { font-size:11px; color:var(--text-secondary); white-space:nowrap; flex-shrink:0; }
+.gb-tr-remove { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border:none; background:transparent; color:var(--text-secondary); cursor:pointer; border-radius:var(--radius-xs); flex-shrink:0; transition:var(--transition); }
+.gb-tr-remove:hover { color:var(--red); }
+.gb-tr-remove .material-icons-round { font-size:14px; }
+.gb-add-tariff-btn { display:inline-flex; align-items:center; gap:2px; font-size:11px; color:var(--accent); background:transparent; border:none; cursor:pointer; padding:2px 4px; border-radius:var(--radius-xs); margin-bottom:7px; transition:var(--transition); font-family:inherit; }
+.gb-add-tariff-btn:hover { background:rgba(255,214,0,0.12); }
+.gb-staff { border-top:1px solid var(--border); padding-top:7px; display:flex; flex-direction:column; gap:5px; }
+.gb-staff-row { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+.gb-staff-lbl { font-size:11px; color:var(--text-secondary); white-space:nowrap; min-width:36px; flex-shrink:0; }
+.gb-staff-chip { font-size:11px; padding:3px 8px; border-radius:20px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-secondary); cursor:pointer; transition:var(--transition); font-family:inherit; line-height:1.4; }
+.gb-staff-chip.active { border-color:var(--accent); background:rgba(255,214,0,0.15); color:var(--text); font-weight:500; }
+
 /* Salary analytics summary in finances */
 .sal-summary-row {
     display: flex;
