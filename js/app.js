@@ -3452,7 +3452,12 @@ function loadOnShift() {
         return;
     }
 
+    const employees = DB.get('employees', []);
     list.innerHTML = shifts.map(s => {
+        // Resolve name from employees list (rowToShift leaves employeeName blank)
+        const emp = employees.find(e => e.id === s.employeeId);
+        const displayName = (emp ? emp.firstName + ' ' + emp.lastName : null)
+            || s.employeeName || '—';
         const roleName = getRoleName(s.shiftRole) || s.shiftRole;
         const badge = s.endTime
             ? `<span class="list-item-badge badge-orange">${s.startTime} – ${s.endTime}</span>`
@@ -3461,7 +3466,7 @@ function loadOnShift() {
             <div class="list-item">
                 <span class="material-icons-round">person</span>
                 <div class="list-item-info">
-                    <strong>${s.employeeName}</strong>
+                    <strong>${displayName}</strong>
                     <span>${roleName}</span>
                 </div>
                 ${badge}
