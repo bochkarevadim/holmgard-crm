@@ -1851,14 +1851,29 @@ function calculateShiftEarnings(shift) {
 function getEmployeeMonthEarnings(employeeId) {
     const now = moscowNow();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const startDate = monthStr + '-01';
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const endDate = monthStr + '-' + String(lastDay).padStart(2, '0');
+
     const shifts = DB.get('shifts', []).filter(s =>
         s.employeeId === employeeId &&
         s.date.startsWith(monthStr) &&
         s.endTime &&
-        s.earnings
+        s.earnings &&
+        (s.shiftRole || s.employeeRole) !== 'manager'
     );
 
-    const totalEarned = shifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
+    let totalEarned = shifts.reduce((sum, s) => sum + (s.earnings?.total || 0), 0);
+
+    // Include manager daily accruals for the month
+    const emp = DB.get('employees', []).find(e => e.id === employeeId);
+    if (emp) {
+        totalEarned += getManagerDailyAccruals(emp, startDate, endDate).reduce((s, a) => s + a.amount, 0);
+    }
+
+    // Include historical accruals (event bonuses without a shift, etc.)
+    totalEarned += getHistoricalAccrualSum(employeeId, startDate, endDate);
+
     return { shifts, totalEarned, shiftCount: shifts.length };
 }
 
@@ -2651,10 +2666,15 @@ function completeEventPayment() {
         if (completedEv) GCalSync.pushEvent(completedEv);
     }
 
-    // Reload current page
+    // Reload current page — employee view
     if (document.getElementById('emp-page-events')?.classList.contains('active')) {
         loadEmployeeEvents();
     }
+    // Reload director pages that need to reflect the completion
+    if (document.getElementById('page-finances')?.classList.contains('active')) loadFinances();
+    if (document.getElementById('page-schedule')?.classList.contains('active')) renderCalendar();
+    if (document.getElementById('page-dashboard')?.classList.contains('active')) loadDashboard();
+    if (document.getElementById('page-employees')?.classList.contains('active')) loadEmployees();
 }
 
 // ===== EMPLOYEE SALARY PAGE =====
@@ -2673,25 +2693,40 @@ function loadEmployeeSalary() {
     const debtLabel = debtEl.closest('.salary-card')?.querySelector('.salary-card-label');
     if (debtLabel) debtLabel.textContent = balance >= 0 ? 'Задолженность' : 'Переплата';
 
-    // Shifts table
+    // Shifts table (shifts + historical accruals as rows)
     const tbody = document.getElementById('emp-salary-table-body');
-    if (earnData.shifts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет завершённых смен</td></tr>';
+    const { startDate: salStart, endDate: salEnd } = getDateRangeForPeriod(period);
+    const histRows = DB.get('historicalAccruals', []).filter(a =>
+        a.employeeId === currentUser.id && a.date >= salStart && a.date <= salEnd
+    ).sort((a, b) => b.date.localeCompare(a.date));
+
+    const shiftHtml = earnData.shifts.sort((a,b) => b.date.localeCompare(a.date)).map(s => {
+        const roleName = getRoleName(s.shiftRole) || s.shiftRole;
+        const [sh, sm] = (s.startTime || '0:0').split(':').map(Number);
+        const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
+        const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
+        return `<tr>
+            <td>${s.date}</td>
+            <td>${roleName}</td>
+            <td>${hours.toFixed(1)}ч</td>
+            <td>${formatMoney(s.earnings?.base || 0)}</td>
+            <td style="color:var(--green)">${formatMoney(s.earnings?.bonus || 0)}</td>
+            <td style="color:var(--accent);font-weight:700">${formatMoney(s.earnings?.total || 0)}</td>
+        </tr>`;
+    }).join('');
+
+    const histHtml = histRows.map(a => `<tr style="background:rgba(var(--accent-rgb,33,150,243),0.06);">
+        <td>${a.date}</td>
+        <td colspan="2" style="color:var(--text-secondary);font-size:12px;">${a.note || 'Начисление'}</td>
+        <td>—</td>
+        <td style="color:var(--green)">${formatMoney(a.amount || 0)}</td>
+        <td style="color:var(--accent);font-weight:700">${formatMoney(a.amount || 0)}</td>
+    </tr>`).join('');
+
+    if (!shiftHtml && !histHtml) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет начислений за период</td></tr>';
     } else {
-        tbody.innerHTML = earnData.shifts.sort((a,b) => b.date.localeCompare(a.date)).map(s => {
-            const roleName = getRoleName(s.shiftRole) || s.shiftRole;
-            const [sh, sm] = (s.startTime || '0:0').split(':').map(Number);
-            const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
-            const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
-            return `<tr>
-                <td>${s.date}</td>
-                <td>${roleName}</td>
-                <td>${hours.toFixed(1)}ч</td>
-                <td>${formatMoney(s.earnings?.base || 0)}</td>
-                <td style="color:var(--green)">${formatMoney(s.earnings?.bonus || 0)}</td>
-                <td style="color:var(--accent);font-weight:700">${formatMoney(s.earnings?.total || 0)}</td>
-            </tr>`;
-        }).join('');
+        tbody.innerHTML = shiftHtml + histHtml;
     }
 
     // Payments table
