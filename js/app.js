@@ -983,6 +983,117 @@ function migrateV8RecalcEventBonuses() {
     console.log(`Bonus recalc v8d: removed ${removedDupes} old, created ${created} bonuses`);
 }
 
+// ===== ПОСТОЯННАЯ ФУНКЦИЯ: добавить пропущенные бонусы за завершённые мероприятия =====
+// Запускается при каждом старте. Не удаляет существующие начисления — только добавляет отсутствующие.
+function fixMissingEventBonuses() {
+    const events = DB.get('events', []);
+    if (events.length === 0) return;
+
+    const CUTOFF = '2026-03-31'; // до этой даты покрыто Excel-импортом
+    const salaryRules = DB.get('salaryRules', {});
+    const adminRule = salaryRules.admin || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
+    const shifts = DB.get('shifts', []);
+    const accruals = DB.get('historicalAccruals', []);
+    const allEmps = DB.get('employees', []);
+    let changed = false;
+
+    events.forEach(evt => {
+        if (evt.status !== 'completed') return;
+        if (!evt.date || evt.date <= CUTOFF) return;
+
+        const eventId = evt.id;
+        const eventDate = evt.date;
+        const evtTitle = evt.title || 'Мероприятие';
+
+        // Собираем сотрудников: сначала из топ-уровня, затем из gameBlocks (если топ-уровень пустой)
+        let instrIds = (evt.assignedInstructors && evt.assignedInstructors.length > 0)
+            ? evt.assignedInstructors
+            : (evt.instructors && evt.instructors.length > 0 ? evt.instructors : []);
+        let adminIds = (evt.assignedAdmins && evt.assignedAdmins.length > 0)
+            ? evt.assignedAdmins
+            : (evt.admins && evt.admins.length > 0 ? evt.admins : []);
+
+        // Fallback: взять сотрудников из gameBlocks если топ-уровень пуст
+        if (instrIds.length === 0 && adminIds.length === 0 && evt.gameBlocks && evt.gameBlocks.length > 0) {
+            instrIds = [...new Set(evt.gameBlocks.flatMap(b => b.instructors || []))];
+            adminIds = [...new Set(evt.gameBlocks.flatMap(b => b.admins || []))];
+            // Обновить поля события чтобы следующий запуск не пересчитывал
+            if (instrIds.length > 0 || adminIds.length > 0) {
+                evt.instructors = instrIds;
+                evt.admins = adminIds;
+                evt.assignedInstructors = instrIds;
+                evt.assignedAdmins = adminIds;
+                changed = true;
+            }
+        }
+
+        if (instrIds.length === 0 && adminIds.length === 0) return;
+
+        // Пересчитать суммы бонусов из выручки (чтобы исправить evt.bonuses: { perInstructor: 0 } из-за пустого состава)
+        const instrRevPerPerson = {};
+        instrIds.forEach(empId => {
+            const emp = allEmps.find(e => e.id === empId);
+            const role = emp?.role || 'instructor';
+            const rule = salaryRules[role] || salaryRules.instructor || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame'] };
+            const revenue = calculateEventRevenueBySources(evt, rule.bonusSources || ['services', 'optionsForGame']);
+            instrRevPerPerson[empId] = Math.round(revenue * (rule.bonusPercent || 5) / 100 / Math.max(instrIds.length, 1));
+        });
+        const adminRevPerPerson = {};
+        adminIds.forEach(empId => {
+            const revenue = calculateEventRevenueBySources(evt, adminRule.bonusSources || ['services', 'optionsForGame', 'options']);
+            adminRevPerPerson[empId] = Math.round(revenue * (adminRule.bonusPercent || 5) / 100 / Math.max(adminIds.length, 1));
+        });
+
+        // Обновить evt.bonuses если там были нули из-за пустого состава при завершении
+        const instrBonusTotal = Object.values(instrRevPerPerson).reduce((s, v) => s + v, 0);
+        const adminBonusTotal = Object.values(adminRevPerPerson).reduce((s, v) => s + v, 0);
+        const perInstructor = instrIds.length > 0 ? Math.round(instrBonusTotal / instrIds.length) : 0;
+        const perAdmin = adminIds.length > 0 ? Math.round(adminBonusTotal / adminIds.length) : 0;
+        if (!evt.bonuses || (evt.bonuses.perInstructor === 0 && perInstructor > 0) ||
+                            (evt.bonuses.perAdmin === 0 && perAdmin > 0)) {
+            evt.bonuses = { instructorTotal: instrBonusTotal, adminTotal: adminBonusTotal, perInstructor, perAdmin };
+            changed = true;
+        }
+
+        const checkAndCredit = (empId, amount, bonusType) => {
+            if (!empId || amount <= 0) return;
+            // Бонус уже на смене?
+            const hasOnShift = shifts.some(s =>
+                s.employeeId === empId && s.eventBonuses &&
+                s.eventBonuses.some(b => String(b.eventId) === String(eventId))
+            );
+            if (hasOnShift) return;
+            // Бонус уже в историческом начислении?
+            const hasAccrual = accruals.some(a =>
+                a.employeeId === empId &&
+                a.id && String(a.id).startsWith('evtbonus_' + eventId + '_' + empId)
+            );
+            if (hasAccrual) return;
+            // Добавить
+            const emp = allEmps.find(e => e.id === empId);
+            const roleName = bonusType === 'instructor' ? 'инструктор' : 'администратор';
+            accruals.push({
+                id: 'evtbonus_' + eventId + '_' + empId + '_' + Date.now() + '_' + Math.random(),
+                employeeId: empId,
+                employeeName: emp ? (emp.firstName + ' ' + emp.lastName) : '',
+                date: eventDate,
+                amount: amount,
+                note: `Бонус за мероприятие "${evtTitle}" (${roleName})`
+            });
+            changed = true;
+        };
+
+        instrIds.forEach(id => checkAndCredit(id, instrRevPerPerson[id] || 0, 'instructor'));
+        adminIds.forEach(id => checkAndCredit(id, adminRevPerPerson[id] || 0, 'admin'));
+    });
+
+    if (changed) {
+        DB.set('historicalAccruals', accruals);
+        DB.set('events', events);
+        console.log('fixMissingEventBonuses: updated bonus accruals');
+    }
+}
+
 // Сумма исторических виртуальных начислений по сотруднику в диапазоне
 function getHistoricalAccrualSum(empId, startDate, endDate) {
     return DB.get('historicalAccruals', [])
@@ -1152,6 +1263,9 @@ function onFirestoreReady() {
 
     // Восстановить пропущенные списания для завершённых мероприятий
     fixMissingWriteoffs();
+
+    // Восстановить пропущенные бонусы за завершённые мероприятия
+    fixMissingEventBonuses();
 
     // Auto-close forgotten shifts from previous days
     autoCloseStaleShifts();
@@ -2335,6 +2449,9 @@ function loadEmployeeEvents() {
 
 // ===== PAYMENT COMPLETION =====
 let currentPaymentEventId = null;
+// Staff captured from DOM in completeEventFromModal — used as authoritative source in
+// completeEventPayment to avoid reading stale cache if _loadAll races the debounced write.
+let _pendingEventStaff = null;
 
 function openPaymentModal(eventId) {
     currentPaymentEventId = eventId;
@@ -2383,6 +2500,55 @@ function openPaymentModal(eventId) {
         };
     });
 
+    // === CALCULATE CONSUMABLES PREVIEW ===
+    {
+        const tariffs = DB.get('tariffs', []);
+        let totalBalls = 0, totalKidsBalls = 0, totalGrenades = 0, totalSmokes = 0;
+        const isKidball = evt.type === 'kidball' || (evt.title || '').toLowerCase().includes('кидбол');
+        const evtGroups = evt.tariffGroups || (evt.tariffId ? [{ tariffId: evt.tariffId, participants: evt.participants || 1 }] : []);
+        evtGroups.forEach(g => {
+            if (!g.tariffId) return;
+            const tariff = tariffs.find(t => String(t.id) === String(g.tariffId));
+            if (!tariff) return;
+            const ppl = g.participants || 1;
+            const kbpp = tariff.kidsBallsPerPerson || 0;
+            const bpp = tariff.ballsPerPerson || 0;
+            if (kbpp > 0) totalKidsBalls += kbpp * ppl;
+            else if (bpp > 0) { if (isKidball) totalKidsBalls += bpp * ppl; else totalBalls += bpp * ppl; }
+            totalGrenades += (tariff.grenadesPerPerson || 0) * ppl;
+            totalSmokes += (tariff.smokesPerPerson || 0) * ppl;
+        });
+        if (evt.selectedOptions && evt.selectedOptions.length > 0) {
+            evt.selectedOptions.forEach(optId => {
+                const opt = tariffs.find(t => String(t.id) === String(optId));
+                if (opt) {
+                    const qty = evt.optionQuantities?.[optId] || 1;
+                    const ppl = evt.participants || 1;
+                    const kbpp = opt.kidsBallsPerPerson || 0;
+                    const bpp = opt.ballsPerPerson || 0;
+                    if (kbpp > 0) totalKidsBalls += kbpp * qty * ppl;
+                    else if (bpp > 0) { if (isKidball) totalKidsBalls += bpp * qty * ppl; else totalBalls += bpp * qty * ppl; }
+                    totalGrenades += (opt.grenadesPerPerson || 0) * qty;
+                    totalSmokes += (opt.smokesPerPerson || 0) * qty;
+                }
+            });
+        }
+        // Populate editable consumable fields
+        const hasConsumables = totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0 || totalSmokes > 0;
+        const sec = document.getElementById('payment-consumables-section');
+        if (sec) sec.style.display = hasConsumables ? 'block' : 'none';
+        const showRow = (rowId, inputId, value) => {
+            const row = document.getElementById(rowId);
+            const inp = document.getElementById(inputId);
+            if (row) row.style.display = value > 0 ? 'flex' : 'none';
+            if (inp) inp.value = value > 0 ? value : '';
+        };
+        showRow('payment-consumable-balls-row', 'payment-consumable-balls', totalBalls);
+        showRow('payment-consumable-kids-balls-row', 'payment-consumable-kids-balls', totalKidsBalls);
+        showRow('payment-consumable-grenades-row', 'payment-consumable-grenades', totalGrenades);
+        showRow('payment-consumable-smokes-row', 'payment-consumable-smokes', totalSmokes);
+    }
+
     openModal('modal-payment');
 }
 
@@ -2424,9 +2590,16 @@ function completeEventPayment() {
     }
 
     // === DISTRIBUTE BONUSES TO ASSIGNED STAFF ===
-    // Read from event data (saved in event form when completing)
-    const selectedInstructors = events[idx].instructors || events[idx].assignedInstructors || [];
-    const selectedAdmins = events[idx].admins || events[idx].assignedAdmins || [];
+    // Prefer _pendingEventStaff (captured directly from DOM in completeEventFromModal, zero race risk).
+    // Fall back to the cached event data if completing via a different path (e.g. direct API call).
+    // Use _pendingEventStaff only if it has non-empty arrays; ?? doesn't fallback on [].
+    const selectedInstructors = (_pendingEventStaff?.instructors?.length > 0)
+        ? _pendingEventStaff.instructors
+        : (events[idx].instructors?.length > 0 ? events[idx].instructors : (events[idx].assignedInstructors ?? []));
+    const selectedAdmins = (_pendingEventStaff?.admins?.length > 0)
+        ? _pendingEventStaff.admins
+        : (events[idx].admins?.length > 0 ? events[idx].admins : (events[idx].assignedAdmins ?? []));
+    _pendingEventStaff = null; // consume once — don't leak into subsequent completions
 
     const salaryRules = DB.get('salaryRules', {});
     const adminRule = salaryRules.admin || { bonusPercent: 5, bonusSources: ['services', 'optionsForGame', 'options'] };
@@ -2458,6 +2631,10 @@ function completeEventPayment() {
     const perInstructor = selectedInstructors.length > 0 ? Math.round(instrBonusTotal / selectedInstructors.length) : 0;
     const perAdmin = selectedAdmins.length > 0 ? Math.round(adminBonusTotal / selectedAdmins.length) : 0;
 
+    // Explicitly update both fields so _writeEvents always gets non-empty arrays even if
+    // _loadAll replaced the cache with admins:[] before completeEventPayment ran.
+    events[idx].instructors = selectedInstructors;
+    events[idx].admins = selectedAdmins;
     events[idx].assignedInstructors = selectedInstructors;
     events[idx].assignedAdmins = selectedAdmins;
     events[idx].bonuses = {
@@ -2473,19 +2650,18 @@ function completeEventPayment() {
 
     const creditBonus = (empId, amount, bonusType) => {
         if (amount <= 0) return;
-        // Find shift: first by event date, then by today (if completing next day)
-        let shiftIdx = shifts.findIndex(s => s.date === eventDate && s.employeeId === empId);
+        // Only match CLOSED shifts (endTime set). Open shifts are invisible in the director's
+        // accruals table (filtered by endTime && earnings), so crediting to them hides the bonus.
+        let shiftIdx = shifts.findIndex(s => s.date === eventDate && s.employeeId === empId && s.endTime);
         if (shiftIdx < 0 && eventDate !== todayStr2) {
-            shiftIdx = shifts.findIndex(s => s.date === todayStr2 && s.employeeId === empId);
+            shiftIdx = shifts.findIndex(s => s.date === todayStr2 && s.employeeId === empId && s.endTime);
         }
         if (shiftIdx >= 0) {
             if (!shifts[shiftIdx].eventBonuses) shifts[shiftIdx].eventBonuses = [];
             shifts[shiftIdx].eventBonuses.push({ eventId: events[idx].id, eventTitle: evtTitle, amount, bonusType });
-            if (shifts[shiftIdx].endTime) {
-                shifts[shiftIdx].earnings = calculateShiftEarnings(shifts[shiftIdx]);
-            }
+            shifts[shiftIdx].earnings = calculateShiftEarnings(shifts[shiftIdx]);
         } else {
-            // No shift found — save bonus as historical accrual so it's not lost
+            // No closed shift found — save bonus as historical accrual (always visible immediately)
             const emps = DB.get('employees', []);
             const emp = emps.find(e => e.id === empId);
             const empName = emp ? (emp.firstName + ' ' + emp.lastName) : '';
@@ -2508,46 +2684,13 @@ function completeEventPayment() {
     DB.set('shifts', shifts);
 
     // === AUTO-DEDUCT CONSUMABLES FROM STOCK ===
-    const tariffs = DB.get('tariffs', []);
+    // Read values from the editable fields in the payment modal (pre-calculated in openPaymentModal).
+    // User may have corrected the amounts — always trust the fields, not tariff recalculation.
     const evt = events[idx];
-    let totalBalls = 0, totalKidsBalls = 0, totalGrenades = 0, totalSmokes = 0;
-    const isKidball = evt.type === 'kidball' || (evt.title || '').toLowerCase().includes('кидбол');
-
-    // Main tariff groups × participants (support multi-tariff)
-    const evtGroups2 = evt.tariffGroups || (evt.tariffId ? [{ tariffId: evt.tariffId, participants: evt.participants || 1 }] : []);
-    evtGroups2.forEach(g => {
-        if (!g.tariffId) return;
-        const tariff = tariffs.find(t => String(t.id) === String(g.tariffId));
-        if (!tariff) return;
-        const ppl = g.participants || 1;
-        const kbpp = tariff.kidsBallsPerPerson || 0;
-        const bpp = tariff.ballsPerPerson || 0;
-        if (kbpp > 0) { totalKidsBalls += kbpp * ppl; }
-        else if (bpp > 0) { if (isKidball) totalKidsBalls += bpp * ppl; else totalBalls += bpp * ppl; }
-        totalGrenades += (tariff.grenadesPerPerson || 0) * ppl;
-        totalSmokes += (tariff.smokesPerPerson || 0) * ppl;
-    });
-
-    // Options × quantity (grenades/smokes are per-unit, balls are per-person)
-    if (evt.selectedOptions && evt.selectedOptions.length > 0) {
-        evt.selectedOptions.forEach(optId => {
-            const opt = tariffs.find(t => String(t.id) === String(optId));
-            if (opt) {
-                const qty = evt.optionQuantities?.[optId] || 1;
-                const ppl = (evt.participants || 1);
-                const kbpp = opt.kidsBallsPerPerson || 0;
-                const bpp = opt.ballsPerPerson || 0;
-                if (kbpp > 0) {
-                    totalKidsBalls += kbpp * qty * ppl;
-                } else if (bpp > 0) {
-                    if (isKidball) totalKidsBalls += bpp * qty * ppl; else totalBalls += bpp * qty * ppl;
-                }
-                // Grenades and smokes are per-unit options (qty = how many ordered), NOT per person
-                totalGrenades += (opt.grenadesPerPerson || 0) * qty;
-                totalSmokes += (opt.smokesPerPerson || 0) * qty;
-            }
-        });
-    }
+    const totalBalls     = parseInt(document.getElementById('payment-consumable-balls')?.value)      || 0;
+    const totalKidsBalls = parseInt(document.getElementById('payment-consumable-kids-balls')?.value) || 0;
+    const totalGrenades  = parseInt(document.getElementById('payment-consumable-grenades')?.value)   || 0;
+    const totalSmokes    = parseInt(document.getElementById('payment-consumable-smokes')?.value)     || 0;
 
     // Auto-create write-off documents for consumables used
     if (totalBalls > 0 || totalKidsBalls > 0 || totalGrenades > 0 || totalSmokes > 0) {
@@ -2557,11 +2700,12 @@ function completeEventPayment() {
         const docs = DB.get('documents', []);
         const evtDate = events[idx].date || todayLocal();
         const evtName = events[idx].title || 'Мероприятие';
+        const participants = events[idx].participants || 0;
         const writeoffItems = [
-            { item: 'Пейнтбольные шары 0.68', qty: totalBalls },
+            { item: 'Пейнтбольные шары 0.68',       qty: totalBalls },
             { item: 'Детские пейнтбольные шары 0.50', qty: totalKidsBalls },
-            { item: 'Гранаты', qty: totalGrenades },
-            { item: 'Дымы', qty: totalSmokes }
+            { item: 'Гранаты',                        qty: totalGrenades },
+            { item: 'Дымы',                           qty: totalSmokes }
         ];
         writeoffItems.forEach(wi => {
             if (wi.qty > 0) {
@@ -2573,7 +2717,7 @@ function completeEventPayment() {
                     qty: wi.qty,
                     amount: 0,
                     delivery: 0,
-                    comment: `Авто: ${evtName} (${events[idx].participants || 0} чел.)`,
+                    comment: `Авто: ${evtName} (${participants} чел.)`,
                     eventId: events[idx].id
                 });
             }
@@ -2674,7 +2818,10 @@ function completeEventPayment() {
     if (document.getElementById('page-finances')?.classList.contains('active')) loadFinances();
     if (document.getElementById('page-schedule')?.classList.contains('active')) renderCalendar();
     if (document.getElementById('page-dashboard')?.classList.contains('active')) loadDashboard();
-    if (document.getElementById('page-employees')?.classList.contains('active')) loadEmployees();
+    // Refresh stock page if open (consumables were just deducted)
+    if (document.getElementById('page-stock')?.classList.contains('active')) loadStock();
+    // Always reload employees — bonuses just credited to historicalAccruals must appear immediately
+    loadEmployees();
 }
 
 // ===== EMPLOYEE SALARY PAGE =====
@@ -4078,9 +4225,20 @@ function loadEmployees() {
             if (entry.type === 'historical') {
                 const dateF = new Date(entry.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
                 const noteShort = entry.note.replace('Историческое начисление: ', '');
-                return `<tr style="background:rgba(33,150,243,0.10);">
+                // Place bonus in the correct column when it's an event bonus (note contains role)
+                const isInstrBonus = noteShort.includes('инструктор');
+                const isAdminBonus = noteShort.includes('администратор');
+                const instrBonusCell = isInstrBonus ? `<td style="color:var(--green);font-weight:600;">${formatMoney(entry.amount)}</td>` : '<td>—</td>';
+                const adminBonusCell = isAdminBonus ? `<td style="color:var(--green);font-weight:600;">${formatMoney(entry.amount)}</td>` : '<td>—</td>';
+                const isEventBonus = isInstrBonus || isAdminBonus;
+                return `<tr style="background:rgba(33,150,243,0.10);" title="${noteShort}">
                     <td>${dateF}</td>
-                    <td colspan="7" style="color:var(--accent);font-weight:600;">📋 Начисление${noteShort ? ' — ' + noteShort : ''}</td>
+                    <td colspan="2" style="color:var(--accent);font-size:12px;">${isEventBonus ? '🎯 ' : '📋 '}${noteShort || 'Начисление'}</td>
+                    <td>—</td>
+                    <td>—</td>
+                    ${instrBonusCell}
+                    ${adminBonusCell}
+                    <td>—</td>
                     <td style="font-weight:700;">${formatMoney(entry.amount)}</td>
                     <td>
                         <button class="btn-action" onclick="editAccrual('${entry.histId}')" title="Редактировать" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">edit</span></button>
@@ -4572,9 +4730,13 @@ function selectCalDay(dateStr) {
                     <span>${formatParticipants(e)} · ${formatDuration(e.duration)}${e.price ? ' · ' + formatMoney(e.price) : ''}${e.prepayment ? ' · предоплата ' + formatMoney(e.prepayment) + (e.prepaymentMethod === 'qr' ? ' QR' : e.prepaymentMethod === 'cash' ? ' нал.' : '') : ''}</span>
                     ${getStaffBadges(e) ? `<span style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${getStaffBadges(e)}</span>` : ''}
                 </div>
-                ${!isCompleted ? `<button class="btn-primary btn-sm" onclick="event.stopPropagation();openEventModal('${e.id}', true)" style="width:100%;justify-content:center;">
-                    <span class="material-icons-round" style="font-size:16px">done_all</span> Выполнить
-                </button>` : ''}
+                ${!isCompleted
+                    ? `<button class="btn-primary btn-sm" onclick="event.stopPropagation();openEventModal('${e.id}', true)" style="width:100%;justify-content:center;">
+                        <span class="material-icons-round" style="font-size:16px">done_all</span> Выполнить
+                       </button>`
+                    : `<button class="btn-secondary btn-sm" onclick="event.stopPropagation();openBonusAssignModal('${e.id}')" style="width:100%;justify-content:center;font-size:12px;">
+                        <span class="material-icons-round" style="font-size:15px">payments</span> Начислить бонус
+                       </button>`}
             </div>`;
         }).join('');
     }
@@ -4734,12 +4896,23 @@ function openEventModal(id = null, completing = false) {
         document.getElementById('evt-duration').value = evt.duration;
         document.getElementById('evt-occasion').value = evt.occasion || '';
         document.getElementById('evt-player-age').value = evt.playerAge || '';
-        // Load game blocks (support old single-tariff and tariffGroups format)
-        const gameBlocks = evt.gameBlocks || [{
+        // Load game blocks (support old single-tariff and tariffGroups format).
+        // Use ?.length instead of || for arrays — [] is truthy and would suppress the fallback.
+        const resolvedInstrs = evt.gameBlocks?.[0]?.instructors?.length
+            ? null // will use evt.gameBlocks directly below
+            : (evt.instructors?.length ? evt.instructors
+               : evt.assignedInstructors?.length ? evt.assignedInstructors
+               : (evt.instructor ? [evt.instructor] : []));
+        const resolvedAdmins = evt.gameBlocks?.[0]?.admins?.length
+            ? null
+            : (evt.admins?.length ? evt.admins
+               : evt.assignedAdmins?.length ? evt.assignedAdmins
+               : []);
+        const gameBlocks = evt.gameBlocks?.length ? evt.gameBlocks : [{
             gameType: evt.type || 'other',
             tariffs: evt.tariffGroups || [{ tariffId: evt.tariffId, participants: evt.participants || 1 }],
-            instructors: evt.instructors || (evt.instructor ? [evt.instructor] : []),
-            admins: evt.admins || []
+            instructors: resolvedInstrs || [],
+            admins: resolvedAdmins || []
         }];
         initGameBlocksUI(gameBlocks);
         document.getElementById('evt-notes').value = evt.notes || '';
@@ -4811,14 +4984,20 @@ function openEventModal(id = null, completing = false) {
 
     // Show/hide complete button and total summary
     const completeBtn = document.getElementById('btn-complete-event');
+    const bonusBtn = document.getElementById('btn-bonus-event');
     const totalBlock = document.getElementById('evt-total-block');
+    const evtStatus = id ? (DB.get('events', []).find(e => String(e.id) === String(id))?.status) : null;
+    const isAlreadyCompleted = evtStatus === 'completed';
     if (completing && id) {
         document.getElementById('modal-event-title').textContent = 'Выполнить заказ';
         if (completeBtn) completeBtn.style.display = 'inline-flex';
         if (totalBlock) totalBlock.style.display = 'block';
+        if (bonusBtn) bonusBtn.style.display = 'none';
     } else {
         if (completeBtn) completeBtn.style.display = 'none';
         if (totalBlock) totalBlock.style.display = 'none';
+        // Показать «Начислить бонус» только для завершённых мероприятий (директор)
+        if (bonusBtn) bonusBtn.style.display = (isAlreadyCompleted && currentUser?.role === 'director') ? 'inline-flex' : 'none';
     }
 
     // Store completing flag for save handler
@@ -4915,6 +5094,15 @@ function recalcEventTotal() {
 }
 
 function completeEventFromModal() {
+    // Capture instructor/admin selections from DOM BEFORE form.requestSubmit() closes the modal.
+    // This is the authoritative source — avoids any race between the debounced DB write and
+    // the _loadAll that can fire from a realtime notification within the 300ms window.
+    const _blocks = getGameBlocksFromDOM();
+    _pendingEventStaff = {
+        instructors: [...new Set(_blocks.flatMap(b => b.instructors || []))],
+        admins: [...new Set(_blocks.flatMap(b => b.admins || []))]
+    };
+
     // Save event first
     const form = document.getElementById('event-form');
     form.requestSubmit();
@@ -4923,6 +5111,205 @@ function completeEventFromModal() {
     if (id) {
         setTimeout(() => openPaymentModal(id), 300);
     }
+}
+
+// ===== «Восстановить пропущенные бонусы» из страницы Настроек =====
+function runFixBonusesUI() {
+    const events = DB.get('events', [])
+        .filter(e => e.status === 'completed' && e.date > '2026-03-31')
+        .sort((a, b) => b.date.localeCompare(a.date));
+    const employees = DB.get('employees', []).filter(e => !e.blocked);
+    const accruals = DB.get('historicalAccruals', []);
+    const shifts = DB.get('shifts', []);
+
+    // Найти мероприятия у которых нет бонусов для назначенных сотрудников
+    const missing = events.filter(evt => {
+        const instrIds = evt.assignedInstructors || evt.instructors || [];
+        const adminIds = evt.assignedAdmins || evt.admins || [];
+        if (instrIds.length === 0 && adminIds.length === 0) return true; // нет состава — тоже показать
+        const allIds = [...instrIds, ...adminIds];
+        return allIds.some(empId => {
+            const onShift = shifts.some(s => s.employeeId === empId && s.eventBonuses && s.eventBonuses.some(b => String(b.eventId) === String(evt.id)));
+            const onAccrual = accruals.some(a => a.employeeId === empId && String(a.id).startsWith('evtbonus_' + evt.id + '_' + empId));
+            return !onShift && !onAccrual;
+        });
+    });
+
+    const instrEmps = employees.filter(e => ['instructor', 'senior_instructor'].includes(e.role));
+    const adminEmps = employees.filter(e => e.role === 'admin');
+
+    const evtOptions = missing.length
+        ? missing.map(e => `<option value="${e.id}">[${e.date}] ${e.title} — ${e.participants || '?'}чел. — ${e.price ? formatMoney(e.price) : '0₽'}</option>`).join('')
+        : '<option value="">— нет мероприятий без бонусов —</option>';
+
+    const makeCheck = (emps, prefix, eventStaff) => emps.map(e =>
+        `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;">
+            <input type="checkbox" class="${prefix}-cb" value="${e.id}" ${(eventStaff||[]).includes(e.id)?'checked':''}
+                style="width:16px;height:16px;accent-color:var(--accent);">
+            <span style="font-size:14px;">${e.firstName} ${e.lastName}</span>
+        </label>`).join('');
+
+    const firstEvt = missing[0];
+    const fi = firstEvt ? (firstEvt.assignedInstructors || firstEvt.instructors || []) : [];
+    const fa = firstEvt ? (firstEvt.assignedAdmins || firstEvt.admins || []) : [];
+
+    const html = `
+        <div style="padding:16px 16px 8px;max-width:420px;">
+            <h3 style="margin:0 0 12px;font-size:15px;">Восстановить бонусы за мероприятие</h3>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label style="font-size:13px;font-weight:600;">Мероприятие</label>
+                <select id="fix-bonus-evt-select" style="width:100%;margin-top:4px;" onchange="updateFixBonusStaff()">
+                    ${evtOptions}
+                </select>
+            </div>
+            <div class="form-row" style="gap:16px;margin-bottom:12px;">
+                <div style="flex:1;">
+                    <div style="font-weight:600;font-size:13px;margin-bottom:6px;">Инструкторы</div>
+                    <div id="fix-bonus-instrs">${makeCheck(instrEmps, 'fix-instr', fi)}</div>
+                </div>
+                <div style="flex:1;">
+                    <div style="font-weight:600;font-size:13px;margin-bottom:6px;">Администраторы</div>
+                    <div id="fix-bonus-admins">${makeCheck(adminEmps, 'fix-admin', fa)}</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--border);">
+                <button class="btn-secondary" onclick="closeModal('modal-fix-bonuses')">Отмена</button>
+                <button class="btn-primary" onclick="applyFixBonus()">
+                    <span class="material-icons-round" style="font-size:16px">payments</span> Начислить
+                </button>
+            </div>
+        </div>`;
+
+    let modal = document.getElementById('modal-fix-bonuses');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-fix-bonuses';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = '<div class="modal modal-sm" id="modal-fix-bonuses-inner"></div>';
+        modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+        document.body.appendChild(modal);
+    }
+    document.getElementById('modal-fix-bonuses-inner').innerHTML = html;
+    modal.classList.add('active');
+}
+
+function updateFixBonusStaff() {
+    const eventId = document.getElementById('fix-bonus-evt-select')?.value;
+    if (!eventId) return;
+    const evt = DB.get('events', []).find(e => String(e.id) === String(eventId));
+    if (!evt) return;
+    const instrIds = evt.assignedInstructors || evt.instructors || [];
+    const adminIds = evt.assignedAdmins || evt.admins || [];
+    document.querySelectorAll('.fix-instr-cb').forEach(cb => { cb.checked = instrIds.map(String).includes(cb.value); });
+    document.querySelectorAll('.fix-admin-cb').forEach(cb => { cb.checked = adminIds.map(String).includes(cb.value); });
+}
+
+function applyFixBonus() {
+    const eventId = document.getElementById('fix-bonus-evt-select')?.value;
+    if (!eventId) { showToast('Выберите мероприятие', 'error'); return; }
+    const instrIds = [...document.querySelectorAll('.fix-instr-cb:checked')].map(el => parseInt(el.value));
+    const adminIds = [...document.querySelectorAll('.fix-admin-cb:checked')].map(el => parseInt(el.value));
+    if (instrIds.length === 0 && adminIds.length === 0) { showToast('Выберите хотя бы одного сотрудника', 'error'); return; }
+
+    // Обновить состав в событии
+    const events = DB.get('events', []);
+    const idx = events.findIndex(e => String(e.id) === String(eventId));
+    if (idx >= 0) {
+        events[idx].instructors = instrIds;
+        events[idx].admins = adminIds;
+        events[idx].assignedInstructors = instrIds;
+        events[idx].assignedAdmins = adminIds;
+        DB.set('events', events);
+    }
+    closeModal('modal-fix-bonuses');
+    setTimeout(() => {
+        recalculateEventBonuses(isNaN(eventId) ? eventId : parseInt(eventId));
+        if (document.getElementById('page-employees')?.classList.contains('active')) loadEmployees();
+    }, 200);
+}
+
+// ===== ДИАЛОГ: РУЧНОЕ НАЧИСЛЕНИЕ БОНУСА ЗА ЗАВЕРШЁННОЕ МЕРОПРИЯТИЕ =====
+let _bonusAssignEventId = null;
+function openBonusAssignModal(eventId) {
+    _bonusAssignEventId = typeof eventId === 'string' ? parseInt(eventId) || eventId : eventId;
+    const events = DB.get('events', []);
+    const evt = events.find(e => String(e.id) === String(eventId));
+    if (!evt) return;
+
+    const employees = DB.get('employees', []).filter(e => !e.blocked);
+    const currentInstrs = evt.assignedInstructors || evt.instructors || [];
+    const currentAdmins = evt.assignedAdmins || evt.admins || [];
+    // Fallback from gameBlocks
+    const gbInstrs = evt.gameBlocks ? [...new Set(evt.gameBlocks.flatMap(b => b.instructors || []))] : [];
+    const gbAdmins = evt.gameBlocks ? [...new Set(evt.gameBlocks.flatMap(b => b.admins || []))] : [];
+    const initInstrs = currentInstrs.length > 0 ? currentInstrs : gbInstrs;
+    const initAdmins = currentAdmins.length > 0 ? currentAdmins : gbAdmins;
+
+    const instrEmps = employees.filter(e => ['instructor', 'senior_instructor'].includes(e.role));
+    const adminEmps = employees.filter(e => e.role === 'admin');
+
+    const makeList = (emps, initIds, prefix) => emps.map(e => `
+        <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
+            <input type="checkbox" id="${prefix}-${e.id}" value="${e.id}" ${initIds.includes(e.id) ? 'checked' : ''}
+                style="width:18px;height:18px;accent-color:var(--accent);">
+            <span>${e.firstName} ${e.lastName}</span>
+        </label>`).join('');
+
+    const html = `
+        <div style="padding:16px;max-width:400px;">
+            <h3 style="margin:0 0 4px;font-size:16px;">Начислить бонус</h3>
+            <p style="margin:0 0 14px;font-size:13px;color:var(--text-secondary);">${evt.title} · ${evt.date}</p>
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:600;font-size:13px;margin-bottom:6px;">Инструкторы</div>
+                ${instrEmps.length ? makeList(instrEmps, initInstrs, 'ba-instr') : '<span style="font-size:13px;color:var(--text-secondary);">Нет</span>'}
+            </div>
+            <div style="margin-bottom:16px;">
+                <div style="font-weight:600;font-size:13px;margin-bottom:6px;">Администраторы</div>
+                ${adminEmps.length ? makeList(adminEmps, initAdmins, 'ba-admin') : '<span style="font-size:13px;color:var(--text-secondary);">Нет</span>'}
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button class="btn-secondary" onclick="closeModal('modal-bonus-assign')">Отмена</button>
+                <button class="btn-primary" onclick="saveBonusAssign()">
+                    <span class="material-icons-round" style="font-size:16px">payments</span>
+                    Начислить
+                </button>
+            </div>
+        </div>`;
+
+    let modal = document.getElementById('modal-bonus-assign');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-bonus-assign';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = '<div class="modal modal-sm" id="modal-bonus-assign-inner"></div>';
+        modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+        document.body.appendChild(modal);
+    }
+    document.getElementById('modal-bonus-assign-inner').innerHTML = html;
+    modal.classList.add('active');
+}
+
+function saveBonusAssign() {
+    if (!_bonusAssignEventId) return;
+    const instrIds = [...document.querySelectorAll('[id^="ba-instr-"]:checked')].map(el => parseInt(el.value));
+    const adminIds = [...document.querySelectorAll('[id^="ba-admin-"]:checked')].map(el => parseInt(el.value));
+
+    // Сохранить состав в событии
+    const events = DB.get('events', []);
+    const idx = events.findIndex(e => String(e.id) === String(_bonusAssignEventId));
+    if (idx >= 0) {
+        events[idx].instructors = instrIds;
+        events[idx].admins = adminIds;
+        events[idx].assignedInstructors = instrIds;
+        events[idx].assignedAdmins = adminIds;
+        DB.set('events', events);
+    }
+    closeModal('modal-bonus-assign');
+    // Пересчитать и начислить бонусы
+    setTimeout(() => {
+        recalculateEventBonuses(_bonusAssignEventId);
+        _bonusAssignEventId = null;
+    }, 150);
 }
 
 // Пересчёт бонусов завершённого мероприятия при изменении состава сотрудников
@@ -4976,12 +5363,13 @@ function recalculateEventBonuses(eventId) {
 
     const credit = (empId, amount, bonusType) => {
         if (amount <= 0) return;
-        let si = shifts2.findIndex(s => s.date === eventDate && s.employeeId === empId);
-        if (si < 0 && eventDate !== todayStr2) si = shifts2.findIndex(s => s.date === todayStr2 && s.employeeId === empId);
+        // Only match CLOSED shifts — open shifts are invisible in the director's table
+        let si = shifts2.findIndex(s => s.date === eventDate && s.employeeId === empId && s.endTime);
+        if (si < 0 && eventDate !== todayStr2) si = shifts2.findIndex(s => s.date === todayStr2 && s.employeeId === empId && s.endTime);
         if (si >= 0) {
             if (!shifts2[si].eventBonuses) shifts2[si].eventBonuses = [];
             shifts2[si].eventBonuses.push({ eventId, eventTitle: evtTitle, amount, bonusType });
-            if (shifts2[si].endTime) shifts2[si].earnings = calculateShiftEarnings(shifts2[si]);
+            shifts2[si].earnings = calculateShiftEarnings(shifts2[si]);
         } else {
             const emp = allEmps.find(e => e.id === empId);
             const roleName = bonusType === 'instructor' ? 'инструктор' : 'администратор';
@@ -5123,6 +5511,17 @@ function saveEvent(e) {
     }
 
     DB.set('events', events);
+
+    // For EXISTING events: immediately write instructor/admin to Supabase (no 200ms debounce).
+    // This prevents a race condition where _loadAll (realtime) fires before the debounced
+    // _writeEvents flush and overwrites the cache with stale (empty) instructor data.
+    // New events are skipped — their event row doesn't exist in DB yet, so the FK would fail;
+    // _writeEvents handles new events correctly (upserts event first, then inserts staff).
+    if (id) {
+        DB.updateEventStaff(parseInt(id), allInstructors, allAdmins)
+            .catch(e => console.error('updateEventStaff failed:', e));
+    }
+
     closeModal('modal-event');
     if (document.getElementById('page-schedule').classList.contains('active')) renderCalendar();
     if (document.getElementById('emp-page-booking').classList.contains('active')) renderEmpCalendar();

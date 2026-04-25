@@ -427,9 +427,23 @@ var DB = {
             await Promise.all([
                 sb.from('event_tariff_groups').delete().in('event_id', ids),
                 sb.from('event_options').delete().in('event_id', ids),
-                sb.from('event_instructors').delete().in('event_id', ids),
-                sb.from('event_admins').delete().in('event_id', ids)
             ]);
+
+            // Для персонала (instructors/admins) — удаляем ТОЛЬКО для событий,
+            // у которых в локальном стейте есть данные о персонале.
+            // Это защищает от случайного стирания назначений при синхронизации
+            // со стейтом, где массивы пусты из-за гонки или ошибки кэша.
+            const eventsWithStaff = arr.filter(e =>
+                (e.instructors?.length || e.assignedInstructors?.length ||
+                 e.admins?.length || e.assignedAdmins?.length)
+            );
+            const idsWithStaff = eventsWithStaff.map(e => e.id);
+            if (idsWithStaff.length) {
+                await Promise.all([
+                    sb.from('event_instructors').delete().in('event_id', idsWithStaff),
+                    sb.from('event_admins').delete().in('event_id', idsWithStaff)
+                ]);
+            }
 
             const etgRows = [], eoRows = [], eiRows = [], eaRows = [];
             for (const e of arr) {
@@ -461,12 +475,13 @@ var DB = {
                     });
                 }
 
-                const instrs = e.instructors || e.assignedInstructors || [];
+                // Use ?.length because [] is truthy — plain || would swallow non-empty assignedInstructors
+                const instrs = (e.instructors?.length) ? e.instructors : (e.assignedInstructors || []);
                 for (const empId of (Array.isArray(instrs) ? instrs : [instrs])) {
                     if (empId) eiRows.push({ event_id: e.id, employee_id: empId });
                 }
 
-                const adms = e.admins || e.assignedAdmins || [];
+                const adms = (e.admins?.length) ? e.admins : (e.assignedAdmins || []);
                 for (const empId of (Array.isArray(adms) ? adms : [adms])) {
                     if (empId) eaRows.push({ event_id: e.id, employee_id: empId });
                 }
@@ -479,6 +494,34 @@ var DB = {
             // Удалить отсутствующие events
             await sb.from('events').delete()
                 .eq('org_id', this._orgId).not('id', 'in', `(${ids.join(',')})`);
+        }
+    },
+
+    // Targeted per-event write for instructor/admin staff — bypasses debounced full-replace.
+    // Call this immediately after saving an existing event to avoid a race condition where
+    // _loadAll (triggered by realtime) runs BEFORE the 200ms debounced _writeEvents flush
+    // and overwrites the cache with stale (empty) instructor data from the DB.
+    async updateEventStaff(eventId, instructorIds, adminIds) {
+        if (!this._orgId || !eventId) return;
+        const eid = Number(eventId);
+        try {
+            await Promise.all([
+                sb.from('event_instructors').delete().eq('event_id', eid),
+                sb.from('event_admins').delete().eq('event_id', eid)
+            ]);
+            const eiRows = (instructorIds || []).filter(Boolean).map(id => ({ event_id: eid, employee_id: Number(id) }));
+            const eaRows = (adminIds || []).filter(Boolean).map(id => ({ event_id: eid, employee_id: Number(id) }));
+            if (eiRows.length) await sb.from('event_instructors').insert(eiRows);
+            if (eaRows.length) await sb.from('event_admins').insert(eaRows);
+            // Keep local cache consistent so any pending _loadAll reads correct data
+            const events = this._cache.events || [];
+            const idx = events.findIndex(e => e.id === eid);
+            if (idx >= 0) {
+                events[idx].instructors = eiRows.map(r => r.employee_id);
+                events[idx].admins = eaRows.map(r => r.employee_id);
+            }
+        } catch (e) {
+            console.error('updateEventStaff error:', e);
         }
     },
 

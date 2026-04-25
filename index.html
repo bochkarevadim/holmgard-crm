@@ -1789,6 +1789,15 @@
                 </div>
 
                 <div class="settings-card">
+                    <h3><span class="material-icons-round">build</span> Служебные функции</h3>
+                    <p class="text-muted" style="font-size:13px;margin-bottom:12px;">Инструменты для исправления данных</p>
+                    <button class="btn-secondary btn-sm" id="btn-fix-bonuses" onclick="runFixBonusesUI()" style="margin-bottom:8px;width:100%;justify-content:center;">
+                        <span class="material-icons-round">payments</span>
+                        Восстановить пропущенные бонусы
+                    </button>
+                    <p class="text-muted" style="font-size:11px;">Пересчитывает бонусы за все завершённые мероприятия, у которых они отсутствуют</p>
+                </div>
+                <div class="settings-card">
                     <h3><span class="material-icons-round">info</span> О системе</h3>
                     <p>HOLMGARD PARK CRM v2.0</p>
                     <p class="text-muted">Система управления парком развлечений</p>
@@ -1979,6 +1988,9 @@
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="btn-cancel-event">Отмена</button>
                     <button type="button" class="btn-danger" id="btn-delete-event" style="display:none;">Удалить</button>
+                    <button type="button" class="btn-secondary" id="btn-bonus-event" style="display:none;" onclick="openBonusAssignModal(document.getElementById('evt-id').value)">
+                        <span class="material-icons-round" style="font-size:18px">payments</span> Начислить бонус
+                    </button>
                     <button type="submit" class="btn-primary">Сохранить</button>
                     <button type="button" class="btn-primary" id="btn-complete-event" style="display:none;background:#4CAF50;" onclick="completeEventFromModal()">
                         <span class="material-icons-round" style="font-size:18px">done_all</span> Завершить и оплатить
@@ -2145,6 +2157,36 @@
                     <span class="star" data-value="5">&#9733;</span>
                 </div>
                 <input type="text" id="instructor-rating-comment" placeholder="Комментарий к оценке" style="margin-top:8px;">
+            </div>
+            <!-- Блок автосписания расходников -->
+            <div id="payment-consumables-section" style="display:none;margin-bottom:16px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:600;font-size:14px;color:var(--text-primary);">
+                    <span class="material-icons-round" style="font-size:18px;color:var(--accent);">inventory_2</span>
+                    Списание расходников
+                </div>
+                <div style="background:var(--bg-secondary);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;">
+                    <div id="payment-consumable-balls-row" style="display:none;align-items:center;gap:8px;">
+                        <span style="flex:1;font-size:13px;">🔵 Шары 0.68</span>
+                        <input type="number" id="payment-consumable-balls" min="0" style="width:80px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:14px;background:var(--bg-primary);">
+                        <span style="font-size:13px;color:var(--text-secondary);">шт</span>
+                    </div>
+                    <div id="payment-consumable-kids-balls-row" style="display:none;align-items:center;gap:8px;">
+                        <span style="flex:1;font-size:13px;">🟡 Шары 0.50</span>
+                        <input type="number" id="payment-consumable-kids-balls" min="0" style="width:80px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:14px;background:var(--bg-primary);">
+                        <span style="font-size:13px;color:var(--text-secondary);">шт</span>
+                    </div>
+                    <div id="payment-consumable-grenades-row" style="display:none;align-items:center;gap:8px;">
+                        <span style="flex:1;font-size:13px;">💣 Гранаты</span>
+                        <input type="number" id="payment-consumable-grenades" min="0" style="width:80px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:14px;background:var(--bg-primary);">
+                        <span style="font-size:13px;color:var(--text-secondary);">шт</span>
+                    </div>
+                    <div id="payment-consumable-smokes-row" style="display:none;align-items:center;gap:8px;">
+                        <span style="flex:1;font-size:13px;">💨 Дымы</span>
+                        <input type="number" id="payment-consumable-smokes" min="0" style="width:80px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:14px;background:var(--bg-primary);">
+                        <span style="font-size:13px;color:var(--text-secondary);">шт</span>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Рассчитано автоматически по тарифу. Можно скорректировать.</div>
+                </div>
             </div>
             <div class="atol-receipt-section" id="atol-receipt-section">
                 <label class="option-checkbox">
