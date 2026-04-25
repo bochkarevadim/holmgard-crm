@@ -13,5 +13,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",
     "firebase-admin": "^13.8.0"
+  },
+  "devDependencies": {
+    "pg": "^8.20.0"
   }
 }
