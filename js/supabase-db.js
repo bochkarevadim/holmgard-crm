@@ -505,12 +505,38 @@ var DB = {
         if (!this._orgId || !eventId) return;
         const eid = Number(eventId);
         try {
+            // Safety: if new arrays are empty, check whether this event already has
+            // shift_event_bonuses. If it does, preserve the existing DB staff rather
+            // than wiping them — an empty array here means the form loaded without
+            // staff data (stale local state), NOT that the user intentionally removed staff.
+            let safeInstructors = (instructorIds || []).filter(Boolean);
+            let safeAdmins     = (adminIds     || []).filter(Boolean);
+
+            if (!safeInstructors.length || !safeAdmins.length) {
+                const { data: bonuses } = await sb
+                    .from('shift_event_bonuses')
+                    .select('bonus_type')
+                    .eq('event_id', eid)
+                    .limit(1);
+                if (bonuses?.length) {
+                    // Event has bonuses → fall back to what's already in the DB
+                    if (!safeInstructors.length) {
+                        const { data: ei } = await sb.from('event_instructors').select('employee_id').eq('event_id', eid);
+                        safeInstructors = (ei || []).map(r => r.employee_id);
+                    }
+                    if (!safeAdmins.length) {
+                        const { data: ea } = await sb.from('event_admins').select('employee_id').eq('event_id', eid);
+                        safeAdmins = (ea || []).map(r => r.employee_id);
+                    }
+                }
+            }
+
             await Promise.all([
                 sb.from('event_instructors').delete().eq('event_id', eid),
                 sb.from('event_admins').delete().eq('event_id', eid)
             ]);
-            const eiRows = (instructorIds || []).filter(Boolean).map(id => ({ event_id: eid, employee_id: Number(id) }));
-            const eaRows = (adminIds || []).filter(Boolean).map(id => ({ event_id: eid, employee_id: Number(id) }));
+            const eiRows = safeInstructors.map(id => ({ event_id: eid, employee_id: Number(id) }));
+            const eaRows = safeAdmins.map(id => ({ event_id: eid, employee_id: Number(id) }));
             if (eiRows.length) await sb.from('event_instructors').insert(eiRows);
             if (eaRows.length) await sb.from('event_admins').insert(eaRows);
             // Keep local cache consistent so any pending _loadAll reads correct data
