@@ -1,4 +1,4 @@
-const CACHE_NAME = 'holmgard-crm-v61';
+const CACHE_NAME = 'holmgard-crm-v62';
 const ASSETS_TO_CACHE = [
     '/holmgard-crm/',
     '/holmgard-crm/index.html',

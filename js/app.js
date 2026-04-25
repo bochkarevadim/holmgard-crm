@@ -2840,38 +2840,103 @@ function loadEmployeeSalary() {
     const debtLabel = debtEl.closest('.salary-card')?.querySelector('.salary-card-label');
     if (debtLabel) debtLabel.textContent = balance >= 0 ? 'Задолженность' : 'Переплата';
 
-    // Shifts table (shifts + historical accruals as rows)
+    // Shifts table — one row per day, aggregated across all shifts
     const tbody = document.getElementById('emp-salary-table-body');
     const { startDate: salStart, endDate: salEnd } = getDateRangeForPeriod(period);
-    const histRows = DB.get('historicalAccruals', []).filter(a =>
-        a.employeeId === currentUser.id && a.date >= salStart && a.date <= salEnd
-    ).sort((a, b) => b.date.localeCompare(a.date));
 
-    const shiftHtml = earnData.shifts.sort((a,b) => b.date.localeCompare(a.date)).map(s => {
-        const roleName = getRoleName(s.shiftRole) || s.shiftRole;
-        const [sh, sm] = (s.startTime || '0:0').split(':').map(Number);
-        const [eh, em] = (s.endTime || '0:0').split(':').map(Number);
-        const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
+    // All shifts for current user in period
+    const allEmpShifts = DB.get('shifts', []).filter(s =>
+        s.employeeId === currentUser.id &&
+        (s.shiftRole || s.employeeRole) !== 'manager' &&
+        s.date >= salStart && s.date <= salEnd
+    );
+
+    // Manager accruals for the period
+    const emp = DB.get('employees', []).find(e => e.id === currentUser.id);
+    const mgrAccruals = emp ? getManagerDailyAccruals(emp, salStart, salEnd) : [];
+    const mgrByDate = {};
+    mgrAccruals.forEach(a => { mgrByDate[a.date] = (mgrByDate[a.date] || 0) + a.amount; });
+
+    // Historical accruals (non-event) for the period
+    const datesWithShiftBonuses = new Set(
+        allEmpShifts.filter(s => (s.eventBonuses || []).length > 0).map(s => s.date)
+    );
+    const histAccruals = DB.get('historicalAccruals', []).filter(a => {
+        if (a.employeeId !== currentUser.id) return false;
+        if (a.date < salStart || a.date > salEnd) return false;
+        // Skip event-bonus accruals when there's already a shift with event bonuses on that date
+        const isEventBonus = (a.note || '').includes('инструктор') || (a.note || '').includes('администратор') || (a.note || '').includes('Бонус за мероприятие');
+        if (isEventBonus && datesWithShiftBonuses.has(a.date)) return false;
+        return true;
+    });
+
+    // Build unique dates
+    const allDates = new Set([
+        ...allEmpShifts.map(s => s.date),
+        ...mgrAccruals.map(a => a.date)
+    ]);
+
+    const shiftHtml = [...allDates].sort((a, b) => b.localeCompare(a)).map(date => {
+        const shiftsForDate = allEmpShifts.filter(s => s.date === date);
+        const mgrAmount = mgrByDate[date] || 0;
+        const dateF = new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+        let startTime = '—', endTime = '—', hours = '—', base = 0, instrBonus = 0, adminBonus = 0;
+
+        if (shiftsForDate.length > 0) {
+            const starts = shiftsForDate.map(s => s.startTime).filter(Boolean);
+            const ends   = shiftsForDate.map(s => s.endTime).filter(Boolean);
+            if (starts.length) startTime = starts.reduce((min, t) => t < min ? t : min);
+            if (ends.length)   endTime   = ends.reduce((max, t) => t > max ? t : max);
+
+            if (startTime !== '—' && endTime !== '—') {
+                const [sh, sm] = startTime.split(':').map(Number);
+                const [eh, em] = endTime.split(':').map(Number);
+                const mins = (eh * 60 + em) - (sh * 60 + sm);
+                hours = mins > 0 ? (mins / 60).toFixed(1) + 'ч' : '—';
+            }
+
+            shiftsForDate.forEach(s => {
+                base += s.earnings?.base || 0;
+                (s.eventBonuses || []).forEach(b => {
+                    if (b.bonusType === 'admin') adminBonus += (b.amount || 0);
+                    else instrBonus += (b.amount || 0);
+                });
+            });
+        }
+
+        const total = base + instrBonus + adminBonus + mgrAmount;
         return `<tr>
-            <td>${s.date}</td>
-            <td>${roleName}</td>
-            <td>${hours.toFixed(1)}ч</td>
-            <td>${formatMoney(s.earnings?.base || 0)}</td>
-            <td style="color:var(--green)">${formatMoney(s.earnings?.bonus || 0)}</td>
-            <td style="color:var(--accent);font-weight:700">${formatMoney(s.earnings?.total || 0)}</td>
+            <td>${dateF}</td>
+            <td>${startTime}</td>
+            <td>${endTime}</td>
+            <td>${hours}</td>
+            <td>${base > 0 ? formatMoney(base) : '—'}</td>
+            <td style="color:var(--green)">${instrBonus > 0 ? formatMoney(instrBonus) : '—'}</td>
+            <td style="color:var(--green)">${adminBonus > 0 ? formatMoney(adminBonus) : '—'}</td>
+            <td style="color:var(--accent)">${mgrAmount > 0 ? formatMoney(mgrAmount) : '—'}</td>
+            <td style="font-weight:700">${formatMoney(total)}</td>
         </tr>`;
     }).join('');
 
-    const histHtml = histRows.map(a => `<tr style="background:rgba(var(--accent-rgb,33,150,243),0.06);">
-        <td>${a.date}</td>
-        <td colspan="2" style="color:var(--text-secondary);font-size:12px;">${a.note || 'Начисление'}</td>
-        <td>—</td>
-        <td style="color:var(--green)">${formatMoney(a.amount || 0)}</td>
-        <td style="color:var(--accent);font-weight:700">${formatMoney(a.amount || 0)}</td>
-    </tr>`).join('');
+    const histHtml = histAccruals.sort((a, b) => b.date.localeCompare(a.date)).map(a => {
+        const dateF = new Date(a.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const isInstr = (a.note || '').includes('инструктор');
+        const isAdm   = (a.note || '').includes('администратор');
+        return `<tr style="background:rgba(33,150,243,0.07);">
+            <td>${dateF}</td>
+            <td colspan="2" style="font-size:12px;color:var(--text-secondary);">${(a.note || 'Начисление').replace('Историческое начисление: ', '')}</td>
+            <td>—</td>
+            <td>—</td>
+            <td style="color:var(--green)">${isInstr ? formatMoney(a.amount) : '—'}</td>
+            <td style="color:var(--green)">${isAdm  ? formatMoney(a.amount) : '—'}</td>
+            <td>—</td>
+            <td style="font-weight:700">${formatMoney(a.amount)}</td>
+        </tr>`;
+    }).join('');
 
     if (!shiftHtml && !histHtml) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет начислений за период</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Нет начислений за период</td></tr>';
     } else {
         tbody.innerHTML = shiftHtml + histHtml;
     }
@@ -4196,8 +4261,18 @@ function loadEmployees() {
         [...shiftDates].forEach(date => {
             timeline.push({ type: 'accrual', date });
         });
-        // Add historical accrual entries (separate rows)
+        // Add historical accrual entries (separate rows) ONLY if:
+        // - it is NOT an event-bonus accrual (those are now in shift_event_bonuses), OR
+        // - there is no shift on that date that already captures the bonus.
+        // This prevents duplicate rows when event bonuses exist both as historical
+        // accruals and as shift_event_bonuses.
+        const datesWithShiftBonuses = new Set(
+            allEmpShifts.filter(s => (s.eventBonuses || []).length > 0).map(s => s.date)
+        );
         empHistAccruals.forEach(a => {
+            const isEventBonus = (a.note || '').includes('инструктор') || (a.note || '').includes('администратор') || (a.note || '').includes('Бонус за мероприятие');
+            // Skip event-bonus historical accruals for dates that already have shift event bonuses
+            if (isEventBonus && datesWithShiftBonuses.has(a.date)) return;
             timeline.push({ type: 'historical', date: a.date, amount: a.amount, note: a.note || '', histId: a.id });
         });
         allEmpPayments.forEach(p => {
@@ -4247,43 +4322,54 @@ function loadEmployees() {
                 </tr>`;
             }
             const date = entry.date;
-            const shift = allEmpShifts.find(s => s.date === date);
+            // Aggregate ALL shifts for this date into one row (not just the first)
+            const shiftsForDate = allEmpShifts.filter(s => s.date === date);
             const mgrAmount = mgrByDate[date] || 0;
             const dateF = new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
             let startTime = '—', endTime = '—', hours = '—', base = 0;
             let instrBonus = 0, adminBonus = 0;
             let hasComment = false, commentEsc = '';
-            let shiftId = null;
+            let shiftId = null;  // first shift id for edit button
 
-            if (shift) {
-                shiftId = shift.id;
-                startTime = shift.startTime || '—';
-                endTime = shift.endTime || '—';
-                if (shift.startTime && shift.endTime) {
-                    const [sh, sm] = shift.startTime.split(':').map(Number);
-                    const [eh, em] = shift.endTime.split(':').map(Number);
+            if (shiftsForDate.length > 0) {
+                shiftId = shiftsForDate[0].id;
+
+                // Earliest start and latest end across all shifts for the day
+                const starts = shiftsForDate.map(s => s.startTime).filter(Boolean);
+                const ends   = shiftsForDate.map(s => s.endTime).filter(Boolean);
+                if (starts.length) startTime = starts.reduce((min, t) => t < min ? t : min);
+                if (ends.length)   endTime   = ends.reduce((max, t) => t > max ? t : max);
+
+                if (startTime !== '—' && endTime !== '—') {
+                    const [sh, sm] = startTime.split(':').map(Number);
+                    const [eh, em] = endTime.split(':').map(Number);
                     const mins = (eh * 60 + em) - (sh * 60 + sm);
                     hours = mins > 0 ? (mins / 60).toFixed(1) + 'ч' : '—';
                 }
-                base = shift.earnings?.base || 0;
-                (shift.eventBonuses || []).forEach(b => {
-                    if (b.bonusType === 'admin') adminBonus += (b.amount || 0);
-                    else instrBonus += (b.amount || 0);
+
+                // Sum base pay and all event bonuses across all shifts for the day
+                shiftsForDate.forEach(shift => {
+                    base += shift.earnings?.base || 0;
+                    (shift.eventBonuses || []).forEach(b => {
+                        if (b.bonusType === 'admin') adminBonus += (b.amount || 0);
+                        else instrBonus += (b.amount || 0);
+                    });
+                    if (!hasComment && shift.shiftComment && shift.shiftComment.trim()) {
+                        hasComment = true;
+                        commentEsc = shift.shiftComment.replace(/'/g, "\\'").replace(/\n/g, "\\n");
+                    }
                 });
-                hasComment = shift.shiftComment && shift.shiftComment.trim();
-                commentEsc = hasComment ? shift.shiftComment.replace(/'/g, "\\'").replace(/\n/g, "\\n") : '';
             }
 
             const dayTotal = base + instrBonus + adminBonus + mgrAmount;
             const shiftPaid = shiftId ? paidIds.has(shiftId) : true;
             const mgrPaid = mgrAmount > 0 ? paidIds.has('mgr_' + date) : true;
             const isPaid = (shiftId || mgrAmount > 0) && shiftPaid && mgrPaid;
-            const rowStyle = '';
 
             const editBtns = (shiftId ? `<button class="btn-action" onclick="event.stopPropagation();editShiftEarnings(${shiftId})" title="Редактировать начисление" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">edit</span></button>` : '')
                 + (mgrAmount > 0 ? `<button class="btn-action" onclick="event.stopPropagation();editMgrDailyRate(${emp.id})" title="Ставка менеджера" style="padding:2px;"><span class="material-icons-round" style="font-size:15px;">tune</span></button>` : '');
-            return `<tr style="${rowStyle}cursor:pointer;" onclick="${hasComment ? `showShiftComment('${commentEsc}')` : ''}" title="${hasComment ? 'Нажмите — комментарий к смене' : ''}">
+            return `<tr style="cursor:pointer;" onclick="${hasComment ? `showShiftComment('${commentEsc}')` : ''}" title="${hasComment ? 'Нажмите — комментарий к смене' : ''}">
                 <td>${dateF}</td>
                 <td>${startTime}</td>
                 <td>${endTime}</td>
