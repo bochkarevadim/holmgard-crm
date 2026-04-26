@@ -15,27 +15,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-    <!-- Force cache clear when old SW version is detected -->
+    <!-- Nuke all caches + old SWs on first session load, then reload once with fresh code -->
     <script>
     (function() {
-        var REQUIRED_SW_VERSION = 64;
-        if ('serviceWorker' in navigator && 'caches' in window) {
-            caches.keys().then(function(keys) {
-                var hasOld = keys.some(function(k) {
-                    var m = k.match(/holmgard-crm-v(\d+)/);
-                    return m && parseInt(m[1]) < REQUIRED_SW_VERSION;
-                });
-                if (hasOld) {
-                    Promise.all(keys.map(function(k) { return caches.delete(k); }))
-                        .then(function() {
-                            navigator.serviceWorker.getRegistrations().then(function(regs) {
-                                Promise.all(regs.map(function(r) { return r.unregister(); }))
-                                    .then(function() { location.reload(true); });
-                            });
-                        });
-                }
-            });
-        }
+        var FLAG = 'hcrm_nuked_v65';
+        if (sessionStorage.getItem(FLAG)) return;
+        sessionStorage.setItem(FLAG, '1');
+        var p1 = ('caches' in window)
+            ? caches.keys().then(function(keys) {
+                return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+              })
+            : Promise.resolve();
+        var p2 = ('serviceWorker' in navigator)
+            ? navigator.serviceWorker.getRegistrations().then(function(regs) {
+                return Promise.all(regs.map(function(r) { return r.unregister(); }));
+              })
+            : Promise.resolve();
+        Promise.all([p1, p2]).then(function() { location.reload(true); });
     })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
