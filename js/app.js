@@ -6394,7 +6394,7 @@ function initDocuments() {
 }
 
 function loadDocuments(tab = 'incoming') {
-    const docs = DB.get('documents', []).filter(d => d.type === tab);
+    const docs = DB.get('documents', []).filter(d => d.type === tab).sort((a, b) => b.date.localeCompare(a.date));
     const thead = document.getElementById('doc-table-head');
     const tbody = document.getElementById('doc-table-body');
 
