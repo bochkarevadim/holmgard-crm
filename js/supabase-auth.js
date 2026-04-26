@@ -263,12 +263,12 @@ var FirebaseAuth = (function() {
             sb.auth.signInWithPassword({ email: email, password: password })
                 .then(function(res) {
                     if (res.error) {
-                        showFirebaseError(getErrorMessage(res.error) + ' [' + (res.error.code || res.error.message || '?') + ']');
+                        showFirebaseError(getErrorMessage(res.error));
                     }
                     // onAuthStateChange обработает успех
                 })
                 .catch(function(error) {
-                    showFirebaseError(getErrorMessage(error) + ' [' + (error && (error.message || error.code) || 'network?') + ']');
+                    showFirebaseError(getErrorMessage(error));
                 })
                 .finally(function() {
                     if (btn) {

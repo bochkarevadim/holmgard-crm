@@ -18,7 +18,7 @@
     <!-- Nuke all caches + old SWs on first session load, then reload once with fresh code -->
     <script>
     (function() {
-        var FLAG = 'hcrm_nuked_v65';
+        var FLAG = 'hcrm_nuked_v70';
         if (sessionStorage.getItem(FLAG)) return;
         // Don't reload if URL has auth tokens — would lose the hash fragment on some mobile browsers
         if (window.location.hash && window.location.hash.indexOf('access_token') !== -1) return;
