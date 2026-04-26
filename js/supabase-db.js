@@ -197,45 +197,53 @@ var DB = {
         ]);
 
         // ─── employees ───
-        this._cache.employees = (employees.data || []).map(rowToEmployee);
+        try { this._cache.employees = (employees.data || []).map(rowToEmployee); } catch(e) { console.error('_loadAll employees:', e); this._cache.employees = []; }
 
         // ─── clients ───
-        const visitsById = groupBy(clientVisits.data || [], 'client_id');
-        this._cache.clients = (clients.data || []).map(c => rowToClient(c, visitsById[c.id] || []));
+        try {
+            const visitsById = groupBy(clientVisits.data || [], 'client_id');
+            this._cache.clients = (clients.data || []).map(c => rowToClient(c, visitsById[c.id] || []));
+        } catch(e) { console.error('_loadAll clients:', e); this._cache.clients = []; }
 
         // ─── tariffs ───
-        this._cache.tariffs = (tariffs.data || []).map(rowToTariff);
+        try { this._cache.tariffs = (tariffs.data || []).map(rowToTariff); } catch(e) { console.error('_loadAll tariffs:', e); this._cache.tariffs = []; }
 
         // ─── events ───
-        const etgById = groupBy(etg.data || [], 'event_id');
-        const eoById = groupBy(eo.data || [], 'event_id');
-        const eiById = groupBy(ei.data || [], 'event_id');
-        const eaById = groupBy(ea.data || [], 'event_id');
-        this._cache.events = (events.data || []).map(ev => rowToEvent(
-            ev,
-            etgById[ev.id] || [],
-            eoById[ev.id] || [],
-            eiById[ev.id] || [],
-            eaById[ev.id] || []
-        ));
+        try {
+            const etgById = groupBy(etg.data || [], 'event_id');
+            const eoById = groupBy(eo.data || [], 'event_id');
+            const eiById = groupBy(ei.data || [], 'event_id');
+            const eaById = groupBy(ea.data || [], 'event_id');
+            this._cache.events = (events.data || []).map(ev => rowToEvent(
+                ev,
+                etgById[ev.id] || [],
+                eoById[ev.id] || [],
+                eiById[ev.id] || [],
+                eaById[ev.id] || []
+            ));
+        } catch(e) { console.error('_loadAll events:', e); this._cache.events = []; }
 
         // ─── shifts ───
-        const sbById = groupBy(shiftBonuses.data || [], 'shift_id');
-        this._cache.shifts = (shifts.data || []).map(s => rowToShift(s, sbById[s.id] || []));
+        try {
+            const sbById = groupBy(shiftBonuses.data || [], 'shift_id');
+            this._cache.shifts = (shifts.data || []).map(s => rowToShift(s, sbById[s.id] || []));
+        } catch(e) { console.error('_loadAll shifts:', e); this._cache.shifts = []; }
 
         // ─── salaryRules ───
-        this._cache.salaryRules = rowsToSalaryRules(salaryRules.data || []);
+        try { this._cache.salaryRules = rowsToSalaryRules(salaryRules.data || []); } catch(e) { console.error('_loadAll salaryRules:', e); }
 
         // ─── salaryPayments / historicalAccruals ───
-        this._cache.salaryPayments = (salaryPayments.data || []).map(rowToSalaryPayment);
-        this._cache.historicalAccruals = (historicalAccruals.data || []).map(rowToHistoricalAccrual);
+        try { this._cache.salaryPayments = (salaryPayments.data || []).map(rowToSalaryPayment); } catch(e) { console.error('_loadAll salaryPayments:', e); this._cache.salaryPayments = []; }
+        try { this._cache.historicalAccruals = (historicalAccruals.data || []).map(rowToHistoricalAccrual); } catch(e) { console.error('_loadAll historicalAccruals:', e); this._cache.historicalAccruals = []; }
 
         // ─── documents ───
-        this._cache.documents = (documents.data || []).map(rowToDocument);
+        try { this._cache.documents = (documents.data || []).map(rowToDocument); } catch(e) { console.error('_loadAll documents:', e); this._cache.documents = []; }
 
         // ─── stockBase + stock (computed) ───
-        this._cache.stockBase = rowToStockBase(stockBase.data);
-        this._cache.stock = computeStock(this._cache.stockBase, this._cache.documents);
+        try {
+            this._cache.stockBase = rowToStockBase(stockBase.data);
+            this._cache.stock = computeStock(this._cache.stockBase, this._cache.documents);
+        } catch(e) { console.error('_loadAll stockBase:', e); }
 
         // ─── certificates ───
         const cuById = groupBy(certUsage.data || [], 'certificate_id');
