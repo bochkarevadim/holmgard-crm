@@ -217,12 +217,18 @@ var FirebaseAuth = (function() {
                 _lastHandledUserId = session.user.id;
                 onSignIn(session.user);
             } else {
-                // Нет сессии — показать экран логина
-                showFirebaseLogin();
+                // Нет сессии — но подождём 1.5с: onAuthStateChange может обновить
+                // токен чуть позже (TOKEN_REFRESHED), особенно на мобильных.
+                // Показываем экран входа только если за это время не залогинились.
+                setTimeout(function() {
+                    if (!_lastHandledUserId) showFirebaseLogin();
+                }, 1500);
             }
         }).catch(function(err) {
             console.error('[auth] getSession error:', err);
-            showFirebaseLogin();
+            setTimeout(function() {
+                if (!_lastHandledUserId) showFirebaseLogin();
+            }, 1500);
         });
     }
 

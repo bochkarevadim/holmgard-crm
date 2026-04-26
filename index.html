@@ -15,6 +15,29 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <!-- Force cache clear when old SW version is detected -->
+    <script>
+    (function() {
+        var REQUIRED_SW_VERSION = 64;
+        if ('serviceWorker' in navigator && 'caches' in window) {
+            caches.keys().then(function(keys) {
+                var hasOld = keys.some(function(k) {
+                    var m = k.match(/holmgard-crm-v(\d+)/);
+                    return m && parseInt(m[1]) < REQUIRED_SW_VERSION;
+                });
+                if (hasOld) {
+                    Promise.all(keys.map(function(k) { return caches.delete(k); }))
+                        .then(function() {
+                            navigator.serviceWorker.getRegistrations().then(function(regs) {
+                                Promise.all(regs.map(function(r) { return r.unregister(); }))
+                                    .then(function() { location.reload(true); });
+                            });
+                        });
+                }
+            });
+        }
+    })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
