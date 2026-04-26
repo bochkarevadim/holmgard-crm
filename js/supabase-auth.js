@@ -48,6 +48,7 @@ var FirebaseAuth = (function() {
         if (msg.indexOf('email') >= 0 && msg.indexOf('invalid') >= 0) return ERROR_MESSAGES.invalid_email;
         if (msg.indexOf('rate limit') >= 0 || msg.indexOf('too many') >= 0) return ERROR_MESSAGES.over_request_rate_limit;
         if (msg.indexOf('network') >= 0 || msg.indexOf('failed to fetch') >= 0) return ERROR_MESSAGES.network_error;
+        if (msg.indexOf('timeout') >= 0 || msg.indexOf('нет ответа') >= 0) return 'Нет ответа от сервера. Попробуйте через мобильный интернет (3G/4G)';
         return 'Ошибка авторизации. Попробуйте ещё раз';
     }
 
@@ -260,9 +261,16 @@ var FirebaseAuth = (function() {
                 return;
             }
 
-            sb.auth.signInWithPassword({ email: email, password: password })
+            var loginTimeout = new Promise(function(_, reject) {
+                setTimeout(function() { reject(new Error('Timeout: нет ответа от сервера')); }, 12000);
+            });
+
+            Promise.race([
+                sb.auth.signInWithPassword({ email: email, password: password }),
+                loginTimeout
+            ])
                 .then(function(res) {
-                    if (res.error) {
+                    if (res && res.error) {
                         showFirebaseError(getErrorMessage(res.error));
                     }
                     // onAuthStateChange обработает успех
