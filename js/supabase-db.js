@@ -25,7 +25,7 @@ var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 // SUPABASE CLIENT
 // ============================================================
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, storageKey: 'hp_supabase_auth' },
+    auth: { persistSession: true, autoRefreshToken: true, storageKey: 'hp_supabase_auth', detectSessionInUrl: true, flowType: 'implicit' },
     realtime: { params: { eventsPerSecond: 10 } }
 });
 

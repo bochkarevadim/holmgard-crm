@@ -20,6 +20,8 @@
     (function() {
         var FLAG = 'hcrm_nuked_v65';
         if (sessionStorage.getItem(FLAG)) return;
+        // Don't reload if URL has auth tokens — would lose the hash fragment on some mobile browsers
+        if (window.location.hash && window.location.hash.indexOf('access_token') !== -1) return;
         sessionStorage.setItem(FLAG, '1');
         var p1 = ('caches' in window)
             ? caches.keys().then(function(keys) {
