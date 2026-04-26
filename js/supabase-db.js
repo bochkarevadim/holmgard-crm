@@ -820,6 +820,7 @@ function rowToEmployee(r) {
         bank: r.bank || '',
         paid: 0, // считается динамически из salary_payments
         blocked: !!r.blocked,
+        authUid: r.auth_uid || null, // UUID в Supabase Auth
         allowedShiftRoles: r.allowed_shift_roles || [],
         managerSince: r.manager_since || undefined,
         managerUntil: r.manager_until || undefined

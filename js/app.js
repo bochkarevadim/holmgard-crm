@@ -1314,7 +1314,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Re-render employee screen if active
         const empScreen = document.getElementById('employee-screen');
         if (empScreen && empScreen.classList.contains('active')) {
-            if (typeof loadEmployeeDashboard === 'function') loadEmployeeDashboard();
+            const activeEmpPage = document.querySelector('#employee-screen .page.active');
+            const eid = activeEmpPage ? activeEmpPage.id : '';
+            if (eid === 'emp-page-events') { if (typeof loadEmployeeEvents === 'function') loadEmployeeEvents(); }
+            else if (eid === 'emp-page-booking') { if (typeof renderEmpCalendar === 'function') renderEmpCalendar(); }
+            else if (eid === 'emp-page-salary') { if (typeof loadEmployeeSalary === 'function') loadEmployeeSalary(); }
+            else { if (typeof loadEmployeeDashboard === 'function') loadEmployeeDashboard(); }
         }
         applyAccentColor(DB.get('accentColor', '#FFD600'));
     });
@@ -1369,7 +1374,14 @@ function tryRestoreSession() {
         const employees = DB.get('employees', []);
         const user = employees.find(e => String(e.id) === savedId);
         if (!user) { localStorage.removeItem('hp_session_user_id'); return false; }
-        // Проверяем Firebase email
+
+        // Проверяем Supabase auth_uid — самая надёжная проверка
+        const currentSupabaseUser = (typeof FirebaseAuth !== 'undefined') ? FirebaseAuth.getUser() : null;
+        if (currentSupabaseUser && user.authUid && user.authUid !== currentSupabaseUser.id) {
+            localStorage.removeItem('hp_session_user_id');
+            return false;
+        }
+        // Fallback: проверяем email если auth_uid не задан
         const firebaseEmail = sessionStorage.getItem('hp_firebase_email');
         if (firebaseEmail && user.email && user.email.toLowerCase() !== firebaseEmail.toLowerCase()) {
             localStorage.removeItem('hp_session_user_id');
