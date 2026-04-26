@@ -254,15 +254,21 @@ var FirebaseAuth = (function() {
             }
             hideFirebaseError();
 
+            if (!sb) {
+                showFirebaseError('Ошибка инициализации. Перезагрузите страницу (F5)');
+                if (btn) { btn.disabled = false; btn.textContent = 'Войти'; }
+                return;
+            }
+
             sb.auth.signInWithPassword({ email: email, password: password })
                 .then(function(res) {
                     if (res.error) {
-                        showFirebaseError(getErrorMessage(res.error));
+                        showFirebaseError(getErrorMessage(res.error) + ' [' + (res.error.code || res.error.message || '?') + ']');
                     }
                     // onAuthStateChange обработает успех
                 })
                 .catch(function(error) {
-                    showFirebaseError(getErrorMessage(error));
+                    showFirebaseError(getErrorMessage(error) + ' [' + (error && (error.message || error.code) || 'network?') + ']');
                 })
                 .finally(function() {
                     if (btn) {
