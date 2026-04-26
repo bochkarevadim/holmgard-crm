@@ -2857,16 +2857,26 @@ function loadEmployeeSalary() {
     const mgrByDate = {};
     mgrAccruals.forEach(a => { mgrByDate[a.date] = (mgrByDate[a.date] || 0) + a.amount; });
 
-    // Historical accruals (non-event) for the period
-    const datesWithShiftBonuses = new Set(
-        allEmpShifts.filter(s => (s.eventBonuses || []).length > 0).map(s => s.date)
-    );
+    // Historical accruals for the period
+    // Event-bonus accruals on days that have a shift → merge into the shift row (not shown separately)
+    const datesWithShift = new Set(allEmpShifts.map(s => s.date));
+    const histEventBonusInstrByDate = {}; // date → total instructor bonus from hist accruals
+    const histEventBonusAdminByDate = {}; // date → total admin bonus from hist accruals
+
     const histAccruals = DB.get('historicalAccruals', []).filter(a => {
         if (a.employeeId !== currentUser.id) return false;
         if (a.date < salStart || a.date > salEnd) return false;
-        // Skip event-bonus accruals when there's already a shift with event bonuses on that date
         const isEventBonus = (a.note || '').includes('инструктор') || (a.note || '').includes('администратор') || (a.note || '').includes('Бонус за мероприятие');
-        if (isEventBonus && datesWithShiftBonuses.has(a.date)) return false;
+        if (isEventBonus && datesWithShift.has(a.date)) {
+            // Merge into shift row
+            const isAdm = (a.note || '').includes('администратор');
+            if (isAdm) {
+                histEventBonusAdminByDate[a.date] = (histEventBonusAdminByDate[a.date] || 0) + (a.amount || 0);
+            } else {
+                histEventBonusInstrByDate[a.date] = (histEventBonusInstrByDate[a.date] || 0) + (a.amount || 0);
+            }
+            return false; // exclude from separate hist rows
+        }
         return true;
     });
 
@@ -2903,6 +2913,9 @@ function loadEmployeeSalary() {
                     else instrBonus += (b.amount || 0);
                 });
             });
+            // Add event-bonus hist accruals merged into this date's shift row
+            instrBonus += histEventBonusInstrByDate[date] || 0;
+            adminBonus += histEventBonusAdminByDate[date] || 0;
         }
 
         const total = base + instrBonus + adminBonus + mgrAmount;
