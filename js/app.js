@@ -1727,10 +1727,20 @@ function initEmployeeScreen() {
             showToast('Google Calendar не подключён. Директор должен подключить в Настройках.');
             return;
         }
-        const result = await GCalSync.fullSync();
-        if (result) {
+        empSyncGcal.disabled = true;
+        empSyncGcal.querySelector('span.material-icons-round').textContent = 'hourglass_empty';
+        try {
+            const now = new Date();
+            const from = new Date(now); from.setDate(from.getDate() - 1);
+            const to   = new Date(now); to.setDate(to.getDate() + 90);
+            const { added } = await GCalSync.importFromGcal(from.toISOString(), to.toISOString());
+            if (added > 0) showToast(`📅 Импортировано из Google Calendar: ${added} событий`);
+            else showToast('Google Calendar: новых событий нет');
             renderEmpCalendar();
             loadEmployeeEvents();
+        } finally {
+            empSyncGcal.disabled = false;
+            empSyncGcal.querySelector('span.material-icons-round').textContent = 'sync';
         }
     });
 
@@ -1741,8 +1751,12 @@ function initEmployeeScreen() {
             showToast('Google Calendar не подключён. Директор должен подключить в Настройках.');
             return;
         }
-        const result = await GCalSync.fullSync();
-        if (result) loadEmployeeEvents();
+        const now = new Date();
+        const from = new Date(now); from.setDate(from.getDate() - 1);
+        const to   = new Date(now); to.setDate(to.getDate() + 90);
+        const { added } = await GCalSync.importFromGcal(from.toISOString(), to.toISOString());
+        if (added > 0) showToast(`📅 Импортировано из Google Calendar: ${added} событий`);
+        loadEmployeeEvents();
     });
 
     // Sync button on employee dashboard page
@@ -1752,7 +1766,12 @@ function initEmployeeScreen() {
             showToast('Google Calendar не подключён. Директор должен подключить в Настройках.');
             return;
         }
-        await GCalSync.fullSync();
+        const now = new Date();
+        const from = new Date(now); from.setDate(from.getDate() - 1);
+        const to   = new Date(now); to.setDate(to.getDate() + 90);
+        const { added } = await GCalSync.importFromGcal(from.toISOString(), to.toISOString());
+        if (added > 0) showToast(`📅 Из Google Calendar: ${added} новых событий`);
+        loadEmployeeDashboard();
     });
 
     // Employee calendar

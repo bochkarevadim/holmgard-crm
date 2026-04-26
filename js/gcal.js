@@ -1,11 +1,10 @@
-// ===== GOOGLE CALENDAR SYNC MODULE v3 =====
-// One-way sync: CRM → Google Calendar (CRM is the single source of truth)
-// - Events created/edited/deleted in CRM are pushed to GCal immediately
-// - GCal changes are NOT imported back into CRM (CRM owns the data)
-// - Each CRM event embeds CRM_ID in GCal description for mapping recovery
-// - Event map (CRM_ID → GCal_ID) stored in Firestore + localStorage
-// - Auto-sync every 2 minutes: reconcile mappings + push any missed events
-// - Zero duplicates: CRM_ID is unique, pushEvent always update-or-create
+// ===== GOOGLE CALENDAR SYNC MODULE v4 =====
+// Bidirectional sync: Google Calendar is the PRIMARY source for new bookings
+// - Employees create events in Google Calendar
+// - Auto-sync every 2 min imports new GCal events into CRM automatically
+// - After import, CRM_ID is embedded in GCal description (no re-import)
+// - CRM events are also pushed to GCal (keeps GCal complete)
+// - Zero duplicates: GCal events with CRM_ID are never re-imported
 
 const GCalSync = (() => {
     const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets';
@@ -562,9 +561,127 @@ function deleteEvent(calId, eventId) {
         _gcalCache = null;
     }
 
+    // ===================== GCal → CRM IMPORT =====================
+    // Reads events from GCal that have NO CRM_ID and imports them as new CRM events.
+    // After import, pushes back to GCal with CRM_ID so they are not re-imported.
+
+    // Convert GCal dateTime string to Moscow date + time strings
+    function _gcalDtToMoscow(isoStr) {
+        const dt = new Date(isoStr);
+        // Moscow = UTC+3, no daylight saving time since 2014
+        const msk = new Date(dt.getTime() + 3 * 60 * 60 * 1000);
+        const iso = msk.toISOString();
+        return { date: iso.substring(0, 10), time: iso.substring(11, 16) };
+    }
+
+    // Guess CRM event type from GCal event title
+    function _parseEventType(title) {
+        const t = title.toLowerCase();
+        if (t.includes('пейнтбол') || t.includes('paintball')) return 'paintball';
+        if (t.includes('кидбол') || t.includes('kidball'))     return 'kidball';
+        if (t.includes('лазертаг') || t.includes('lazertag'))  return 'lazertag';
+        if (t.includes('квадр') || t.includes('quad'))         return 'quad';
+        if (t.includes('сап') || t.includes('sup'))            return 'sup';
+        if (t.includes('гонк') || t.includes('трасс') || t.includes('race')) return 'race';
+        return 'other';
+    }
+
+    // Extract data from GCal title + description
+    function _parseGcalData(summary, description) {
+        const text = (summary || '') + ' ' + (description || '');
+        // Participants: "10 чел", "8 человек"
+        const pm = text.match(/(\d+)\s*(?:чел(?:овек)?)/i);
+        const participants = pm ? parseInt(pm[1]) : 0;
+        // Price per person: "2200₽", "1800 руб", "1600р"
+        const prm = text.match(/(\d{3,5})\s*(?:₽|руб(?:лей|ля)?\.?|р\.?\s)/i);
+        const pricePerPerson = prm ? parseInt(prm[1]) : 0;
+        const price = pricePerPerson && participants ? pricePerPerson * participants : (pricePerPerson || 0);
+        // Client phone
+        const phm = (description || '').match(/(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/);
+        const clientPhone = phm ? phm[0] : '';
+        // Client name
+        const nm = (description || '').match(/(?:Клиент|Заказчик|Контакт|ФИО|Имя)[:\s]+([^\n\r,]+)/i);
+        const clientName = nm ? nm[1].trim() : '';
+        return { participants, price, clientPhone, clientName };
+    }
+
+    async function importFromGcal(timeMin, timeMax) {
+        if (!isConnected()) return { added: 0 };
+        try {
+            const calId = getCalendarId();
+            const gcalEvents = await _fetchGcalEvents(calId, timeMin, timeMax);
+            if (!gcalEvents.length) return { added: 0 };
+
+            const crmEvents = DB.get('events', []);
+            const map = getEventMap();
+
+            // Build set of all GCal IDs already linked to CRM events
+            const knownGcalIds = new Set(Object.values(map));
+            for (const ev of crmEvents) {
+                if (ev.gcalEventId) knownGcalIds.add(ev.gcalEventId);
+            }
+
+            const toAdd = [];
+            for (const gEv of gcalEvents) {
+                // Skip all-day events (no dateTime)
+                if (!gEv.start || !gEv.start.dateTime) continue;
+                // Skip already linked events
+                if (knownGcalIds.has(gEv.id)) continue;
+                // Skip if GCal event already has CRM_ID (just lost mapping — reconcile handles this)
+                if (/CRM_ID:\s*\d+/.test(gEv.description || '')) continue;
+
+                const { date, time } = _gcalDtToMoscow(gEv.start.dateTime);
+                const endMs = new Date(gEv.end.dateTime).getTime();
+                const startMs = new Date(gEv.start.dateTime).getTime();
+                const duration = Math.round((endMs - startMs) / 60000);
+
+                const type = _parseEventType(gEv.summary || '');
+                const { participants, price, clientPhone, clientName } = _parseGcalData(gEv.summary, gEv.description);
+
+                const newId = Date.now() + toAdd.length + Math.floor(Math.random() * 100);
+                toAdd.push({
+                    id: newId,
+                    title: (gEv.summary || 'Мероприятие').trim(),
+                    clientName, clientPhone,
+                    contactChannel: null,
+                    date, time, duration, type,
+                    occasion: '', playerAge: '',
+                    participants,
+                    tariffId: null, tariffGroups: null,
+                    selectedOptions: [], optionQuantities: {},
+                    instructors: [], admins: [],
+                    price, discount: 0, discountType: null,
+                    certificateNumber: '', certificateAmount: 0,
+                    status: 'pending',
+                    prepayment: 0, prepaymentMethod: null, prepaymentDate: null,
+                    notes: (gEv.description || '').trim(),
+                    source: 'gcal',
+                    gcalEventId: gEv.id,
+                    bonuses: null, eventBonuses: [], consumables: {}
+                });
+                map[String(newId)] = gEv.id;
+                knownGcalIds.add(gEv.id);
+            }
+
+            if (toAdd.length > 0) {
+                DB.set('events', [...crmEvents, ...toAdd]);
+                setEventMap(map);
+                // Push back to GCal with CRM_ID embedded (so future syncs skip them)
+                for (let i = 0; i < toAdd.length; i++) {
+                    const ev = toAdd[i];
+                    setTimeout(() => pushEvent(ev).catch(() => {}), 600 + i * 400);
+                }
+                console.log('[GCal] Imported', toAdd.length, 'new events from GCal → CRM');
+            }
+            return { added: toAdd.length };
+        } catch (err) {
+            console.error('[GCal] importFromGcal error:', err);
+            return { added: 0 };
+        }
+    }
+
     // ===================== MAPPING RECONCILIATION =====================
-    // Only reads GCal to restore lost CRM_ID → GCal_ID mappings.
-    // Does NOT import external events, does NOT delete CRM events.
+    // Reads GCal to restore lost CRM_ID → GCal_ID mappings.
 
     let _gcalCache = null;
     let _gcalCacheTime = 0;
@@ -655,29 +772,38 @@ function deleteEvent(calId, eventId) {
         if (!isConnected() || _syncInProgress) return;
         _syncInProgress = true;
         try {
-            // Step 1: Reconcile mappings (recover any lost CRM_ID → GCal_ID links)
             const now = new Date();
-            const from = new Date(now); from.setDate(from.getDate() - 14);
-            const to = new Date(now); to.setDate(to.getDate() + 180);
-            await reconcileMappings(from.toISOString(), to.toISOString());
+            const from = new Date(now); from.setDate(from.getDate() - 1);   // вчера
+            const to   = new Date(now); to.setDate(to.getDate() + 90);      // +90 дней
+            const timeMin = from.toISOString();
+            const timeMax = to.toISOString();
 
-            // Step 2: Push any CRM events that are missing from GCal map
+            // Step 1: Import new GCal events into CRM (GCal is primary for creation)
+            const { added } = await importFromGcal(timeMin, timeMax);
+            if (added > 0) {
+                showToast(`📅 Из Google Calendar: ${added} новых событий`);
+                // Refresh UI immediately
+                if (typeof renderCalendar === 'function') {
+                    const schedPage = document.getElementById('page-schedule');
+                    if (schedPage && schedPage.classList.contains('active')) renderCalendar();
+                }
+                if (typeof renderEmpCalendar === 'function') {
+                    const bookPage = document.getElementById('emp-page-booking');
+                    if (bookPage && bookPage.classList.contains('active')) renderEmpCalendar();
+                }
+            }
+
+            // Step 2: Reconcile lost CRM_ID → GCal_ID mappings
+            await reconcileMappings(timeMin, timeMax);
+
+            // Step 3: Push any CRM events still missing from GCal
             const events = DB.get('events', []);
             const map = getEventMap();
             const unmapped = events.filter(e => e.date && !e.deleted && !map[String(e.id)]);
-
             if (unmapped.length > 0) {
-                console.log('[GCal] Auto-sync: pushing', unmapped.length, 'unmapped events');
-                let pushed = 0;
+                console.log('[GCal] Auto-sync: pushing', unmapped.length, 'unmapped CRM events to GCal');
                 for (const ev of unmapped) {
-                    try { const r = await pushEvent(ev); if (r) pushed++; } catch (e) {}
-                }
-                if (pushed > 0) {
-                    showToast(`📅 Google Calendar: ${pushed} событий синхронизировано`);
-                    if (typeof renderCalendar === 'function') {
-                        const schedPage = document.getElementById('page-schedule');
-                        if (schedPage && schedPage.classList.contains('active')) renderCalendar();
-                    }
+                    try { await pushEvent(ev); } catch (e) {}
                 }
             }
         } catch (err) {
@@ -776,7 +902,7 @@ function deleteEvent(calId, eventId) {
     return {
         init, authorize, disconnect, isConnected,
         pushEvent, deleteEvent, pullEvents, reconcileMappings,
-        fullSync, autoSync, updateStatus, reinitGis,
+        importFromGcal, fullSync, autoSync, updateStatus, reinitGis,
         repushAllEvents, deduplicateEvents, getGasCode,
         setAppsScriptUrl, getAppsScriptUrl,
         setCalendarId, getCalendarId,
