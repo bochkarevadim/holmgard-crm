@@ -196,54 +196,72 @@ var DB = {
             sb.from('migration_flags').select('*').eq('org_id', this._orgId)
         ]);
 
+        // Helper: only update cache if query returned data (don't wipe on transient errors)
+        const safe = (key, data, mapFn, fallback) => {
+            if (data === null || data === undefined) return; // query failed — keep existing cache
+            try { this._cache[key] = mapFn(data); }
+            catch(e) { console.error('_loadAll ' + key + ':', e); if (this._cache[key] === undefined) this._cache[key] = fallback; }
+        };
+
         // ─── employees ───
-        try { this._cache.employees = (employees.data || []).map(rowToEmployee); } catch(e) { console.error('_loadAll employees:', e); this._cache.employees = []; }
+        safe('employees', employees.data, d => d.map(rowToEmployee), []);
 
         // ─── clients ───
-        try {
-            const visitsById = groupBy(clientVisits.data || [], 'client_id');
-            this._cache.clients = (clients.data || []).map(c => rowToClient(c, visitsById[c.id] || []));
-        } catch(e) { console.error('_loadAll clients:', e); this._cache.clients = []; }
+        if (clients.data !== null && clients.data !== undefined) {
+            try {
+                const visitsById = groupBy(clientVisits.data || [], 'client_id');
+                this._cache.clients = clients.data.map(c => rowToClient(c, visitsById[c.id] || []));
+            } catch(e) { console.error('_loadAll clients:', e); if (!this._cache.clients) this._cache.clients = []; }
+        }
 
         // ─── tariffs ───
-        try { this._cache.tariffs = (tariffs.data || []).map(rowToTariff); } catch(e) { console.error('_loadAll tariffs:', e); this._cache.tariffs = []; }
+        safe('tariffs', tariffs.data, d => d.map(rowToTariff), []);
 
         // ─── events ───
-        try {
-            const etgById = groupBy(etg.data || [], 'event_id');
-            const eoById = groupBy(eo.data || [], 'event_id');
-            const eiById = groupBy(ei.data || [], 'event_id');
-            const eaById = groupBy(ea.data || [], 'event_id');
-            this._cache.events = (events.data || []).map(ev => rowToEvent(
-                ev,
-                etgById[ev.id] || [],
-                eoById[ev.id] || [],
-                eiById[ev.id] || [],
-                eaById[ev.id] || []
-            ));
-        } catch(e) { console.error('_loadAll events:', e); this._cache.events = []; }
+        if (events.data !== null && events.data !== undefined) {
+            try {
+                const etgById = groupBy(etg.data || [], 'event_id');
+                const eoById = groupBy(eo.data || [], 'event_id');
+                const eiById = groupBy(ei.data || [], 'event_id');
+                const eaById = groupBy(ea.data || [], 'event_id');
+                this._cache.events = events.data.map(ev => rowToEvent(
+                    ev,
+                    etgById[ev.id] || [],
+                    eoById[ev.id] || [],
+                    eiById[ev.id] || [],
+                    eaById[ev.id] || []
+                ));
+            } catch(e) { console.error('_loadAll events:', e); if (!this._cache.events) this._cache.events = []; }
+        }
 
         // ─── shifts ───
-        try {
-            const sbById = groupBy(shiftBonuses.data || [], 'shift_id');
-            this._cache.shifts = (shifts.data || []).map(s => rowToShift(s, sbById[s.id] || []));
-        } catch(e) { console.error('_loadAll shifts:', e); this._cache.shifts = []; }
+        if (shifts.data !== null && shifts.data !== undefined) {
+            try {
+                const sbById = groupBy(shiftBonuses.data || [], 'shift_id');
+                this._cache.shifts = shifts.data.map(s => rowToShift(s, sbById[s.id] || []));
+            } catch(e) { console.error('_loadAll shifts:', e); if (!this._cache.shifts) this._cache.shifts = []; }
+        }
 
         // ─── salaryRules ───
-        try { this._cache.salaryRules = rowsToSalaryRules(salaryRules.data || []); } catch(e) { console.error('_loadAll salaryRules:', e); }
+        if (salaryRules.data) { try { this._cache.salaryRules = rowsToSalaryRules(salaryRules.data); } catch(e) { console.error('_loadAll salaryRules:', e); } }
 
         // ─── salaryPayments / historicalAccruals ───
-        try { this._cache.salaryPayments = (salaryPayments.data || []).map(rowToSalaryPayment); } catch(e) { console.error('_loadAll salaryPayments:', e); this._cache.salaryPayments = []; }
-        try { this._cache.historicalAccruals = (historicalAccruals.data || []).map(rowToHistoricalAccrual); } catch(e) { console.error('_loadAll historicalAccruals:', e); this._cache.historicalAccruals = []; }
+        safe('salaryPayments', salaryPayments.data, d => d.map(rowToSalaryPayment), []);
+        safe('historicalAccruals', historicalAccruals.data, d => d.map(rowToHistoricalAccrual), []);
 
-        // ─── documents ───
-        try { this._cache.documents = (documents.data || []).map(rowToDocument); } catch(e) { console.error('_loadAll documents:', e); this._cache.documents = []; }
+        // ─── documents ─── (critical: must not wipe with empty on transient error)
+        safe('documents', documents.data, d => d.map(rowToDocument), []);
 
         // ─── stockBase + stock (computed) ───
-        try {
-            this._cache.stockBase = rowToStockBase(stockBase.data);
-            this._cache.stock = computeStock(this._cache.stockBase, this._cache.documents);
-        } catch(e) { console.error('_loadAll stockBase:', e); }
+        if (stockBase.data) {
+            try {
+                this._cache.stockBase = rowToStockBase(stockBase.data);
+                this._cache.stock = computeStock(this._cache.stockBase, this._cache.documents || []);
+            } catch(e) { console.error('_loadAll stockBase:', e); }
+        } else if (this._cache.documents) {
+            // stockBase unchanged but recompute stock with fresh documents
+            this._cache.stock = computeStock(this._cache.stockBase || {}, this._cache.documents);
+        }
 
         // ─── certificates ───
         const cuById = groupBy(certUsage.data || [], 'certificate_id');
